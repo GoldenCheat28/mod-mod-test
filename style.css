@@ -214,6 +214,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   align-items: center;
   font-size: 10px;
   cursor: pointer;
+  position: relative;
 }
 .stake-chip .item-tile, .stake-chip .item-img { width: 26px; height: 26px; margin-bottom: 2px; }
 
@@ -237,7 +238,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   padding: 0;
 }
 .qty-stepper button:disabled { opacity: 0.35; }
-#qtyValue { font-size: 12px; color: #ccc; min-width: 22px; text-align: center; }
+#qtyValue { display: none; }
 
 #wheelWrap {
   position: relative;
@@ -897,24 +898,23 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 }
 .frame-ring-inner img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* бегущий блик поверх узора — придаёт "глянец" любой рамке */
+/* бегущий блик поверх узора — узкий световой клин, вращается вместе
+   с кольцом (сам conic-gradient, а не диагональная полоса), поэтому
+   всегда ровно ложится на круг без "перекоса" на краях */
 .frame-ring::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%);
-  background-size: 260% 260%;
-  animation: frameShimmer 2.6s linear infinite;
-  mix-blend-mode: overlay;
+  background: conic-gradient(from 0deg,
+    transparent 0deg,
+    rgba(255,255,255,0.7) 6deg,
+    transparent 16deg,
+    transparent 360deg);
+  animation: frameSpin 2.2s linear infinite;
   pointer-events: none;
   z-index: 2;
 }
-@keyframes frameShimmer {
-  0% { background-position: -60% -60%; }
-  100% { background-position: 160% 160%; }
-}
-
 /* вращается сам узор (::before), а не весь блок — иначе блик и лицо тоже крутились бы */
 .frame-ring::before {
   content: "";
@@ -1071,12 +1071,33 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 
 /* ==================== Сгорание ставки при спине ==================== */
 #stakeContent.stake-burning .stake-chip {
-  animation: stakeBurnAway 0.55s ease forwards;
+  animation: stakeBurnAway 0.65s ease-in forwards;
+}
+/* огненное свечение позади иконки, растёт и гаснет вместе со сгоранием */
+#stakeContent.stake-burning .stake-chip::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%) scale(0.3);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,180,60,0.95) 0%, rgba(255,90,20,0.7) 40%, transparent 72%);
+  z-index: -1;
+  animation: stakeFireGlow 0.65s ease-in forwards;
+}
+@keyframes stakeFireGlow {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  30% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
 }
 @keyframes stakeBurnAway {
-  0% { opacity: 1; transform: scale(1) translateY(0); filter: none; }
-  35% { filter: brightness(1.8) saturate(2.2) hue-rotate(-25deg); }
-  100% { opacity: 0; transform: scale(0.35) translateY(-14px); filter: brightness(2.4) blur(3px); }
+  0% { opacity: 1; transform: scale(1) rotate(0deg); filter: none; }
+  20% { transform: scale(1.08) rotate(-3deg); filter: sepia(0.6) saturate(4) hue-rotate(-30deg) brightness(1.3); }
+  45% { transform: scale(0.9) rotate(3deg); filter: sepia(1) saturate(5) hue-rotate(-40deg) brightness(1.1); }
+  75% { transform: scale(0.55) rotate(-2deg) translateY(-6px); filter: grayscale(1) brightness(0.35) contrast(1.6); opacity: 0.8; }
+  100% { opacity: 0; transform: scale(0.15) translateY(-16px); filter: grayscale(1) brightness(0.1) blur(2px); }
 }
 
 /* ==================== 3D-переворот карточки для дорогих призов ==================== */

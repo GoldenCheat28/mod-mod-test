@@ -338,7 +338,7 @@ function doUpgrade() {
   setTimeout(() => {
     stakeContentEl.classList.remove("stake-burning");
     renderStake();
-  }, 560);
+  }, 660);
 
   spinNeedleTo(targetDeg);
 
