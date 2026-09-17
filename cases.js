@@ -1,0 +1,57 @@
+// Кейсы: покупаются за конкретный предмет-валюту (медь / алмаз / незерит),
+// внутри — рандомный дроп по весам. В среднем цена дропа немного ниже
+// цены кейса (это казино, шанс всегда чуть против игрока), но топовый
+// приз всегда самый дорогой предмет в пуле — редкий, но возможный.
+
+const CASES = [
+  {
+    id: "copper_case",
+    name: "Медный кейс",
+    costItem: "copper",
+    costAmount: 10,
+    drops: [
+      { id: "coal", weight: 5 },
+      { id: "iron", weight: 10 },
+      { id: "redstone", weight: 15 },
+      { id: "lapis", weight: 20 },
+      { id: "gold", weight: 30 },
+      { id: "diamond", weight: 20 },
+    ],
+  },
+  {
+    id: "diamond_case",
+    name: "Алмазный кейс",
+    costItem: "diamond",
+    costAmount: 1,
+    drops: [
+      { id: "redstone", weight: 5 },
+      { id: "lapis", weight: 15 },
+      { id: "gold", weight: 30 },
+      { id: "diamond", weight: 35 },
+      { id: "emerald", weight: 13 },
+      { id: "netherite", weight: 2 },
+    ],
+  },
+  {
+    id: "netherite_case",
+    name: "Незеритовый кейс",
+    costItem: "netherite",
+    costAmount: 1,
+    drops: [
+      { id: "gold", weight: 3 },
+      { id: "diamond", weight: 12 },
+      { id: "emerald", weight: 20 },
+      { id: "netherite", weight: 65 },
+    ],
+  },
+];
+
+function pickCaseDrop(caseDef) {
+  const totalWeight = caseDef.drops.reduce((sum, d) => sum + d.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const drop of caseDef.drops) {
+    if (roll < drop.weight) return drop.id;
+    roll -= drop.weight;
+  }
+  return caseDef.drops[caseDef.drops.length - 1].id;
+}
