@@ -70,6 +70,31 @@ main {
   gap: 20px;
 }
 
+#tabBar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  background: #1e1e1e;
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 4px;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn.active {
+  color: #5de3e0;
+  border-bottom-color: #5de3e0;
+}
+
+.tab-page.hidden { display: none; }
+
 h2 { margin: 0 0 10px; font-size: 16px; color: #ddd; }
 h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 
@@ -161,6 +186,26 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 .stake-chip .item-tile, .stake-chip .item-img { width: 26px; height: 26px; margin-bottom: 2px; }
 
 .upgrade-arrow { display: flex; align-items: center; font-size: 20px; color: #555; }
+
+.qty-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.qty-stepper button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: #1e1e1e;
+  color: #eee;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+}
+.qty-stepper button:disabled { opacity: 0.35; }
+#qtyValue { font-size: 12px; color: #ccc; min-width: 22px; text-align: center; }
 
 #wheelWrap {
   position: relative;
@@ -407,14 +452,98 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 }
 .case-open-btn:disabled { background: #333; color: #777; }
 
-.case-card.opening .case-icon {
-  animation: caseShake 0.15s infinite;
+/* --- CS:GO-style горизонтальная рулетка открытия кейса --- */
+#caseRevealOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 55;
 }
-@keyframes caseShake {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-8deg); }
-  75% { transform: rotate(8deg); }
+#caseRevealOverlay.hidden { display: none; }
+
+#caseRevealCard {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 20px 14px;
+  width: min(92vw, 380px);
+  text-align: center;
 }
+
+#caseRevealTitle { font-size: 16px; font-weight: 700; color: #eee; margin-bottom: 14px; }
+
+#reelViewport {
+  position: relative;
+  height: 96px;
+  overflow: hidden;
+  background: #0d0d0d;
+  border-radius: 10px;
+  border: 1px solid #262626;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 90%, transparent 100%);
+}
+
+#reelTrack {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  will-change: transform;
+}
+
+.reel-tile {
+  width: 82px;
+  height: 82px;
+  flex-shrink: 0;
+  margin: 7px;
+  border-radius: 10px;
+  background: #1e1e1e;
+  border: 1px solid #2c2c2c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reel-tile.reel-winner {
+  border-color: #2ecc71;
+  box-shadow: 0 0 12px rgba(46, 204, 113, 0.7);
+}
+.reel-tile .item-img, .reel-tile .item-tile { width: 48px; height: 48px; margin: 0; }
+
+#reelMarker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #f2c94c;
+  box-shadow: 0 0 6px rgba(242, 201, 76, 0.8);
+}
+#reelMarker::before, #reelMarker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+#reelMarker::before { top: -1px; border-top: 7px solid #f2c94c; }
+#reelMarker::after { bottom: -1px; border-bottom: 7px solid #f2c94c; }
+
+#caseRevealClose {
+  margin-top: 16px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: #fff;
+  font-weight: 600;
+}
+#caseRevealClose:disabled { color: #777; }
 
 #resultOverlay {
   position: fixed;

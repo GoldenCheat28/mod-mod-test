@@ -22,13 +22,19 @@
     <button id="claimBtn" disabled>Медь: --:--</button>
   </header>
 
+  <nav id="tabBar">
+    <button class="tab-btn active" data-tab="upgrader">Апгрейдер</button>
+    <button class="tab-btn" data-tab="cases">Кейсы</button>
+    <button class="tab-btn" data-tab="daily">Колесо удачи</button>
+  </nav>
+
   <main>
     <section id="inventoryPanel">
       <h2>Инвентарь</h2>
       <div id="inventoryGrid"></div>
     </section>
 
-    <section id="dailyPanel">
+    <section id="dailyPanel" class="tab-page hidden">
       <h2>Колесо удачи</h2>
       <div id="dailyWheelWrap">
         <div id="dailyWheelDisc"></div>
@@ -37,7 +43,7 @@
       <button id="dailySpinBtn" disabled>Крутить</button>
     </section>
 
-    <section id="upgraderPanel">
+    <section id="upgraderPanel" class="tab-page">
       <h2>Апгрейдер</h2>
 
       <div class="upgrade-row">
@@ -57,6 +63,11 @@
             <span class="slot-empty">перетащи цель →</span>
           </div>
           <div class="slot-value" id="targetValueLabel">0 ⛃</div>
+          <div class="qty-stepper" id="targetQtyStepper">
+            <button id="qtyMinus" type="button">−</button>
+            <span id="qtyValue">x1</span>
+            <button id="qtyPlus" type="button">+</button>
+          </div>
         </div>
       </div>
 
@@ -75,7 +86,7 @@
       <div id="targetCatalog"></div>
     </section>
 
-    <section id="casesPanel">
+    <section id="casesPanel" class="tab-page hidden">
       <h2>Кейсы</h2>
       <div id="casesGrid"></div>
     </section>
@@ -86,6 +97,17 @@
       <div id="resultTitle"></div>
       <div id="resultItem"></div>
       <button id="resultClose">ОК</button>
+    </div>
+  </div>
+
+  <div id="caseRevealOverlay" class="hidden">
+    <div id="caseRevealCard">
+      <div id="caseRevealTitle"></div>
+      <div id="reelViewport">
+        <div id="reelTrack"></div>
+        <div id="reelMarker"></div>
+      </div>
+      <button id="caseRevealClose" disabled>Открываю...</button>
     </div>
   </div>
 
