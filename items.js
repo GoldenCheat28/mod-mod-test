@@ -4,10 +4,10 @@
 // и рендер (см. app.js -> renderIcon) сам подставит картинку вместо цветной плитки.
 
 const ITEMS = [
-  { id: "dirt",        name: "Грязь",        value: 1,     color: "#6b4a2b", emoji: "🟫" },
+  { id: "dirt",        name: "Грязь",        value: 1,     color: "#6b4a2b", emoji: "🟫", img: "assets/textures/dirt.png" },
   { id: "cobblestone", name: "Булыжник",     value: 2,     color: "#8a8a8a", emoji: "🪨" },
-  { id: "wood",        name: "Дерево",       value: 3,     color: "#9a6b3d", emoji: "🪵" },
-  { id: "copper",      name: "Медь",         value: 6,     color: "#c96f3a", emoji: "🟠" },
+  { id: "wood",        name: "Дерево",       value: 3,     color: "#9a6b3d", emoji: "🪵", img: "assets/textures/wood.png" },
+  { id: "copper",      name: "Медь",         value: 6,     color: "#c96f3a", emoji: "🟠", img: "assets/textures/copper.png" },
   { id: "coal",        name: "Уголь",        value: 8,     color: "#2b2b2b", emoji: "⚫", img: "assets/textures/coal.png" },
   { id: "iron",        name: "Железо",       value: 18,    color: "#d8d2c4", emoji: "⚪", img: "assets/textures/iron.png" },
   { id: "redstone",    name: "Редстоун",     value: 25,    color: "#b3271a", emoji: "🔴", img: "assets/textures/redstone.png" },
