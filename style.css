@@ -862,6 +862,18 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 
 #frameCasesGrid { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 16px; }
 
+.debug-btn {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 0 14px 16px;
+  border: 1px dashed #555;
+  border-radius: 10px;
+  background: #232323;
+  color: #aaa;
+  font-size: 12px;
+  padding: 10px;
+}
+
 .hidden-file-input { display: none; }
 
 /* --- Рамки аватарки: вращающийся градиентный узор + блик, без картинок ---

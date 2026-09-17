@@ -814,6 +814,17 @@ document.getElementById("frameRevealClose").addEventListener("click", () => {
   document.getElementById("frameRevealOverlay").classList.add("hidden");
 });
 
+// --- Тестовая кнопка: выдать всё для проверки ---
+document.getElementById("debugGrantBtn").addEventListener("click", () => {
+  addItem("netherite", 5);
+  ensureProfile();
+  const allFrameIds = FRAME_COLLECTIONS.flatMap(c => c.frames.map(f => f.id));
+  allFrameIds.forEach(id => { if (!state.frames.includes(id)) state.frames.push(id); });
+  saveState();
+  showToast("Выдано: 5 незеритовых слитков + все рамки");
+  renderAll();
+});
+
 // ==== Toast ====
 let toastTimer = null;
 function showToast(msg) {
