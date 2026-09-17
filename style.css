@@ -106,15 +106,45 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 
 .inv-item, .target-item {
   background: #1e1e1e;
-  border: 1px solid #2c2c2c;
+  border: 2px solid #2c2c2c;
   border-radius: 10px;
   padding: 8px 4px;
   text-align: center;
   cursor: pointer;
   touch-action: none;
+  position: relative;
+  overflow: hidden;
 }
 .inv-item.depleted { opacity: 0.35; pointer-events: none; }
-.target-item.selected { border-color: #5de3e0; box-shadow: 0 0 0 1px #5de3e0; }
+.target-item.selected { box-shadow: 0 0 0 2px #5de3e0; }
+
+/* --- Карточки предметов в стиле рангов DBD: градиент + цветная рамка по редкости ---
+   Составные селекторы (.inv-item.rarity-x) специально сильнее одиночного
+   .reel-tile / .inv-item, иначе более поздние по файлу базовые правила
+   перекрывали бы цвет рамки редкости. */
+.inv-item.rarity-common, .target-item.rarity-common, .reel-tile.rarity-common {
+  border-color: #8d8d8d;
+  background: linear-gradient(180deg, rgba(141,141,141,0.22), #1a1a1a 65%);
+}
+.inv-item.rarity-uncommon, .target-item.rarity-uncommon, .reel-tile.rarity-uncommon {
+  border-color: #f2c94c;
+  background: linear-gradient(180deg, rgba(242,201,76,0.22), #1a1a1a 65%);
+}
+.inv-item.rarity-rare, .target-item.rarity-rare, .reel-tile.rarity-rare {
+  border-color: #2ecc71;
+  background: linear-gradient(180deg, rgba(46,204,113,0.22), #1a1a1a 65%);
+}
+.inv-item.rarity-epic, .target-item.rarity-epic, .reel-tile.rarity-epic {
+  border-color: #9b59d0;
+  background: linear-gradient(180deg, rgba(155,89,208,0.25), #1a1a1a 65%);
+  box-shadow: 0 0 10px rgba(155,89,208,0.3);
+}
+.inv-item.rarity-legendary, .target-item.rarity-legendary, .reel-tile.rarity-legendary {
+  border-color: #ff5f96;
+  background: linear-gradient(180deg, rgba(255,95,150,0.28), #1a1a1a 65%);
+  box-shadow: 0 0 14px rgba(255,95,150,0.45);
+}
+.target-item.selected { border-color: #5de3e0 !important; }
 
 .item-tile {
   width: 36px;
@@ -501,14 +531,13 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   flex-shrink: 0;
   margin: 7px;
   border-radius: 10px;
-  background: #1e1e1e;
-  border: 1px solid #2c2c2c;
+  border: 2px solid #2c2c2c; /* цвет переопределяется классом rarity-* */
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .reel-tile.reel-winner {
-  border-color: #2ecc71;
+  border-color: #2ecc71 !important;
   box-shadow: 0 0 12px rgba(46, 204, 113, 0.7);
 }
 .reel-tile .item-img, .reel-tile .item-tile { width: 48px; height: 48px; margin: 0; }

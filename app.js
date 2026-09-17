@@ -142,7 +142,7 @@ function renderInventory() {
     const inStake = stake[item.id] || 0;
     const available = owned - inStake;
     const el = document.createElement("div");
-    el.className = "inv-item" + (available <= 0 ? " depleted" : "");
+    el.className = `inv-item rarity-${getRarity(item)}` + (available <= 0 ? " depleted" : "");
     el.innerHTML = `
       ${renderIcon(item)}
       <div class="inv-name">${item.name}</div>
@@ -191,7 +191,7 @@ function renderTargetCatalog() {
   const grid = wrap.querySelector(".target-grid");
   ITEMS.forEach(item => {
     const el = document.createElement("div");
-    el.className = "target-item" + (item.id === targetId ? " selected" : "");
+    el.className = `target-item rarity-${getRarity(item)}` + (item.id === targetId ? " selected" : "");
     el.innerHTML = `
       ${renderIcon(item)}
       <div class="inv-name">${item.name}</div>
@@ -421,7 +421,7 @@ function runCaseReel(caseDef, winnerId) {
   track.style.transform = "translateX(0px)";
   track.innerHTML = tileIds.map((id, i) => {
     const item = ITEM_BY_ID[id];
-    return `<div class="reel-tile" data-i="${i}">${renderIcon(item)}</div>`;
+    return `<div class="reel-tile rarity-${getRarity(item)}" data-i="${i}">${renderIcon(item)}</div>`;
   }).join("");
 
   overlay.classList.remove("hidden");
@@ -444,7 +444,7 @@ function runCaseReel(caseDef, winnerId) {
     caseOpening = false;
     closeBtn.disabled = false;
     closeBtn.textContent = "ОК";
-    renderCases();
+    renderAll(); // не только карточки кейсов — иначе выигранный предмет не появится в инвентаре на экране
   }, REEL_SPIN_MS + 150);
 }
 
