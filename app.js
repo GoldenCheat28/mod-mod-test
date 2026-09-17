@@ -170,7 +170,11 @@ function renderStake() {
   } else {
     content.innerHTML = entries.map(([id, qty]) => {
       const item = ITEM_BY_ID[id];
-      return `<div class="stake-chip" data-id="${id}">${renderIcon(item)}<span>x${qty}</span></div>`;
+      // содержимое в отдельной обёртке: при сгорании маска съедает только
+      // её, а огонь и угли (::before/::after чипа) остаются поверх
+      return `<div class="stake-chip" data-id="${id}">
+        <div class="stake-chip-body">${renderIcon(item)}<span>x${qty}</span></div>
+      </div>`;
     }).join("");
     content.querySelectorAll(".stake-chip").forEach(chip => {
       chip.addEventListener("click", () => {
@@ -304,6 +308,23 @@ function claimCopper() {
 
 // ==== Апгрейд ====
 const SPIN_DURATION_MS = 3000;
+const BURN_DURATION_MS = 1450; // синхронизировано с @keyframes в style.css
+
+// Угольки, разлетающиеся вверх от горящей карточки — каждому свой
+// разброс, задержка и длительность, иначе искры летят "строем".
+function spawnEmbers(container) {
+  container.querySelectorAll(".stake-chip").forEach((chip) => {
+    for (let i = 0; i < 6; i++) {
+      const ember = document.createElement("i");
+      ember.className = "ember";
+      ember.style.setProperty("--x", `${(Math.random() * 26 - 13).toFixed(1)}px`);
+      ember.style.setProperty("--rise", `${(26 + Math.random() * 22).toFixed(0)}px`);
+      ember.style.setProperty("--delay", `${(Math.random() * 0.8).toFixed(2)}s`);
+      ember.style.setProperty("--dur", `${(0.7 + Math.random() * 0.5).toFixed(2)}s`);
+      chip.appendChild(ember);
+    }
+  });
+}
 
 function doUpgrade() {
   const sv_ = stakeValue();
@@ -324,9 +345,9 @@ function doUpgrade() {
   // вместе со списанной ставкой прямо во время анимации
   frozenChance = chance;
 
-  // проигрываем анимацию "сгорания" списанных предметов ставки —
-  // раньше слот просто мгновенно очищался при рендере и это было незаметно
+  // поджигаем ставку: огонь съедает карточки снизу вверх, как подношение в DBD
   const stakeContentEl = document.getElementById("stakeContent");
+  spawnEmbers(stakeContentEl);
   stakeContentEl.classList.add("stake-burning");
 
   Object.entries(stake).forEach(([id, qty]) => removeItem(id, qty));
@@ -338,7 +359,7 @@ function doUpgrade() {
   setTimeout(() => {
     stakeContentEl.classList.remove("stake-burning");
     renderStake();
-  }, 660);
+  }, BURN_DURATION_MS + 80);
 
   spinNeedleTo(targetDeg);
 
