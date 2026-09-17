@@ -16,6 +16,9 @@ let needleAngle = 0; // накопленный угол стрелки (для �
 const WHEEL_RADIUS = 88;
 const WHEEL_CIRCUMFERENCE = 2 * Math.PI * WHEEL_RADIUS;
 
+let dailySpinInProgress = false;
+let dailyNeedleAngle = 0;
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -375,18 +378,90 @@ function openCase(caseDef) {
     saveState();
     cardEl.classList.remove("opening");
     caseOpening = false;
-    showCaseResult(ITEM_BY_ID[dropId]);
+    showItemResult("Выпало!", ITEM_BY_ID[dropId], 1);
     renderAll();
   }, CASE_ANIM_MS);
 }
 
-function showCaseResult(item) {
+function showItemResult(title, item, qty) {
   const overlay = document.getElementById("resultOverlay");
-  document.getElementById("resultTitle").textContent = "Выпало!";
+  document.getElementById("resultTitle").textContent = title;
   document.getElementById("resultTitle").className = "win";
-  document.getElementById("resultItem").innerHTML = `${renderIcon(item)}<span>${item.name}</span>`;
+  const qtyLabel = qty > 1 ? ` x${qty}` : "";
+  document.getElementById("resultItem").innerHTML = `${renderIcon(item)}<span>${item.name}${qtyLabel}</span>`;
   overlay.classList.remove("hidden");
 }
+
+// ==== Ежедневное колесо удачи ====
+const DAILY_SPIN_DURATION_MS = 3000;
+
+// Сегменты считаем один раз — порядок и веса совпадают с DAILY_PRIZES,
+// поэтому визуальный сектор всегда соответствует реально выпавшему призу.
+const dailySegments = (() => {
+  let acc = 0;
+  return DAILY_PRIZES.map((prize) => {
+    const startDeg = (acc / DAILY_TOTAL_WEIGHT) * 360;
+    acc += prize.weight;
+    const endDeg = (acc / DAILY_TOTAL_WEIGHT) * 360;
+    return { prize, startDeg, endDeg, color: ITEM_BY_ID[prize.id].color };
+  });
+})();
+
+function initDailyWheel() {
+  const stops = dailySegments
+    .map((s) => `${s.color} ${s.startDeg}deg ${s.endDeg}deg`)
+    .join(", ");
+  document.getElementById("dailyWheelDisc").style.background = `conic-gradient(${stops})`;
+}
+
+function updateDailyButton() {
+  const btn = document.getElementById("dailySpinBtn");
+  if (dailySpinInProgress) {
+    btn.disabled = true;
+    return;
+  }
+  const elapsed = Date.now() - (state.lastDailySpin || 0);
+  const remaining = DAILY_INTERVAL_MS - elapsed;
+  if (remaining <= 0) {
+    btn.disabled = false;
+    btn.textContent = "Крутить";
+  } else {
+    btn.disabled = true;
+    const totalMin = Math.ceil(remaining / 60000);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    btn.textContent = `Приз через ${hh}ч ${mm}м`;
+  }
+}
+
+function spinDailyWheel() {
+  const elapsed = Date.now() - (state.lastDailySpin || 0);
+  if (elapsed < DAILY_INTERVAL_MS || dailySpinInProgress) return;
+
+  const prize = pickDailyPrize();
+  const segment = dailySegments.find((s) => s.prize.id === prize.id);
+  const landingDeg = segment.startDeg + Math.random() * (segment.endDeg - segment.startDeg);
+
+  dailySpinInProgress = true;
+  updateDailyButton();
+
+  const current = dailyNeedleAngle % 360;
+  let delta = landingDeg - current;
+  if (delta < 0) delta += 360;
+  dailyNeedleAngle += 6 * 360 + delta;
+  document.getElementById("dailyNeedle").style.transform = `rotate(${dailyNeedleAngle}deg)`;
+
+  setTimeout(() => {
+    addItem(prize.id, prize.qty);
+    state.lastDailySpin = Date.now();
+    saveState();
+    dailySpinInProgress = false;
+    showItemResult("Приз дня!", ITEM_BY_ID[prize.id], prize.qty);
+    renderAll();
+  }, DAILY_SPIN_DURATION_MS + 100);
+}
+
+document.getElementById("dailySpinBtn").addEventListener("click", spinDailyWheel);
 
 // ==== Toast ====
 let toastTimer = null;
@@ -423,14 +498,29 @@ function renderAll() {
   renderChance();
   renderCases();
   updateClaimButton();
+  updateDailyButton();
 }
 
+initDailyWheel();
 renderAll();
 setInterval(() => {
   updateClaimButton();
+  updateDailyButton();
 }, 1000);
 
-// PWA service worker (для офлайна/установки на телефон)
+// PWA service worker (для офлайна/установки на телефон).
+// Автообновление: как только активируется новый service worker,
+// перезагружаем страницу один раз, чтобы новая версия игры точно
+// подхватилась, а не осталась висеть в старом кэше.
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    reg.update();
+  }).catch(() => {});
+
+  let reloadedOnce = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadedOnce) return;
+    reloadedOnce = true;
+    window.location.reload();
+  });
 }

@@ -5,6 +5,7 @@ const FILES = [
   "./style.css",
   "./items.js",
   "./cases.js",
+  "./daily.js",
   "./app.js",
   "./manifest.json",
   "./icon.svg",

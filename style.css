@@ -286,6 +286,75 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 }
 #upgradeBtn:disabled { background: #333; color: #777; }
 
+#dailyPanel {
+  background: #1a1a1a;
+  border-radius: 14px;
+  padding: 14px;
+  border: 1px solid #262626;
+  text-align: center;
+}
+
+#dailyWheelWrap {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 10px auto;
+}
+
+#dailyWheelDisc {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 4px solid #333;
+  box-shadow: inset 0 0 0 2px #141414;
+}
+
+#dailyNeedle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 96px;
+  margin-left: -2px;
+  margin-top: -96px;
+  transform-origin: 50% 100%;
+  transform: rotate(0deg);
+  transition: transform 3s cubic-bezier(0.12, 0.68, 0.1, 1);
+  pointer-events: none;
+}
+#dailyNeedleTip {
+  width: 0;
+  height: 0;
+  margin: 0 auto;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 20px solid #f0f0f0;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+}
+#dailyNeedle::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: #f0f0f0;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 4px #141414, 0 0 0 5px #333;
+}
+
+#dailySpinBtn {
+  border: none;
+  border-radius: 10px;
+  background: #f2c94c;
+  color: #241a02;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 12px 28px;
+}
+#dailySpinBtn:disabled { background: #333; color: #777; }
+
 .target-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
