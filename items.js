@@ -20,6 +20,15 @@ const ITEMS = [
 
 const ITEM_BY_ID = Object.fromEntries(ITEMS.map(it => [it.id, it]));
 
+// Редкость карточки предмета по её ценности (для цветной DBD-style рамки).
+function getRarity(item) {
+  if (item.value <= 3) return "common";
+  if (item.value <= 10) return "uncommon";
+  if (item.value <= 35) return "rare";
+  if (item.value <= 100) return "epic";
+  return "legendary";
+}
+
 // Стартовый инвентарь для новой игры
 const STARTER_INVENTORY = {
   dirt: 20,
