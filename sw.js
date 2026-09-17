@@ -1,4 +1,4 @@
-const CACHE = "ore-upgrader-v1";
+const CACHE = "ore-upgrader-v2";
 const FILES = [
   "./",
   "./index.html",
@@ -21,8 +21,16 @@ self.addEventListener("activate", e => {
   self.clients.claim();
 });
 
+// Сеть в приоритете, кэш — только как резерв для офлайна.
+// Так обновления игры подхватываются сразу, а не застревают в старом кэше.
 self.addEventListener("fetch", e => {
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(e.request)
+      .then(response => {
+        const copy = response.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
