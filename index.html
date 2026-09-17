@@ -26,6 +26,7 @@
     <button class="tab-btn active" data-tab="upgrader">Апгрейдер</button>
     <button class="tab-btn" data-tab="cases">Кейсы</button>
     <button class="tab-btn" data-tab="daily">Колесо удачи</button>
+    <button class="tab-btn" data-tab="clicker">Кликер</button>
   </nav>
 
   <main>
@@ -89,6 +90,15 @@
     <section id="casesPanel" class="tab-page hidden">
       <h2>Кейсы</h2>
       <div id="casesGrid"></div>
+    </section>
+
+    <section id="clickerPanel" class="tab-page hidden">
+      <h2>Кликер</h2>
+      <div id="clickerProgress">Клик: <span id="clickerCount">0</span>/10</div>
+      <button id="clickerBtn" type="button">
+        <img src="assets/textures/dirt.png" alt="Грязь" draggable="false">
+      </button>
+      <div id="clickerHint">Каждые 10 кликов — 2 грязи</div>
     </section>
   </main>
 

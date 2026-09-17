@@ -532,6 +532,34 @@ function spinDailyWheel() {
 
 document.getElementById("dailySpinBtn").addEventListener("click", spinDailyWheel);
 
+// ==== Кликер ====
+const CLICKER_TARGET = 10;
+const CLICKER_REWARD_ITEM = "dirt";
+const CLICKER_REWARD_QTY = 2;
+
+function renderClicker() {
+  document.getElementById("clickerCount").textContent = state.clickerProgress || 0;
+}
+
+function handleClickerClick() {
+  state.clickerProgress = (state.clickerProgress || 0) + 1;
+  const btn = document.getElementById("clickerBtn");
+  btn.classList.remove("bump");
+  void btn.offsetWidth; // перезапуск анимации при частых кликах
+  btn.classList.add("bump");
+
+  if (state.clickerProgress >= CLICKER_TARGET) {
+    state.clickerProgress = 0;
+    addItem(CLICKER_REWARD_ITEM, CLICKER_REWARD_QTY);
+    showToast(`+${CLICKER_REWARD_QTY} ${ITEM_BY_ID[CLICKER_REWARD_ITEM].name} 🎉`);
+    renderInventory();
+  }
+  saveState();
+  renderClicker();
+}
+
+document.getElementById("clickerBtn").addEventListener("click", handleClickerClick);
+
 // ==== Toast ====
 let toastTimer = null;
 function showToast(msg) {
@@ -576,6 +604,7 @@ function renderAll() {
   renderTargetSlot();
   renderChance();
   renderCases();
+  renderClicker();
   updateClaimButton();
   updateDailyButton();
 }
