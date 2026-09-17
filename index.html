@@ -33,9 +33,9 @@
 
       <div class="upgrade-row">
         <div class="upgrade-slot" id="stakeSlot">
-          <span class="slot-label">Ставка</span>
+          <span class="slot-label">Ставка (перетащи сюда)</span>
           <div class="slot-content" id="stakeContent">
-            <span class="slot-empty">выбери предметы →</span>
+            <span class="slot-empty">перетащи предметы →</span>
           </div>
           <div class="slot-value" id="stakeValueLabel">0 ⛃</div>
         </div>
@@ -51,11 +51,15 @@
         </div>
       </div>
 
-      <div id="chanceLine">Шанс успеха: <strong id="chanceValue">--%</strong></div>
-
-      <div class="chance-bar-wrap">
-        <div class="chance-bar" id="chanceBar"></div>
-        <div class="chance-marker" id="chanceMarker"></div>
+      <div id="wheelWrap">
+        <svg id="wheelSvg" viewBox="0 0 200 200">
+          <circle class="wheel-ring-bg" cx="100" cy="100" r="88"></circle>
+          <circle id="wheelRed" class="wheel-ring" cx="100" cy="100" r="88"></circle>
+          <circle id="wheelGreen" class="wheel-ring" cx="100" cy="100" r="88"></circle>
+          <circle class="wheel-hub" cx="100" cy="100" r="62"></circle>
+        </svg>
+        <div id="needle"><div id="needleTip"></div></div>
+        <div id="wheelChance">--%</div>
       </div>
 
       <button id="upgradeBtn" disabled>УЛУЧШИТЬ</button>

@@ -10,6 +10,10 @@ const STORAGE_KEY = "ore_upgrader_save_v1";
 let state = loadState();
 let stake = {}; // { itemId: qty } — текущая ставка
 let targetId = null;
+let upgradeInProgress = false;
+let needleAngle = 0; // накопленный угол стрелки (для непрерывного вращения)
+const WHEEL_RADIUS = 88;
+const WHEEL_CIRCUMFERENCE = 2 * Math.PI * WHEEL_RADIUS;
 
 function loadState() {
   try {
@@ -59,6 +63,67 @@ function renderIcon(item) {
   return `<div class="item-tile" style="background:${item.color}">${item.emoji}</div>`;
 }
 
+// ==== Drag & Drop (инвентарь → ставка) ====
+const DRAG_THRESHOLD = 8; // px, чтобы отличить тап от перетаскивания
+
+function makeDraggableToStake(el, item) {
+  el.addEventListener("pointerdown", (e) => {
+    const owned = invQty(item.id);
+    const inStake = stake[item.id] || 0;
+    if (owned - inStake <= 0) return;
+
+    const startX = e.clientX, startY = e.clientY;
+    let dragging = false;
+    let ghost = null;
+    const stakeSlot = document.getElementById("stakeSlot");
+
+    function onMove(ev) {
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+        dragging = true;
+        el.classList.add("drag-source");
+        ghost = document.createElement("div");
+        ghost.className = "drag-ghost";
+        ghost.innerHTML = renderIcon(item);
+        document.body.appendChild(ghost);
+      }
+      if (dragging) {
+        ghost.style.left = ev.clientX + "px";
+        ghost.style.top = ev.clientY + "px";
+        stakeSlot.classList.toggle("drop-target-active", isOverElement(ev, stakeSlot));
+      }
+    }
+
+    function onUp(ev) {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      el.classList.remove("drag-source");
+      stakeSlot.classList.remove("drop-target-active");
+      if (ghost) ghost.remove();
+
+      if (dragging) {
+        if (isOverElement(ev, stakeSlot)) {
+          stake[item.id] = (stake[item.id] || 0) + 1;
+          renderAll();
+        }
+      } else {
+        // короткий тап — тоже добавляет один предмет в ставку
+        stake[item.id] = (stake[item.id] || 0) + 1;
+        renderAll();
+      }
+    }
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  });
+}
+
+function isOverElement(pointerEvent, el) {
+  const r = el.getBoundingClientRect();
+  return pointerEvent.clientX >= r.left && pointerEvent.clientX <= r.right &&
+         pointerEvent.clientY >= r.top && pointerEvent.clientY <= r.bottom;
+}
+
 // ==== Инвентарь ====
 function renderInventory() {
   const grid = document.getElementById("inventoryGrid");
@@ -79,11 +144,7 @@ function renderInventory() {
       <div class="inv-qty">x${available}</div>
       <div class="inv-worth">${item.value} ⛃</div>
     `;
-    el.addEventListener("click", () => {
-      if (available <= 0) return;
-      stake[item.id] = (stake[item.id] || 0) + 1;
-      renderAll();
-    });
+    makeDraggableToStake(el, item);
     grid.appendChild(el);
   });
 
@@ -158,14 +219,29 @@ function computeChance() {
 function renderChance() {
   const chance = computeChance();
   const pct = Math.round(chance * 100);
-  document.getElementById("chanceValue").textContent = sv() && targetId ? `${pct}%` : "--%";
-  document.getElementById("chanceBar").style.width = `${pct}%`;
-  document.getElementById("chanceMarker").style.left = `${pct}%`;
+  const active = sv() > 0 && targetId;
+
+  document.getElementById("wheelChance").textContent = active ? `${pct}%` : "--%";
+
+  const greenLen = chance * WHEEL_CIRCUMFERENCE;
+  const redLen = WHEEL_CIRCUMFERENCE - greenLen;
+  document.getElementById("wheelGreen").setAttribute("stroke-dasharray", `${greenLen} ${redLen}`);
+  document.getElementById("wheelRed").setAttribute("stroke-dasharray", `${WHEEL_CIRCUMFERENCE} 0`);
 
   const btn = document.getElementById("upgradeBtn");
-  btn.disabled = !(sv() > 0 && targetId);
+  btn.disabled = !active || upgradeInProgress;
 }
 function sv() { return stakeValue(); }
+
+// Крутит стрелку колеса до угла targetDeg (0 = верх, по часовой),
+// делая перед этим несколько полных оборотов для эффекта рулетки.
+function spinNeedleTo(targetDeg) {
+  const current = needleAngle % 360;
+  let delta = targetDeg - current;
+  if (delta < 0) delta += 360;
+  needleAngle += 5 * 360 + delta;
+  document.getElementById("needle").style.transform = `rotate(${needleAngle}deg)`;
+}
 
 // ==== Клейм меди ====
 function updateClaimButton() {
@@ -196,26 +272,38 @@ function claimCopper() {
 }
 
 // ==== Апгрейд ====
+const SPIN_DURATION_MS = 3000;
+
 function doUpgrade() {
   const sv_ = stakeValue();
-  if (sv_ <= 0 || !targetId) return;
+  if (sv_ <= 0 || !targetId || upgradeInProgress) return;
 
   const chance = computeChance();
   const success = Math.random() < chance;
+  const chanceDeg = chance * 360;
+  const targetDeg = success
+    ? Math.random() * chanceDeg
+    : chanceDeg + Math.random() * (360 - chanceDeg);
 
-  // списываем ставку в любом случае
+  const targetItem = ITEM_BY_ID[targetId];
+
+  // списываем ставку сразу, чтобы нельзя было менять её во время вращения
   Object.entries(stake).forEach(([id, qty]) => removeItem(id, qty));
-
-  if (success) {
-    addItem(targetId, 1);
-  }
-
   saveState();
-  showResult(success, ITEM_BY_ID[targetId]);
-
   stake = {};
-  targetId = null;
+  upgradeInProgress = true;
   renderAll();
+
+  spinNeedleTo(targetDeg);
+
+  setTimeout(() => {
+    if (success) addItem(targetId, 1);
+    saveState();
+    showResult(success, targetItem);
+    targetId = null;
+    upgradeInProgress = false;
+    renderAll();
+  }, SPIN_DURATION_MS + 100);
 }
 
 function showResult(success, item) {
