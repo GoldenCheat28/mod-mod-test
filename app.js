@@ -230,10 +230,6 @@ function renderChance() {
   // списана (stakeValue = 0) и зелёная зона мгновенно пропадала бы,
   // хотя стрелка ещё крутится к результату, посчитанному ДО списания.
   const chance = upgradeInProgress && frozenChance !== null ? frozenChance : computeChance();
-  const pct = Math.round(chance * 100);
-
-  document.getElementById("wheelChance").textContent =
-    (active || upgradeInProgress) ? `${pct}%` : "0%";
 
   const greenLen = chance * WHEEL_CIRCUMFERENCE;
   const redLen = WHEEL_CIRCUMFERENCE - greenLen;
@@ -332,6 +328,66 @@ function showResult(success, item) {
   overlay.classList.remove("hidden");
 }
 
+// ==== Кейсы ====
+let caseOpening = false;
+const CASE_ANIM_MS = 1400;
+
+function renderCases() {
+  const grid = document.getElementById("casesGrid");
+  grid.innerHTML = "";
+  CASES.forEach(caseDef => {
+    const costItem = ITEM_BY_ID[caseDef.costItem];
+    const owned = invQty(caseDef.costItem);
+    const affordable = owned >= caseDef.costAmount;
+
+    const el = document.createElement("div");
+    el.className = "case-card";
+    el.id = `case-${caseDef.id}`;
+    el.innerHTML = `
+      <div class="case-icon">📦</div>
+      <div class="case-info">
+        <div class="case-name">${caseDef.name}</div>
+        <div class="case-cost">Цена: ${caseDef.costAmount}× ${renderIcon(costItem)} ${costItem.name}</div>
+        <div class="case-pool">Выпадает: ${caseDef.drops.map(d => ITEM_BY_ID[d.id].name).join(", ")}</div>
+      </div>
+      <button class="case-open-btn" ${(!affordable || caseOpening) ? "disabled" : ""}>Открыть</button>
+    `;
+    el.querySelector(".case-open-btn").addEventListener("click", () => openCase(caseDef));
+    grid.appendChild(el);
+  });
+}
+
+function openCase(caseDef) {
+  if (caseOpening) return;
+  if (invQty(caseDef.costItem) < caseDef.costAmount) return;
+
+  caseOpening = true;
+  removeItem(caseDef.costItem, caseDef.costAmount);
+  saveState();
+  renderAll();
+
+  const cardEl = document.getElementById(`case-${caseDef.id}`);
+  cardEl.classList.add("opening");
+
+  setTimeout(() => {
+    const dropId = pickCaseDrop(caseDef);
+    addItem(dropId, 1);
+    saveState();
+    cardEl.classList.remove("opening");
+    caseOpening = false;
+    showCaseResult(ITEM_BY_ID[dropId]);
+    renderAll();
+  }, CASE_ANIM_MS);
+}
+
+function showCaseResult(item) {
+  const overlay = document.getElementById("resultOverlay");
+  document.getElementById("resultTitle").textContent = "Выпало!";
+  document.getElementById("resultTitle").className = "win";
+  document.getElementById("resultItem").innerHTML = `${renderIcon(item)}<span>${item.name}</span>`;
+  overlay.classList.remove("hidden");
+}
+
 // ==== Toast ====
 let toastTimer = null;
 function showToast(msg) {
@@ -365,6 +421,7 @@ function renderAll() {
   renderTargetCatalog();
   renderTargetSlot();
   renderChance();
+  renderCases();
   updateClaimButton();
 }
 
