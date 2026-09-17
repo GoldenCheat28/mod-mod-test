@@ -21,6 +21,23 @@ html, body {
   flex-direction: column;
 }
 
+/* Игра спроектирована мобильно-first (телефонная ширина, drag через
+   pointer events — те же события работают и мышью). На десктопе просто
+   центрируем эту колонку по центру широкого окна вместо растягивания
+   на весь экран — иначе сетки/карточки растягиваются до абсурдных
+   пропорций на широких мониторах. */
+@media (min-width: 640px) {
+  body { background: #0a0a0a; }
+  #app {
+    max-width: 480px;
+    min-height: 100vh;
+    margin: 0 auto;
+    border-left: 1px solid #262626;
+    border-right: 1px solid #262626;
+    box-shadow: 0 0 60px rgba(0,0,0,0.5);
+  }
+}
+
 #topbar {
   display: flex;
   align-items: center;
