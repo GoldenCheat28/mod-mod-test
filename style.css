@@ -21,23 +21,6 @@ html, body {
   flex-direction: column;
 }
 
-/* Игра спроектирована мобильно-first (телефонная ширина, drag через
-   pointer events — те же события работают и мышью). На десктопе просто
-   центрируем эту колонку по центру широкого окна вместо растягивания
-   на весь экран — иначе сетки/карточки растягиваются до абсурдных
-   пропорций на широких мониторах. */
-@media (min-width: 640px) {
-  body { background: #0a0a0a; }
-  #app {
-    max-width: 480px;
-    min-height: 100vh;
-    margin: 0 auto;
-    border-left: 1px solid #262626;
-    border-right: 1px solid #262626;
-    box-shadow: 0 0 60px rgba(0,0,0,0.5);
-  }
-}
-
 #topbar {
   display: flex;
   align-items: center;
@@ -1302,3 +1285,66 @@ body.theme-minimal h2, body.theme-minimal h3 {
 body.theme-minimal #balanceLine,
 body.theme-minimal .inv-worth,
 body.theme-minimal .case-pool { color: #666; }
+
+/* ==================== Десктоп ====================
+   Игра спроектирована мобильно-first (drag через pointer events — те
+   же события работают и мышью), так что на широком окне без этих
+   правил всё просто растягивается в абсурдные пропорции. Оба блока
+   специально в конце файла: при равной специфичности с базовыми
+   правилами (main, #inventoryPanel и т.д., объявленными раньше)
+   выигрывает более позднее правило независимо от того, что оно
+   внутри @media — если бы эти блоки стояли выше базовых, эти же
+   базовые правила их бы перебивали. */
+
+/* Планшет/узкий десктоп: не размазываем контент на всю ширину,
+   центрируем той же мобильной колонкой. */
+@media (min-width: 640px) {
+  body { background: #0a0a0a; }
+  #app {
+    max-width: 480px;
+    min-height: 100vh;
+    margin: 0 auto;
+    border-left: 1px solid #262626;
+    border-right: 1px solid #262626;
+    box-shadow: 0 0 60px rgba(0,0,0,0.5);
+  }
+}
+
+/* Широкий десктоп: инвентарь становится закреплённой боковой колонкой
+   слева, а активная вкладка — справа, вместо того чтобы идти одно под
+   другим в узкой ленте. То же содержимое, просто раскладка горизонтальная. */
+@media (min-width: 900px) {
+  #app { max-width: 1080px; }
+
+  main {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    align-items: start;
+    gap: 24px;
+  }
+
+  #inventoryPanel {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    position: sticky;
+    top: 84px;
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
+  }
+
+  .tab-page { grid-column: 2; }
+
+  /* в узкой боковой колонке чуть плотнее плитки, чем на телефоне */
+  #inventoryGrid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+
+  /* в широкой правой колонке — в разы больше плиток в ряд */
+  .target-grid,
+  #ownedFramesGrid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+
+  #casesGrid,
+  #frameCasesGrid { flex-direction: row; flex-wrap: wrap; }
+  #casesGrid .case-card,
+  #frameCasesGrid .case-card { flex: 1 1 320px; }
+
+  #upgraderPanel .upgrade-row { max-width: 620px; }
+}
