@@ -53,9 +53,10 @@ const CASES = [
     costAmount: 1,
     drops: [
       { id: "gold", weight: 3 },
-      { id: "diamond", weight: 12 },
-      { id: "emerald", weight: 20 },
-      { id: "netherite", weight: 65 },
+      { id: "diamond", weight: 10 },
+      { id: "emerald", weight: 18 },
+      { id: "netherite", weight: 64 },
+      { id: "netherite_block", weight: 5 },
     ],
   },
 ];
