@@ -11,6 +11,7 @@ let state = loadState();
 let stake = {}; // { itemId: qty } — текущая ставка
 let targetId = null;
 let upgradeInProgress = false;
+let frozenChance = null; // шанс, "замороженный" на время вращения колеса
 let needleAngle = 0; // накопленный угол стрелки (для непрерывного вращения)
 const WHEEL_RADIUS = 88;
 const WHEEL_CIRCUMFERENCE = 2 * Math.PI * WHEEL_RADIUS;
@@ -58,24 +59,27 @@ function stakeValue() {
 // ==== Рендер иконки (плейсхолдер, пока нет текстур MC) ====
 function renderIcon(item) {
   if (item.img) {
-    return `<img src="${item.img}" alt="${item.name}" class="item-img">`;
+    return `<img src="${item.img}" alt="${item.name}" class="item-img" draggable="false">`;
   }
   return `<div class="item-tile" style="background:${item.color}">${item.emoji}</div>`;
 }
 
-// ==== Drag & Drop (инвентарь → ставка) ====
+// ==== Drag & Drop (инвентарь → ставка, каталог → цель) ====
+// Блокируем нативный drag картинок — иначе браузер перехватывает жест
+// как обычное перетаскивание <img> и наш pointermove/pointerup не доходит.
+document.addEventListener("dragstart", (e) => e.preventDefault());
+
 const DRAG_THRESHOLD = 8; // px, чтобы отличить тап от перетаскивания
 
-function makeDraggableToStake(el, item) {
+// canDrag: () => bool — можно ли вообще начинать перетаскивание.
+// onDrop: () => void — что сделать при успешном drop (или коротком тапе).
+function makeDraggable(el, item, dropZoneEl, canDrag, onDrop) {
   el.addEventListener("pointerdown", (e) => {
-    const owned = invQty(item.id);
-    const inStake = stake[item.id] || 0;
-    if (owned - inStake <= 0) return;
+    if (!canDrag()) return;
 
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
     let ghost = null;
-    const stakeSlot = document.getElementById("stakeSlot");
 
     function onMove(ev) {
       const dx = ev.clientX - startX, dy = ev.clientY - startY;
@@ -90,7 +94,7 @@ function makeDraggableToStake(el, item) {
       if (dragging) {
         ghost.style.left = ev.clientX + "px";
         ghost.style.top = ev.clientY + "px";
-        stakeSlot.classList.toggle("drop-target-active", isOverElement(ev, stakeSlot));
+        dropZoneEl.classList.toggle("drop-target-active", isOverElement(ev, dropZoneEl));
       }
     }
 
@@ -98,18 +102,14 @@ function makeDraggableToStake(el, item) {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       el.classList.remove("drag-source");
-      stakeSlot.classList.remove("drop-target-active");
+      dropZoneEl.classList.remove("drop-target-active");
       if (ghost) ghost.remove();
 
       if (dragging) {
-        if (isOverElement(ev, stakeSlot)) {
-          stake[item.id] = (stake[item.id] || 0) + 1;
-          renderAll();
-        }
+        if (isOverElement(ev, dropZoneEl)) onDrop();
       } else {
-        // короткий тап — тоже добавляет один предмет в ставку
-        stake[item.id] = (stake[item.id] || 0) + 1;
-        renderAll();
+        // короткий тап делает то же самое одним движением
+        onDrop();
       }
     }
 
@@ -144,7 +144,12 @@ function renderInventory() {
       <div class="inv-qty">x${available}</div>
       <div class="inv-worth">${item.value} ⛃</div>
     `;
-    makeDraggableToStake(el, item);
+    makeDraggable(
+      el, item,
+      document.getElementById("stakeSlot"),
+      () => invQty(item.id) - (stake[item.id] || 0) > 0 && !upgradeInProgress,
+      () => { stake[item.id] = (stake[item.id] || 0) + 1; renderAll(); }
+    );
     grid.appendChild(el);
   });
 
@@ -187,10 +192,12 @@ function renderTargetCatalog() {
       <div class="inv-name">${item.name}</div>
       <div class="inv-worth">${item.value} ⛃</div>
     `;
-    el.addEventListener("click", () => {
-      targetId = item.id;
-      renderAll();
-    });
+    makeDraggable(
+      el, item,
+      document.getElementById("targetSlot"),
+      () => !upgradeInProgress,
+      () => { targetId = item.id; renderAll(); }
+    );
     grid.appendChild(el);
   });
 }
@@ -198,7 +205,7 @@ function renderTargetCatalog() {
 function renderTargetSlot() {
   const content = document.getElementById("targetContent");
   if (!targetId) {
-    content.innerHTML = `<span class="slot-empty">выбери цель →</span>`;
+    content.innerHTML = `<span class="slot-empty">перетащи цель →</span>`;
     document.getElementById("targetValueLabel").textContent = "0 ⛃";
     return;
   }
@@ -217,11 +224,16 @@ function computeChance() {
 }
 
 function renderChance() {
-  const chance = computeChance();
-  const pct = Math.round(chance * 100);
   const active = sv() > 0 && targetId;
 
-  document.getElementById("wheelChance").textContent = active ? `${pct}%` : "--%";
+  // Во время вращения колесо не пересчитывается — иначе ставка уже
+  // списана (stakeValue = 0) и зелёная зона мгновенно пропадала бы,
+  // хотя стрелка ещё крутится к результату, посчитанному ДО списания.
+  const chance = upgradeInProgress && frozenChance !== null ? frozenChance : computeChance();
+  const pct = Math.round(chance * 100);
+
+  document.getElementById("wheelChance").textContent =
+    (active || upgradeInProgress) ? `${pct}%` : "0%";
 
   const greenLen = chance * WHEEL_CIRCUMFERENCE;
   const redLen = WHEEL_CIRCUMFERENCE - greenLen;
@@ -287,7 +299,10 @@ function doUpgrade() {
 
   const targetItem = ITEM_BY_ID[targetId];
 
-  // списываем ставку сразу, чтобы нельзя было менять её во время вращения
+  // списываем ставку сразу, чтобы нельзя было менять её во время вращения,
+  // но "замораживаем" шанс — иначе зелёная зона на колесе обнулится
+  // вместе со списанной ставкой прямо во время анимации
+  frozenChance = chance;
   Object.entries(stake).forEach(([id, qty]) => removeItem(id, qty));
   saveState();
   stake = {};
@@ -302,6 +317,7 @@ function doUpgrade() {
     showResult(success, targetItem);
     targetId = null;
     upgradeInProgress = false;
+    frozenChance = null;
     renderAll();
   }, SPIN_DURATION_MS + 100);
 }
@@ -346,12 +362,12 @@ document.getElementById("resultClose").addEventListener("click", () => {
 function renderAll() {
   renderInventory();
   renderStake();
+  renderTargetCatalog();
   renderTargetSlot();
   renderChance();
   updateClaimButton();
 }
 
-renderTargetCatalog();
 renderAll();
 setInterval(() => {
   updateClaimButton();

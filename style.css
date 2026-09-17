@@ -101,7 +101,17 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   justify-content: center;
   font-size: 18px;
 }
-.item-img { width: 36px; height: 36px; margin: 0 auto 4px; display: block; image-rendering: pixelated; object-fit: contain; }
+.item-img {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 4px;
+  display: block;
+  image-rendering: pixelated;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: none; /* клики/драг всегда обрабатывает родительская карточка */
+}
 
 .inv-name { font-size: 11px; color: #ccc; }
 .inv-qty { font-size: 11px; color: #5de3e0; }
@@ -242,7 +252,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 }
 
 /* --- Drag & drop --- */
-.inv-item.drag-source { opacity: 0.4; }
+.inv-item.drag-source, .target-item.drag-source { opacity: 0.4; }
 
 .drag-ghost {
   position: fixed;
