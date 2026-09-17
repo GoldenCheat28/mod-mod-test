@@ -623,7 +623,7 @@ function renderProfile() {
   document.getElementById("profileAvatarImg").src = profile.avatar || "icon.svg";
 
   const frame = profile.equippedFrame ? FRAME_BY_ID[profile.equippedFrame] : null;
-  document.getElementById("profileAvatarFrame").className = frame ? frame.css : "frame-none";
+  document.getElementById("profileAvatarFrame").className = `frame-ring ${frame ? frame.css : "frame-none"}`;
 
   document.getElementById("profileBio").value = profile.bio || "";
   document.getElementById("socialTelegram").value = profile.socials.telegram || "";
@@ -647,7 +647,8 @@ function renderOwnedFrames() {
     const frame = FRAME_BY_ID[frameId];
     if (!frame) return;
     const el = document.createElement("div");
-    el.className = `owned-frame-slot ${frame.css}` + (profile.equippedFrame === frameId ? " equipped" : "");
+    el.className = `owned-frame-slot frame-ring ${frame.css}` + (profile.equippedFrame === frameId ? " equipped" : "");
+    el.innerHTML = `<div class="frame-ring-inner"></div>`;
     el.title = frame.name;
     el.addEventListener("click", () => {
       profile.equippedFrame = profile.equippedFrame === frameId ? null : frameId;
@@ -795,7 +796,7 @@ function runFrameBoxReveal(frame) {
       resultStage.classList.remove("hidden");
 
       document.getElementById("frameResultAvatarImg").src = ensureProfile().avatar || "icon.svg";
-      document.getElementById("frameResultFrame").className = frame.css;
+      document.getElementById("frameResultFrame").className = `frame-ring ${frame.css}`;
       document.getElementById("frameResultName").textContent = frame.name;
       document.getElementById("frameResultRarity").textContent = frame.rarity;
 
