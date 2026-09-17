@@ -758,19 +758,8 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   margin-top: -34px;
 }
 #profileAvatarWrap { position: relative; flex-shrink: 0; }
-#profileAvatarFrame {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #1a1a1a;
-  border-width: 3px;
-  border-style: solid;
-  box-sizing: content-box;
-}
-/* цвет рамки задаёт класс frame-* (см. ниже) — по умолчанию нейтральный */
-#profileAvatarFrame.frame-none { border-color: #333; }
-#profileAvatarImg { width: 100%; height: 100%; object-fit: cover; }
+#profileAvatarFrame { width: 72px; height: 72px; }
+#profileAvatarImg { width: 100%; height: 100%; object-fit: cover; display: block; }
 .avatar-edit-btn {
   position: absolute;
   bottom: -2px;
@@ -865,48 +854,121 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 .owned-frame-slot {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 50%;
-  background: #111;
-  border: 2px solid #333;
   cursor: pointer;
 }
-.owned-frame-slot.equipped { box-shadow: 0 0 0 2px #5de3e0; }
+.owned-frame-slot .frame-ring-inner { inset: 4px; }
+.owned-frame-slot.equipped { outline: 2px solid #5de3e0; outline-offset: 2px; border-radius: 50%; }
 .frames-empty-note { color: #666; font-size: 12px; padding: 0 14px 4px; grid-column: 1/-1; }
 
 #frameCasesGrid { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 16px; }
 
 .hidden-file-input { display: none; }
 
-/* --- Эффекты рамок (чисто CSS, без картинок) --- */
-.frame-bronze  { border-color: #a9673a; box-shadow: 0 0 8px rgba(169,103,58,.6); }
-.frame-silver  { border-color: #c9c9d6; box-shadow: 0 0 8px rgba(201,201,214,.6); }
-.frame-gold    { border-color: #f2c94c; box-shadow: 0 0 12px rgba(242,201,76,.7); }
-.frame-neon    { border-color: #5de3e0; animation: frameNeonPulse 1.8s ease-in-out infinite; }
-@keyframes frameNeonPulse {
-  0%, 100% { box-shadow: 0 0 10px #5de3e0, 0 0 20px rgba(93,227,224,.4); }
-  50% { box-shadow: 0 0 18px #5de3e0, 0 0 34px rgba(93,227,224,.7); }
+/* --- Рамки аватарки: вращающийся градиентный узор + блик, без картинок ---
+   Структура: .frame-ring (внешний круг — крутящийся conic-gradient узор)
+   > .frame-ring-inner (внутренний круг — сама аватарка, "вырезает дыру"
+   в узоре, оставляя видимым только кольцо). Блик — общий для всех, ::after. */
+.frame-ring {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #2c2c2c;
+  isolation: isolate;
 }
-.frame-rainbow { border-color: #ff4d8d; animation: frameRainbowSpin 3s linear infinite; }
-@keyframes frameRainbowSpin {
-  0% { filter: hue-rotate(0deg); box-shadow: 0 0 14px #ff4d8d; }
-  100% { filter: hue-rotate(360deg); box-shadow: 0 0 14px #ff4d8d; }
+.frame-ring-inner {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #111;
+  z-index: 1;
 }
-.frame-void { border-color: #4b2e91; box-shadow: inset 0 0 12px #7d3cff, 0 0 14px rgba(125,60,255,.5); }
-.frame-fire { border-color: #ff6a00; animation: frameFirePulse 1.2s ease-in-out infinite; }
-@keyframes frameFirePulse {
-  0%, 100% { box-shadow: 0 0 12px rgba(255,106,0,.7); }
-  50% { box-shadow: 0 0 24px rgba(255,174,0,.85); }
+.frame-ring-inner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* бегущий блик поверх узора — придаёт "глянец" любой рамке */
+.frame-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%);
+  background-size: 260% 260%;
+  animation: frameShimmer 2.6s linear infinite;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 2;
 }
-.frame-ice { border-color: #7fd7ff; animation: frameIcePulse 2.4s ease-in-out infinite; }
-@keyframes frameIcePulse {
-  0%, 100% { box-shadow: 0 0 10px rgba(127,215,255,.6); }
-  50% { box-shadow: 0 0 22px rgba(205,239,255,.85); }
+@keyframes frameShimmer {
+  0% { background-position: -60% -60%; }
+  100% { background-position: 160% 160%; }
 }
-.frame-galaxy { border-color: #a86bff; animation: frameGalaxySpin 4s linear infinite; }
-@keyframes frameGalaxySpin {
-  0% { filter: hue-rotate(0deg); box-shadow: 0 0 16px #a86bff; }
-  100% { filter: hue-rotate(360deg); box-shadow: 0 0 16px #a86bff; }
+
+/* вращается сам узор (::before), а не весь блок — иначе блик и лицо тоже крутились бы */
+.frame-ring::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
 }
+.frame-ring.frame-bronze::before {
+  background: conic-gradient(from 0deg, #6b421c, #c98f4e, #ffcf8f, #c98f4e, #6b421c, #8a5a2b, #6b421c);
+  animation: frameSpin 7s linear infinite;
+}
+.frame-ring.frame-silver::before {
+  background: conic-gradient(from 0deg, #6d6d78, #d8d8e2, #ffffff, #d8d8e2, #8f8f9a, #c9c9d6, #6d6d78);
+  animation: frameSpin 6s linear infinite;
+}
+.frame-ring.frame-gold::before {
+  background: conic-gradient(from 0deg, #7a5a12, #ffe08a, #fff6d8, #f2c94c, #b8860b, #ffd76a, #7a5a12);
+  animation: frameSpin 5s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(242,201,76,.55));
+}
+.frame-ring.frame-neon::before {
+  background: conic-gradient(from 0deg, #073a3a, #5de3e0, #baffff, #5de3e0, #0a5c5c, #5de3e0, #073a3a);
+  animation: frameSpin 3.4s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(93,227,224,.75));
+}
+.frame-ring.frame-rainbow::before {
+  background: conic-gradient(from 0deg, #ff3b3b, #ff9a3b, #f4ff3b, #3bff6b, #3bd4ff, #6b3bff, #ff3bd4, #ff3b3b);
+  animation: frameSpin 3.2s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(255,77,141,.6)) saturate(1.3);
+}
+.frame-ring.frame-void::before {
+  background: conic-gradient(from 0deg, #05010d, #4b2e91, #7d3cff, #2a1050, #05010d, #6a2ec9, #05010d);
+  animation: frameSpin 8s linear infinite reverse;
+  filter: drop-shadow(0 0 10px rgba(125,60,255,.6));
+}
+.frame-ring.frame-fire::before {
+  background: conic-gradient(from 0deg, #2b0900, #ff6a00, #ffe08a, #ff2d00, #7a1900, #ff9a00, #2b0900);
+  animation: frameSpin 2.1s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(255,106,0,.7));
+}
+.frame-ring.frame-ice::before {
+  background: conic-gradient(from 0deg, #08283a, #7fd7ff, #eafcff, #a6e6ff, #0b3d55, #cdefff, #08283a);
+  animation: frameSpin 4.6s linear infinite;
+  filter: drop-shadow(0 0 9px rgba(127,215,255,.65));
+}
+.frame-ring.frame-galaxy::before {
+  background:
+    radial-gradient(circle at 25% 30%, rgba(255,255,255,0.9) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 65% 15%, rgba(255,255,255,0.7) 0 1px, transparent 2px),
+    radial-gradient(circle at 80% 60%, rgba(255,255,255,0.8) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 40% 75%, rgba(255,255,255,0.6) 0 1px, transparent 2px),
+    conic-gradient(from 0deg, #1a0a2e, #6a2ec9, #ff5fd8, #2ec9c9, #1a0a2e, #a86bff, #1a0a2e);
+  animation: frameSpin 9s linear infinite, frameGalaxyHue 6s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px rgba(168,107,255,.7));
+}
+@keyframes frameSpin { to { transform: rotate(360deg); } }
+@keyframes frameGalaxyHue {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(168,107,255,.7)) hue-rotate(0deg); }
+  50% { filter: drop-shadow(0 0 14px rgba(255,95,216,.7)) hue-rotate(40deg); }
+}
+
+/* дефолт без рамки — просто нейтральный тонкий ободок, без узора и блика */
+.frame-ring.frame-none::before { display: none; }
+.frame-ring.frame-none::after { display: none; }
+.frame-ring.frame-none { background: #333; }
+.frame-ring.frame-none .frame-ring-inner { inset: 2px; }
 
 /* ==================== Кейс рамок: золотая коробка CS:GO-style ==================== */
 #frameRevealOverlay {
@@ -975,19 +1037,12 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 #frameResultFrame {
   width: 96px;
   height: 96px;
-  border-radius: 50%;
-  overflow: hidden;
-  border-width: 4px;
-  border-style: solid;
-  background: #111;
-  box-sizing: content-box;
   animation: frameRevealPop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3);
 }
 @keyframes frameRevealPop {
   0% { transform: scale(0.3); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
 }
-#frameResultFrame img { width: 100%; height: 100%; object-fit: cover; }
 #frameResultName { font-size: 17px; font-weight: 800; color: #eee; margin-bottom: 4px; }
 #frameResultRarity { font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 0.05em; }
 
