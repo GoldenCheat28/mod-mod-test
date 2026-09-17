@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#141414">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<title>Ore Upgrader</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <header id="topbar">
+    <button id="fullscreenBtn" title="На весь экран">⛶</button>
+    <div id="balanceLine">Инвентарь: <span id="totalValue">0</span> ⛃</div>
+    <button id="claimBtn" disabled>Медь: --:--</button>
+  </header>
+
+  <main>
+    <section id="inventoryPanel">
+      <h2>Инвентарь</h2>
+      <div id="inventoryGrid"></div>
+    </section>
+
+    <section id="upgraderPanel">
+      <h2>Апгрейдер</h2>
+
+      <div class="upgrade-row">
+        <div class="upgrade-slot" id="stakeSlot">
+          <span class="slot-label">Ставка</span>
+          <div class="slot-content" id="stakeContent">
+            <span class="slot-empty">выбери предметы →</span>
+          </div>
+          <div class="slot-value" id="stakeValueLabel">0 ⛃</div>
+        </div>
+
+        <div class="upgrade-arrow">→</div>
+
+        <div class="upgrade-slot" id="targetSlot">
+          <span class="slot-label">Цель</span>
+          <div class="slot-content" id="targetContent">
+            <span class="slot-empty">выбери цель →</span>
+          </div>
+          <div class="slot-value" id="targetValueLabel">0 ⛃</div>
+        </div>
+      </div>
+
+      <div id="chanceLine">Шанс успеха: <strong id="chanceValue">--%</strong></div>
+
+      <div class="chance-bar-wrap">
+        <div class="chance-bar" id="chanceBar"></div>
+        <div class="chance-marker" id="chanceMarker"></div>
+      </div>
+
+      <button id="upgradeBtn" disabled>УЛУЧШИТЬ</button>
+
+      <div id="targetCatalog"></div>
+    </section>
+  </main>
+
+  <div id="resultOverlay" class="hidden">
+    <div id="resultCard">
+      <div id="resultTitle"></div>
+      <div id="resultItem"></div>
+      <button id="resultClose">ОК</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script src="items.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
