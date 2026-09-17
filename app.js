@@ -166,7 +166,7 @@ function renderStake() {
   const content = document.getElementById("stakeContent");
   const entries = Object.entries(stake).filter(([, qty]) => qty > 0);
   if (entries.length === 0) {
-    content.innerHTML = `<span class="slot-empty">выбери предметы →</span>`;
+    content.innerHTML = `<span class="slot-empty">+</span>`;
   } else {
     content.innerHTML = entries.map(([id, qty]) => {
       const item = ITEM_BY_ID[id];
@@ -215,7 +215,7 @@ function renderTargetSlot() {
   document.getElementById("qtyPlus").disabled = upgradeInProgress || !targetId || targetQty >= MAX_TARGET_QTY;
 
   if (!targetId) {
-    content.innerHTML = `<span class="slot-empty">перетащи цель →</span>`;
+    content.innerHTML = `<span class="slot-empty">+</span>`;
     document.getElementById("targetValueLabel").textContent = "0 ⛃";
     stepper.style.visibility = "hidden";
     return;
