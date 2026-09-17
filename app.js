@@ -10,6 +10,8 @@ const STORAGE_KEY = "ore_upgrader_save_v1";
 let state = loadState();
 let stake = {}; // { itemId: qty } — текущая ставка
 let targetId = null;
+let targetQty = 1; // сколько копий цели пытаемся выиграть за один спин
+const MAX_TARGET_QTY = 10;
 let upgradeInProgress = false;
 let frozenChance = null; // шанс, "замороженный" на время вращения колеса
 let needleAngle = 0; // накопленный угол стрелки (для непрерывного вращения)
@@ -199,7 +201,7 @@ function renderTargetCatalog() {
       el, item,
       document.getElementById("targetSlot"),
       () => !upgradeInProgress,
-      () => { targetId = item.id; renderAll(); }
+      () => { targetId = item.id; targetQty = 1; renderAll(); }
     );
     grid.appendChild(el);
   });
@@ -207,22 +209,40 @@ function renderTargetCatalog() {
 
 function renderTargetSlot() {
   const content = document.getElementById("targetContent");
+  const stepper = document.getElementById("targetQtyStepper");
+  document.getElementById("qtyValue").textContent = `x${targetQty}`;
+  document.getElementById("qtyMinus").disabled = upgradeInProgress || !targetId || targetQty <= 1;
+  document.getElementById("qtyPlus").disabled = upgradeInProgress || !targetId || targetQty >= MAX_TARGET_QTY;
+
   if (!targetId) {
     content.innerHTML = `<span class="slot-empty">перетащи цель →</span>`;
     document.getElementById("targetValueLabel").textContent = "0 ⛃";
+    stepper.style.visibility = "hidden";
     return;
   }
+  stepper.style.visibility = "visible";
   const item = ITEM_BY_ID[targetId];
   content.innerHTML = renderIcon(item) + `<span>${item.name}</span>`;
-  document.getElementById("targetValueLabel").textContent = `${item.value} ⛃`;
+  document.getElementById("targetValueLabel").textContent = `${item.value * targetQty} ⛃`;
 }
+
+document.getElementById("qtyMinus").addEventListener("click", () => {
+  if (upgradeInProgress || !targetId || targetQty <= 1) return;
+  targetQty -= 1;
+  renderAll();
+});
+document.getElementById("qtyPlus").addEventListener("click", () => {
+  if (upgradeInProgress || !targetId || targetQty >= MAX_TARGET_QTY) return;
+  targetQty += 1;
+  renderAll();
+});
 
 // ==== Шанс ====
 function computeChance() {
   const sv = stakeValue();
   const target = targetId ? ITEM_BY_ID[targetId] : null;
   if (!target || sv <= 0) return 0;
-  const raw = (sv / target.value) * HOUSE_EDGE;
+  const raw = (sv / (target.value * targetQty)) * HOUSE_EDGE;
   return Math.min(MAX_CHANCE, Math.max(MIN_CHANCE, raw));
 }
 
@@ -297,6 +317,7 @@ function doUpgrade() {
     : chanceDeg + Math.random() * (360 - chanceDeg);
 
   const targetItem = ITEM_BY_ID[targetId];
+  const wonQty = targetQty;
 
   // списываем ставку сразу, чтобы нельзя было менять её во время вращения,
   // но "замораживаем" шанс — иначе зелёная зона на колесе обнулится
@@ -311,29 +332,34 @@ function doUpgrade() {
   spinNeedleTo(targetDeg);
 
   setTimeout(() => {
-    if (success) addItem(targetId, 1);
+    if (success) addItem(targetId, wonQty);
     saveState();
-    showResult(success, targetItem);
+    showResult(success, targetItem, wonQty);
     targetId = null;
+    targetQty = 1;
     upgradeInProgress = false;
     frozenChance = null;
     renderAll();
   }, SPIN_DURATION_MS + 100);
 }
 
-function showResult(success, item) {
+function showResult(success, item, qty) {
   const overlay = document.getElementById("resultOverlay");
   document.getElementById("resultTitle").textContent = success ? "УСПЕХ!" : "Неудача";
   document.getElementById("resultTitle").className = success ? "win" : "lose";
+  const qtyLabel = qty > 1 ? ` x${qty}` : "";
   document.getElementById("resultItem").innerHTML = success
-    ? `${renderIcon(item)}<span>${item.name}</span>`
+    ? `${renderIcon(item)}<span>${item.name}${qtyLabel}</span>`
     : `<span class="lose-note">Предметы потеряны</span>`;
   overlay.classList.remove("hidden");
 }
 
-// ==== Кейсы ====
+// ==== Кейсы (рулетка в стиле CS:GO) ====
 let caseOpening = false;
-const CASE_ANIM_MS = 1400;
+const REEL_TILE_FULL_WIDTH = 96; // 82px плитка + 7+7px отступов (см. style.css)
+const REEL_TILE_COUNT = 40;
+const REEL_WINNER_INDEX = 34;
+const REEL_SPIN_MS = 4200;
 
 function renderCases() {
   const grid = document.getElementById("casesGrid");
@@ -369,19 +395,62 @@ function openCase(caseDef) {
   saveState();
   renderAll();
 
-  const cardEl = document.getElementById(`case-${caseDef.id}`);
-  cardEl.classList.add("opening");
+  const winnerId = pickCaseDrop(caseDef);
+  runCaseReel(caseDef, winnerId);
+}
+
+// Горизонтальная лента из случайных предметов пула + один точно
+// расставленный "победный" тайл — лента крутится и тормозит ровно
+// на нём, как в кейсах CS:GO.
+function runCaseReel(caseDef, winnerId) {
+  const overlay = document.getElementById("caseRevealOverlay");
+  const track = document.getElementById("reelTrack");
+  const closeBtn = document.getElementById("caseRevealClose");
+  const pool = caseDef.drops.map(d => d.id);
+
+  document.getElementById("caseRevealTitle").textContent = caseDef.name;
+  closeBtn.disabled = true;
+  closeBtn.textContent = "Открываю...";
+
+  const tileIds = [];
+  for (let i = 0; i < REEL_TILE_COUNT; i++) {
+    tileIds.push(i === REEL_WINNER_INDEX ? winnerId : pool[Math.floor(Math.random() * pool.length)]);
+  }
+
+  track.style.transition = "none";
+  track.style.transform = "translateX(0px)";
+  track.innerHTML = tileIds.map((id, i) => {
+    const item = ITEM_BY_ID[id];
+    return `<div class="reel-tile" data-i="${i}">${renderIcon(item)}</div>`;
+  }).join("");
+
+  overlay.classList.remove("hidden");
+  void track.offsetWidth; // force reflow, чтобы translateX(0) точно применился до анимации
+
+  const viewportWidth = document.getElementById("reelViewport").clientWidth;
+  const jitter = (Math.random() - 0.5) * (REEL_TILE_FULL_WIDTH * 0.5);
+  const targetX = -(REEL_WINNER_INDEX * REEL_TILE_FULL_WIDTH + REEL_TILE_FULL_WIDTH / 2 - viewportWidth / 2) + jitter;
+
+  requestAnimationFrame(() => {
+    track.style.transition = `transform ${REEL_SPIN_MS}ms cubic-bezier(0.08, 0.66, 0.1, 1)`;
+    track.style.transform = `translateX(${targetX}px)`;
+  });
 
   setTimeout(() => {
-    const dropId = pickCaseDrop(caseDef);
-    addItem(dropId, 1);
+    const winnerTile = track.querySelector(`[data-i="${REEL_WINNER_INDEX}"]`);
+    if (winnerTile) winnerTile.classList.add("reel-winner");
+    addItem(winnerId, 1);
     saveState();
-    cardEl.classList.remove("opening");
     caseOpening = false;
-    showItemResult("Выпало!", ITEM_BY_ID[dropId], 1);
-    renderAll();
-  }, CASE_ANIM_MS);
+    closeBtn.disabled = false;
+    closeBtn.textContent = "ОК";
+    renderCases();
+  }, REEL_SPIN_MS + 150);
 }
+
+document.getElementById("caseRevealClose").addEventListener("click", () => {
+  document.getElementById("caseRevealOverlay").classList.add("hidden");
+});
 
 function showItemResult(title, item, qty) {
   const overlay = document.getElementById("resultOverlay");
@@ -472,6 +541,16 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 2000);
 }
+
+// ==== Вкладки ====
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".tab-page").forEach((p) => p.classList.add("hidden"));
+    document.getElementById(`${btn.dataset.tab}Panel`).classList.remove("hidden");
+  });
+});
 
 // ==== Fullscreen ====
 document.getElementById("fullscreenBtn").addEventListener("click", () => {

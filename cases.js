@@ -5,6 +5,20 @@
 
 const CASES = [
   {
+    id: "beggar_case",
+    name: "Кейс для нищих",
+    costItem: "dirt",
+    costAmount: 15,
+    drops: [
+      { id: "dirt", weight: 35 },
+      { id: "cobblestone", weight: 28 },
+      { id: "wood", weight: 18 },
+      { id: "copper", weight: 12 },
+      { id: "coal", weight: 6 },
+      { id: "iron", weight: 1 },
+    ],
+  },
+  {
     id: "copper_case",
     name: "Медный кейс",
     costItem: "copper",
