@@ -323,11 +323,22 @@ function doUpgrade() {
   // но "замораживаем" шанс — иначе зелёная зона на колесе обнулится
   // вместе со списанной ставкой прямо во время анимации
   frozenChance = chance;
+
+  // проигрываем анимацию "сгорания" списанных предметов ставки —
+  // раньше слот просто мгновенно очищался при рендере и это было незаметно
+  const stakeContentEl = document.getElementById("stakeContent");
+  stakeContentEl.classList.add("stake-burning");
+
   Object.entries(stake).forEach(([id, qty]) => removeItem(id, qty));
   saveState();
   stake = {};
   upgradeInProgress = true;
-  renderAll();
+  renderAll({ skipStake: true });
+
+  setTimeout(() => {
+    stakeContentEl.classList.remove("stake-burning");
+    renderStake();
+  }, 560);
 
   spinNeedleTo(targetDeg);
 
@@ -343,6 +354,19 @@ function doUpgrade() {
   }, SPIN_DURATION_MS + 100);
 }
 
+// Дорогие призы (эпик/легендарка) показываем с 3D-переворотом карточки,
+// а не просто плоским попапом — по значимости приза это заметнее.
+const REVEAL_3D_VALUE_THRESHOLD = 150;
+
+function playResultCardAnimation(item) {
+  const card = document.getElementById("resultCard");
+  card.classList.remove("reveal-3d");
+  if (item && item.value >= REVEAL_3D_VALUE_THRESHOLD) {
+    void card.offsetWidth; // перезапуск CSS-анимации
+    card.classList.add("reveal-3d");
+  }
+}
+
 function showResult(success, item, qty) {
   const overlay = document.getElementById("resultOverlay");
   document.getElementById("resultTitle").textContent = success ? "УСПЕХ!" : "Неудача";
@@ -352,6 +376,7 @@ function showResult(success, item, qty) {
     ? `${renderIcon(item)}<span>${item.name}${qtyLabel}</span>`
     : `<span class="lose-note">Предметы потеряны</span>`;
   overlay.classList.remove("hidden");
+  playResultCardAnimation(success ? item : null);
 }
 
 // ==== Кейсы (рулетка в стиле CS:GO) ====
@@ -459,6 +484,7 @@ function showItemResult(title, item, qty) {
   const qtyLabel = qty > 1 ? ` x${qty}` : "";
   document.getElementById("resultItem").innerHTML = `${renderIcon(item)}<span>${item.name}${qtyLabel}</span>`;
   overlay.classList.remove("hidden");
+  playResultCardAnimation(item);
 }
 
 // ==== Ежедневное колесо удачи ====
@@ -560,6 +586,233 @@ function handleClickerClick() {
 
 document.getElementById("clickerBtn").addEventListener("click", handleClickerClick);
 
+// ==== Профиль ====
+const USERNAME_REGEX = /^[A-Za-z0-9_А-Яа-яЁё]{5,20}$/;
+
+function ensureProfile() {
+  if (!state.profile) {
+    state.profile = {
+      username: null,
+      avatar: null,
+      banner: null,
+      bio: "",
+      socials: { telegram: "", discord: "", youtube: "" },
+      theme: "dark",
+      equippedFrame: null,
+    };
+  }
+  if (!state.frames) state.frames = [];
+  return state.profile;
+}
+
+function applyTheme() {
+  const profile = ensureProfile();
+  document.body.classList.toggle("theme-minimal", profile.theme === "minimal");
+}
+
+function renderProfile() {
+  const profile = ensureProfile();
+  const hasUsername = !!profile.username;
+
+  document.getElementById("usernameSetup").classList.toggle("hidden", hasUsername);
+  document.getElementById("profileCard").classList.toggle("hidden", !hasUsername);
+  if (!hasUsername) return;
+
+  document.getElementById("profileUsername").textContent = `@${profile.username}`;
+  document.getElementById("profileBanner").style.backgroundImage = profile.banner ? `url(${profile.banner})` : "none";
+  document.getElementById("profileAvatarImg").src = profile.avatar || "icon.svg";
+
+  const frame = profile.equippedFrame ? FRAME_BY_ID[profile.equippedFrame] : null;
+  document.getElementById("profileAvatarFrame").className = frame ? frame.css : "frame-none";
+
+  document.getElementById("profileBio").value = profile.bio || "";
+  document.getElementById("socialTelegram").value = profile.socials.telegram || "";
+  document.getElementById("socialDiscord").value = profile.socials.discord || "";
+  document.getElementById("socialYoutube").value = profile.socials.youtube || "";
+  document.getElementById("minimalThemeToggle").checked = profile.theme === "minimal";
+
+  renderOwnedFrames();
+  renderFrameCases();
+}
+
+function renderOwnedFrames() {
+  const grid = document.getElementById("ownedFramesGrid");
+  const profile = ensureProfile();
+  if (state.frames.length === 0) {
+    grid.innerHTML = `<div class="frames-empty-note">Пока нет рамок — открой кейс рамок ниже.</div>`;
+    return;
+  }
+  grid.innerHTML = "";
+  state.frames.forEach((frameId) => {
+    const frame = FRAME_BY_ID[frameId];
+    if (!frame) return;
+    const el = document.createElement("div");
+    el.className = `owned-frame-slot ${frame.css}` + (profile.equippedFrame === frameId ? " equipped" : "");
+    el.title = frame.name;
+    el.addEventListener("click", () => {
+      profile.equippedFrame = profile.equippedFrame === frameId ? null : frameId;
+      saveState();
+      renderProfile();
+    });
+    grid.appendChild(el);
+  });
+}
+
+function renderFrameCases() {
+  const grid = document.getElementById("frameCasesGrid");
+  grid.innerHTML = "";
+  FRAME_COLLECTIONS.forEach((collection) => {
+    const costItem = ITEM_BY_ID[collection.costItem];
+    const affordable = invQty(collection.costItem) >= collection.costAmount;
+    const el = document.createElement("div");
+    el.className = "case-card";
+    el.innerHTML = `
+      <div class="case-icon">🎁</div>
+      <div class="case-info">
+        <div class="case-name">${collection.name}</div>
+        <div class="case-cost">Цена: ${collection.costAmount}× ${renderIcon(costItem)} ${costItem.name}</div>
+        <div class="case-pool">Рамки: ${collection.frames.map(f => f.name).join(", ")}</div>
+      </div>
+      <button class="case-open-btn" ${(!affordable || frameCaseOpening) ? "disabled" : ""}>Открыть</button>
+    `;
+    el.querySelector(".case-open-btn").addEventListener("click", () => openFrameCase(collection));
+    grid.appendChild(el);
+  });
+}
+
+// --- Юзернейм ---
+function trySaveUsername() {
+  const input = document.getElementById("usernameInput");
+  const errEl = document.getElementById("usernameError");
+  const value = input.value.trim();
+  if (!USERNAME_REGEX.test(value)) {
+    errEl.textContent = "От 5 до 20 символов: буквы, цифры, подчёркивание.";
+    return;
+  }
+  const profile = ensureProfile();
+  profile.username = value;
+  saveState();
+  errEl.textContent = "";
+  input.value = "";
+  renderProfile();
+}
+document.getElementById("usernameSaveBtn").addEventListener("click", trySaveUsername);
+document.getElementById("usernameChangeBtn").addEventListener("click", () => {
+  ensureProfile().username = null;
+  saveState();
+  renderProfile();
+});
+
+// --- Аватар / баннер (локально, через FileReader) ---
+function readFileAsDataUrl(file, callback) {
+  const reader = new FileReader();
+  reader.onload = () => callback(reader.result);
+  reader.readAsDataURL(file);
+}
+
+document.getElementById("avatarEditBtn").addEventListener("click", () => {
+  document.getElementById("avatarFileInput").click();
+});
+document.getElementById("avatarFileInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  readFileAsDataUrl(file, (dataUrl) => {
+    ensureProfile().avatar = dataUrl;
+    saveState();
+    renderProfile();
+  });
+});
+
+document.getElementById("bannerEditBtn").addEventListener("click", () => {
+  document.getElementById("bannerFileInput").click();
+});
+document.getElementById("bannerFileInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  readFileAsDataUrl(file, (dataUrl) => {
+    ensureProfile().banner = dataUrl;
+    saveState();
+    renderProfile();
+  });
+});
+
+// --- Био / соцсети / тема ---
+document.getElementById("profileSaveBtn").addEventListener("click", () => {
+  const profile = ensureProfile();
+  profile.bio = document.getElementById("profileBio").value.slice(0, 140);
+  profile.socials.telegram = document.getElementById("socialTelegram").value.trim();
+  profile.socials.discord = document.getElementById("socialDiscord").value.trim();
+  profile.socials.youtube = document.getElementById("socialYoutube").value.trim();
+  saveState();
+  showToast("Профиль сохранён");
+});
+
+document.getElementById("minimalThemeToggle").addEventListener("change", (e) => {
+  ensureProfile().theme = e.target.checked ? "minimal" : "dark";
+  saveState();
+  applyTheme();
+});
+
+// --- Кейс рамок: золотая коробка с "?" в стиле CS:GO ---
+let frameCaseOpening = false;
+const FRAME_BOX_SHAKE_MS = 1100;
+
+function openFrameCase(collection) {
+  if (frameCaseOpening) return;
+  if (invQty(collection.costItem) < collection.costAmount) return;
+
+  frameCaseOpening = true;
+  removeItem(collection.costItem, collection.costAmount);
+  saveState();
+  renderAll();
+
+  const wonFrame = pickFrameFromCollection(collection);
+  runFrameBoxReveal(wonFrame);
+}
+
+function runFrameBoxReveal(frame) {
+  const overlay = document.getElementById("frameRevealOverlay");
+  const boxStage = document.getElementById("frameBoxStage");
+  const resultStage = document.getElementById("frameResultStage");
+  const box = document.getElementById("goldBox");
+  const closeBtn = document.getElementById("frameRevealClose");
+
+  boxStage.classList.remove("hidden");
+  resultStage.classList.add("hidden");
+  box.classList.remove("opening");
+  box.className = "shaking";
+  box.id = "goldBox";
+  closeBtn.disabled = true;
+  closeBtn.textContent = "Открываю...";
+  overlay.classList.remove("hidden");
+
+  setTimeout(() => {
+    box.classList.remove("shaking");
+    box.classList.add("opening");
+
+    setTimeout(() => {
+      boxStage.classList.add("hidden");
+      resultStage.classList.remove("hidden");
+
+      document.getElementById("frameResultAvatarImg").src = ensureProfile().avatar || "icon.svg";
+      document.getElementById("frameResultFrame").className = frame.css;
+      document.getElementById("frameResultName").textContent = frame.name;
+      document.getElementById("frameResultRarity").textContent = frame.rarity;
+
+      if (!state.frames.includes(frame.id)) state.frames.push(frame.id);
+      saveState();
+      frameCaseOpening = false;
+      closeBtn.disabled = false;
+      closeBtn.textContent = "ОК";
+      renderAll();
+    }, 400);
+  }, FRAME_BOX_SHAKE_MS);
+}
+
+document.getElementById("frameRevealClose").addEventListener("click", () => {
+  document.getElementById("frameRevealOverlay").classList.add("hidden");
+});
+
 // ==== Toast ====
 let toastTimer = null;
 function showToast(msg) {
@@ -597,18 +850,20 @@ document.getElementById("resultClose").addEventListener("click", () => {
 });
 
 // ==== Общий рендер ====
-function renderAll() {
+function renderAll(opts = {}) {
   renderInventory();
-  renderStake();
+  if (!opts.skipStake) renderStake();
   renderTargetCatalog();
   renderTargetSlot();
   renderChance();
   renderCases();
   renderClicker();
+  renderProfile();
   updateClaimButton();
   updateDailyButton();
 }
 
+applyTheme();
 initDailyWheel();
 renderAll();
 setInterval(() => {

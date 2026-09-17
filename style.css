@@ -1,5 +1,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+.hidden { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -684,3 +686,372 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   font-size: 12px;
   color: #777;
 }
+
+/* ==================== Профиль ==================== */
+#profilePanel {
+  background: #1a1a1a;
+  border-radius: 14px;
+  border: 1px solid #262626;
+  overflow: hidden;
+}
+#profilePanel > h2 { padding: 14px 14px 0; }
+#usernameSetup { padding: 14px; }
+.profile-hint { color: #999; font-size: 13px; margin: 0 0 12px; }
+
+.username-input-row {
+  display: flex;
+  align-items: center;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px 12px;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.at-prefix { color: #5de3e0; font-weight: 700; }
+.username-input-row input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #eee;
+  font-size: 15px;
+}
+.field-error { color: #e05555; font-size: 12px; min-height: 16px; margin-top: 6px; }
+
+#usernameSaveBtn, #profileSaveBtn {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  background: #2ecc71;
+  color: #06210f;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px;
+}
+
+#profileBanner {
+  height: 110px;
+  background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 8px;
+}
+.ghost-edit-btn {
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #eee;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+#profileHeadRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 0 14px;
+  margin-top: -34px;
+}
+#profileAvatarWrap { position: relative; flex-shrink: 0; }
+#profileAvatarFrame {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1a1a1a;
+  border-width: 3px;
+  border-style: solid;
+  box-sizing: content-box;
+}
+/* цвет рамки задаёт класс frame-* (см. ниже) — по умолчанию нейтральный */
+#profileAvatarFrame.frame-none { border-color: #333; }
+#profileAvatarImg { width: 100%; height: 100%; object-fit: cover; }
+.avatar-edit-btn {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2c2c2c;
+  border: 1px solid #444;
+  color: #eee;
+  font-size: 11px;
+  padding: 0;
+}
+#profileNameBlock { padding-bottom: 6px; }
+#profileUsername { font-size: 16px; font-weight: 700; color: #eee; }
+.link-btn {
+  background: none;
+  border: none;
+  color: #5de3e0;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 16px 14px 6px;
+}
+#profileBio {
+  width: calc(100% - 28px);
+  margin: 0 14px;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 10px;
+  color: #eee;
+  font-size: 13px;
+  padding: 10px;
+  resize: vertical;
+  min-height: 54px;
+  font-family: inherit;
+}
+
+.social-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 8px;
+}
+.social-row span { width: 66px; font-size: 12px; color: #999; flex-shrink: 0; }
+.social-row input {
+  flex: 1;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #eee;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+#profileSaveBtn { width: calc(100% - 28px); margin: 16px 14px 0; }
+
+.theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 14px 4px;
+  font-size: 13px;
+  color: #ccc;
+}
+.switch { position: relative; width: 40px; height: 22px; display: inline-block; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-track {
+  position: absolute; inset: 0; background: #333; border-radius: 20px; transition: background 0.2s;
+}
+.switch-track::before {
+  content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
+  background: #eee; border-radius: 50%; transition: transform 0.2s;
+}
+.switch input:checked + .switch-track { background: #2ecc71; }
+.switch input:checked + .switch-track::before { transform: translateX(18px); }
+
+#profilePanel h3 { margin: 18px 14px 8px; font-size: 13px; color: #999; }
+#ownedFramesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px;
+  padding: 0 14px;
+}
+.owned-frame-slot {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #111;
+  border: 2px solid #333;
+  cursor: pointer;
+}
+.owned-frame-slot.equipped { box-shadow: 0 0 0 2px #5de3e0; }
+.frames-empty-note { color: #666; font-size: 12px; padding: 0 14px 4px; grid-column: 1/-1; }
+
+#frameCasesGrid { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 16px; }
+
+.hidden-file-input { display: none; }
+
+/* --- Эффекты рамок (чисто CSS, без картинок) --- */
+.frame-bronze  { border-color: #a9673a; box-shadow: 0 0 8px rgba(169,103,58,.6); }
+.frame-silver  { border-color: #c9c9d6; box-shadow: 0 0 8px rgba(201,201,214,.6); }
+.frame-gold    { border-color: #f2c94c; box-shadow: 0 0 12px rgba(242,201,76,.7); }
+.frame-neon    { border-color: #5de3e0; animation: frameNeonPulse 1.8s ease-in-out infinite; }
+@keyframes frameNeonPulse {
+  0%, 100% { box-shadow: 0 0 10px #5de3e0, 0 0 20px rgba(93,227,224,.4); }
+  50% { box-shadow: 0 0 18px #5de3e0, 0 0 34px rgba(93,227,224,.7); }
+}
+.frame-rainbow { border-color: #ff4d8d; animation: frameRainbowSpin 3s linear infinite; }
+@keyframes frameRainbowSpin {
+  0% { filter: hue-rotate(0deg); box-shadow: 0 0 14px #ff4d8d; }
+  100% { filter: hue-rotate(360deg); box-shadow: 0 0 14px #ff4d8d; }
+}
+.frame-void { border-color: #4b2e91; box-shadow: inset 0 0 12px #7d3cff, 0 0 14px rgba(125,60,255,.5); }
+.frame-fire { border-color: #ff6a00; animation: frameFirePulse 1.2s ease-in-out infinite; }
+@keyframes frameFirePulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(255,106,0,.7); }
+  50% { box-shadow: 0 0 24px rgba(255,174,0,.85); }
+}
+.frame-ice { border-color: #7fd7ff; animation: frameIcePulse 2.4s ease-in-out infinite; }
+@keyframes frameIcePulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(127,215,255,.6); }
+  50% { box-shadow: 0 0 22px rgba(205,239,255,.85); }
+}
+.frame-galaxy { border-color: #a86bff; animation: frameGalaxySpin 4s linear infinite; }
+@keyframes frameGalaxySpin {
+  0% { filter: hue-rotate(0deg); box-shadow: 0 0 16px #a86bff; }
+  100% { filter: hue-rotate(360deg); box-shadow: 0 0 16px #a86bff; }
+}
+
+/* ==================== Кейс рамок: золотая коробка CS:GO-style ==================== */
+#frameRevealOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 58;
+}
+#frameRevealOverlay.hidden { display: none; }
+
+#frameRevealCard {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 28px 20px 20px;
+  width: min(90vw, 340px);
+  text-align: center;
+}
+
+#frameBoxStage { height: 180px; display: flex; align-items: center; justify-content: center; }
+#frameBoxStage.hidden { display: none; }
+
+#goldBox {
+  width: 120px;
+  height: 120px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffe08a, #b8860b);
+  border: 3px solid #7a5a12;
+  box-shadow: 0 0 0 rgba(242,201,76,0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#goldBoxQuestion {
+  font-size: 52px;
+  font-weight: 800;
+  color: #6b4a05;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+}
+#goldBox.shaking {
+  animation: goldBoxShake 0.35s ease-in-out infinite, goldBoxGlow 1.4s ease-in-out infinite;
+}
+@keyframes goldBoxShake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+@keyframes goldBoxGlow {
+  0%, 100% { box-shadow: 0 0 10px rgba(242,201,76,0.5); }
+  50% { box-shadow: 0 0 34px rgba(242,201,76,0.95); }
+}
+#goldBox.opening {
+  animation: goldBoxPop 0.4s ease forwards;
+}
+@keyframes goldBoxPop {
+  0% { transform: scale(1); opacity: 1; }
+  60% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.2); opacity: 0; }
+}
+
+#frameResultStage.hidden { display: none; }
+#frameResultAvatar { display: flex; justify-content: center; margin-bottom: 14px; }
+#frameResultFrame {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  border-width: 4px;
+  border-style: solid;
+  background: #111;
+  box-sizing: content-box;
+  animation: frameRevealPop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+@keyframes frameRevealPop {
+  0% { transform: scale(0.3); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+#frameResultFrame img { width: 100%; height: 100%; object-fit: cover; }
+#frameResultName { font-size: 17px; font-weight: 800; color: #eee; margin-bottom: 4px; }
+#frameResultRarity { font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 0.05em; }
+
+#frameRevealClose {
+  margin-top: 18px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: #fff;
+  font-weight: 600;
+}
+#frameRevealClose:disabled { color: #777; }
+
+/* ==================== Сгорание ставки при спине ==================== */
+#stakeContent.stake-burning .stake-chip {
+  animation: stakeBurnAway 0.55s ease forwards;
+}
+@keyframes stakeBurnAway {
+  0% { opacity: 1; transform: scale(1) translateY(0); filter: none; }
+  35% { filter: brightness(1.8) saturate(2.2) hue-rotate(-25deg); }
+  100% { opacity: 0; transform: scale(0.35) translateY(-14px); filter: brightness(2.4) blur(3px); }
+}
+
+/* ==================== 3D-переворот карточки для дорогих призов ==================== */
+#resultCard.reveal-3d {
+  animation: resultFlip3d 0.7s cubic-bezier(0.2, 0.75, 0.25, 1.1);
+  perspective: 900px;
+}
+@keyframes resultFlip3d {
+  0% { transform: rotateY(90deg) scale(0.75); opacity: 0; }
+  55% { transform: rotateY(-18deg) scale(1.06); opacity: 1; }
+  100% { transform: rotateY(0deg) scale(1); opacity: 1; }
+}
+#resultCard.reveal-3d #resultItem .item-img,
+#resultCard.reveal-3d #resultItem .item-tile {
+  filter: drop-shadow(0 0 14px rgba(255, 95, 150, 0.6));
+}
+
+/* ==================== Минималистичная тема ==================== */
+body.theme-minimal {
+  background: #f4f4f2;
+  color: #1a1a1a;
+}
+body.theme-minimal #app,
+body.theme-minimal #topbar,
+body.theme-minimal #tabBar,
+body.theme-minimal .inv-item,
+body.theme-minimal .target-item,
+body.theme-minimal #upgraderPanel,
+body.theme-minimal #dailyPanel,
+body.theme-minimal #clickerPanel,
+body.theme-minimal #profilePanel,
+body.theme-minimal .case-card {
+  background: #ffffff;
+  color: #1a1a1a;
+  border-color: #e2e2e2;
+}
+body.theme-minimal .inv-name,
+body.theme-minimal .case-name,
+body.theme-minimal #profileUsername,
+body.theme-minimal h2, body.theme-minimal h3 {
+  color: #1a1a1a;
+}
+body.theme-minimal #balanceLine,
+body.theme-minimal .inv-worth,
+body.theme-minimal .case-pool { color: #666; }

@@ -27,6 +27,7 @@
     <button class="tab-btn" data-tab="cases">Кейсы</button>
     <button class="tab-btn" data-tab="daily">Колесо удачи</button>
     <button class="tab-btn" data-tab="clicker">Кликер</button>
+    <button class="tab-btn" data-tab="profile">Профиль</button>
   </nav>
 
   <main>
@@ -100,6 +101,66 @@
       </button>
       <div id="clickerHint">Каждые 10 кликов — 2 грязи</div>
     </section>
+
+    <section id="profilePanel" class="tab-page hidden">
+      <h2>Профиль</h2>
+
+      <div id="usernameSetup" class="hidden">
+        <p class="profile-hint">Придумай юзернейм от 5 символов — без него профиль не открыть.</p>
+        <div class="username-input-row">
+          <span class="at-prefix">@</span>
+          <input id="usernameInput" type="text" maxlength="20" placeholder="username">
+        </div>
+        <button id="usernameSaveBtn">Сохранить</button>
+        <div id="usernameError" class="field-error"></div>
+      </div>
+
+      <div id="profileCard" class="hidden">
+        <div id="profileBanner">
+          <button id="bannerEditBtn" class="ghost-edit-btn" type="button">Сменить баннер</button>
+        </div>
+
+        <div id="profileHeadRow">
+          <div id="profileAvatarWrap">
+            <div id="profileAvatarFrame">
+              <img id="profileAvatarImg" src="icon.svg" alt="Аватар">
+            </div>
+            <button id="avatarEditBtn" class="avatar-edit-btn" type="button">✎</button>
+          </div>
+          <div id="profileNameBlock">
+            <div id="profileUsername">@username</div>
+            <button id="usernameChangeBtn" class="link-btn" type="button">изменить юзернейм</button>
+          </div>
+        </div>
+
+        <label class="field-label">О себе</label>
+        <textarea id="profileBio" maxlength="140" placeholder="Расскажи о себе..."></textarea>
+
+        <label class="field-label">Соцсети</label>
+        <div class="social-row"><span>Telegram</span><input id="socialTelegram" type="text" placeholder="@handle"></div>
+        <div class="social-row"><span>Discord</span><input id="socialDiscord" type="text" placeholder="username"></div>
+        <div class="social-row"><span>YouTube</span><input id="socialYoutube" type="text" placeholder="ссылка"></div>
+
+        <button id="profileSaveBtn">Сохранить профиль</button>
+
+        <div class="theme-row">
+          <span>Минималистичная тема</span>
+          <label class="switch">
+            <input id="minimalThemeToggle" type="checkbox">
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <h3>Мои рамки</h3>
+        <div id="ownedFramesGrid"></div>
+
+        <h3>Кейсы рамок</h3>
+        <div id="frameCasesGrid"></div>
+      </div>
+
+      <input id="avatarFileInput" type="file" accept="image/*" class="hidden-file-input">
+      <input id="bannerFileInput" type="file" accept="image/*" class="hidden-file-input">
+    </section>
   </main>
 
   <div id="resultOverlay" class="hidden">
@@ -121,12 +182,33 @@
     </div>
   </div>
 
+  <div id="frameRevealOverlay" class="hidden">
+    <div id="frameRevealCard">
+      <div id="frameBoxStage">
+        <div id="goldBox">
+          <div id="goldBoxQuestion">?</div>
+        </div>
+      </div>
+      <div id="frameResultStage" class="hidden">
+        <div id="frameResultAvatar">
+          <div id="frameResultFrame">
+            <img id="frameResultAvatarImg" src="icon.svg" alt="Аватар">
+          </div>
+        </div>
+        <div id="frameResultName"></div>
+        <div id="frameResultRarity"></div>
+      </div>
+      <button id="frameRevealClose" disabled>Открываю...</button>
+    </div>
+  </div>
+
   <div id="toast"></div>
 </div>
 
 <script src="items.js"></script>
 <script src="cases.js"></script>
 <script src="daily.js"></script>
+<script src="frames.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
