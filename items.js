@@ -16,6 +16,7 @@ const ITEMS = [
   { id: "diamond",     name: "Алмаз",        value: 120,   color: "#5de3e0", emoji: "💎", img: "assets/textures/diamond.png" },
   { id: "emerald",     name: "Изумруд",      value: 150,   color: "#2ecc71", emoji: "🟢", img: "assets/textures/emerald.png" },
   { id: "netherite",   name: "Незерит",      value: 600,   color: "#4a3b3b", emoji: "⬛", img: "assets/textures/netherite.png" },
+  { id: "netherite_block", name: "Незеритовый блок", value: 2000, color: "#1a1414", emoji: "💠" },
 ];
 
 const ITEM_BY_ID = Object.fromEntries(ITEMS.map(it => [it.id, it]));
