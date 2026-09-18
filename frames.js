@@ -1,6 +1,6 @@
 // Рамки аватарки — косметика, выбивается из "золотых" кейсов рамок.
-// Эффекты сделаны чисто на CSS (см. style.css, классы frame-*),
-// текстур/картинок не требуют.
+// Эффекты сделаны на CSS (см. style.css, классы frame-*); большинство —
+// чистые conic-gradient, но frame_halo — готовая PNG-текстура кольца.
 
 const FRAME_COLLECTIONS = [
   {
@@ -26,6 +26,7 @@ const FRAME_COLLECTIONS = [
       { id: "frame_fire",   name: "Огненная",    rarity: "epic",      css: "frame-fire",    weight: 30 },
       { id: "frame_ice",    name: "Ледяная",     rarity: "epic",      css: "frame-ice",     weight: 25 },
       { id: "frame_galaxy", name: "Галактика",   rarity: "legendary", css: "frame-galaxy",  weight: 10 },
+      { id: "frame_halo",   name: "Сияние",      rarity: "legendary", css: "frame-halo",    weight: 0.5 },
     ],
   },
 ];

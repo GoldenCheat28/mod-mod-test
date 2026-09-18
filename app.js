@@ -5,6 +5,7 @@ const HOUSE_EDGE = 0.9;                  // множитель шанса (ка�
 const MIN_CHANCE = 0.02;
 const MAX_CHANCE = 0.95;
 const STORAGE_KEY = "ore_upgrader_save_v1";
+const COIN_ICON = `<img class="coin-icon" src="assets/textures/coin.png" alt="" draggable="false">`;
 
 // ==== Состояние ====
 let state = loadState();
@@ -26,10 +27,19 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.inventory) return parsed;
+      if (parsed && parsed.inventory) {
+        if (typeof parsed.coins !== "number") parsed.coins = 0; // сейвы до маркетплейса ещё не знают про монеты
+        if (!parsed.market) parsed.market = { listings: [], soldLog: [], lastTick: Date.now() };
+        return parsed;
+      }
     }
   } catch (e) {}
-  return { inventory: { ...STARTER_INVENTORY }, lastClaim: 0 };
+  return {
+    inventory: { ...STARTER_INVENTORY },
+    lastClaim: 0,
+    coins: 0,
+    market: { listings: [], soldLog: [], lastTick: Date.now() },
+  };
 }
 
 function saveState() {
@@ -51,13 +61,13 @@ function removeItem(id, qty) {
 
 function totalInventoryValue() {
   return Object.entries(state.inventory).reduce((sum, [id, qty]) => {
-    return sum + (ITEM_BY_ID[id]?.value || 0) * qty;
+    return sum + (getEffectiveItem(id)?.value || 0) * qty;
   }, 0);
 }
 
 function stakeValue() {
   return Object.entries(stake).reduce((sum, [id, qty]) => {
-    return sum + (ITEM_BY_ID[id]?.value || 0) * qty;
+    return sum + (getEffectiveItem(id)?.value || 0) * qty;
   }, 0);
 }
 
@@ -133,7 +143,19 @@ function isOverElement(pointerEvent, el) {
 function renderInventory() {
   const grid = document.getElementById("inventoryGrid");
   grid.innerHTML = "";
-  const ordered = ITEMS.filter(it => invQty(it.id) > 0);
+  // Не просто ITEMS.filter — предметы с качеством (id вида "diamond__q2")
+  // не сидят в статическом каталоге, а достраиваются getEffectiveItem,
+  // поэтому источник списка — реальные ключи инвентаря.
+  const ordered = Object.keys(state.inventory)
+    .filter(id => state.inventory[id] > 0)
+    .map(id => getEffectiveItem(id))
+    .filter(Boolean)
+    .sort((a, b) => {
+      const ia = ITEMS.findIndex(it => it.id === (a.baseId || a.id));
+      const ib = ITEMS.findIndex(it => it.id === (b.baseId || b.id));
+      if (ia !== ib) return ia - ib;
+      return (a.qualityTier || 0) - (b.qualityTier || 0);
+    });
   if (ordered.length === 0) {
     grid.innerHTML = `<div class="empty-note">Пусто. Дождись бесплатной меди.</div>`;
   }
@@ -147,7 +169,7 @@ function renderInventory() {
       ${renderIcon(item)}
       <div class="inv-name">${item.name}</div>
       <div class="inv-qty">x${available}</div>
-      <div class="inv-worth">${item.value} ⛃</div>
+      <div class="inv-worth">${item.value} ${COIN_ICON}</div>
     `;
     makeDraggable(
       el, item,
@@ -169,7 +191,7 @@ function renderStake() {
     content.innerHTML = `<span class="slot-empty">+</span>`;
   } else {
     content.innerHTML = entries.map(([id, qty]) => {
-      const item = ITEM_BY_ID[id];
+      const item = getEffectiveItem(id);
       // содержимое в отдельной обёртке: при сгорании маска съедает только
       // её, а огонь и угли (::before/::after чипа) остаются поверх
       return `<div class="stake-chip" data-id="${id}">
@@ -185,7 +207,7 @@ function renderStake() {
       });
     });
   }
-  document.getElementById("stakeValueLabel").textContent = `${stakeValue()} ⛃`;
+  document.getElementById("stakeValueLabel").innerHTML = `${stakeValue()} ${COIN_ICON}`;
 }
 
 // ==== Каталог целей ====
@@ -199,7 +221,7 @@ function renderTargetCatalog() {
     el.innerHTML = `
       ${renderIcon(item)}
       <div class="inv-name">${item.name}</div>
-      <div class="inv-worth">${item.value} ⛃</div>
+      <div class="inv-worth">${item.value} ${COIN_ICON}</div>
     `;
     makeDraggable(
       el, item,
@@ -220,14 +242,14 @@ function renderTargetSlot() {
 
   if (!targetId) {
     content.innerHTML = `<span class="slot-empty">+</span>`;
-    document.getElementById("targetValueLabel").textContent = "0 ⛃";
+    document.getElementById("targetValueLabel").innerHTML = `0 ${COIN_ICON}`;
     stepper.style.visibility = "hidden";
     return;
   }
   stepper.style.visibility = "visible";
   const item = ITEM_BY_ID[targetId];
   content.innerHTML = renderIcon(item) + `<span>${item.name}</span>`;
-  document.getElementById("targetValueLabel").textContent = `${item.value * targetQty} ⛃`;
+  document.getElementById("targetValueLabel").innerHTML = `${item.value * targetQty} ${COIN_ICON}`;
 }
 
 document.getElementById("qtyMinus").addEventListener("click", () => {
@@ -364,9 +386,20 @@ function doUpgrade() {
   spinNeedleTo(targetDeg);
 
   setTimeout(() => {
-    if (success) addItem(targetId, wonQty);
+    // Качество катается ПОШТУЧНО и только на победе — рынок ждёт от
+    // апгрейдера именно такие "улучшенные" экземпляры на продажу,
+    // покупка на рынке у ботов качества не даёт (см. QUALITY_TIERS).
+    let wonItems = [];
+    if (success) {
+      for (let i = 0; i < wonQty; i++) {
+        const tier = pickQualityTier();
+        const effId = targetId + tier.suffix;
+        addItem(effId, 1);
+        wonItems.push(getEffectiveItem(effId));
+      }
+    }
     saveState();
-    showResult(success, targetItem, wonQty);
+    showResult(success, targetItem, wonQty, wonItems);
     targetId = null;
     targetQty = 1;
     upgradeInProgress = false;
@@ -379,25 +412,40 @@ function doUpgrade() {
 // а не просто плоским попапом — по значимости приза это заметнее.
 const REVEAL_3D_VALUE_THRESHOLD = 150;
 
-function playResultCardAnimation(item) {
+function playResultCardAnimation(bestValue) {
   const card = document.getElementById("resultCard");
   card.classList.remove("reveal-3d");
-  if (item && item.value >= REVEAL_3D_VALUE_THRESHOLD) {
+  if (bestValue >= REVEAL_3D_VALUE_THRESHOLD) {
     void card.offsetWidth; // перезапуск CSS-анимации
     card.classList.add("reveal-3d");
   }
 }
 
-function showResult(success, item, qty) {
+function showResult(success, item, qty, wonItems) {
   const overlay = document.getElementById("resultOverlay");
   document.getElementById("resultTitle").textContent = success ? "УСПЕХ!" : "Неудача";
   document.getElementById("resultTitle").className = success ? "win" : "lose";
-  const qtyLabel = qty > 1 ? ` x${qty}` : "";
-  document.getElementById("resultItem").innerHTML = success
-    ? `${renderIcon(item)}<span>${item.name}${qtyLabel}</span>`
-    : `<span class="lose-note">Предметы потеряны</span>`;
+
+  if (!success) {
+    document.getElementById("resultItem").innerHTML = `<span class="lose-note">Предметы потеряны</span>`;
+    overlay.classList.remove("hidden");
+    playResultCardAnimation(0);
+    return;
+  }
+
+  // wonQty штук катались на качество по отдельности — сгруппировать
+  // одинаковые (тот же id, значит тот же уровень качества) для показа,
+  // а не печатать N одинаковых строк подряд.
+  const grouped = {};
+  (wonItems || [item]).forEach(it => { grouped[it.id] = grouped[it.id] || { item: it, qty: 0 }; grouped[it.id].qty += 1; });
+  const rows = Object.values(grouped);
+  document.getElementById("resultItem").innerHTML = rows.map(({ item: it, qty: q }) =>
+    `${renderIcon(it)}<span>${it.name}${q > 1 ? ` x${q}` : ""}</span>`
+  ).join("");
+
   overlay.classList.remove("hidden");
-  playResultCardAnimation(success ? item : null);
+  const bestValue = Math.max(...rows.map(r => r.item.value));
+  playResultCardAnimation(bestValue);
 }
 
 // ==== Кейсы (рулетка в стиле CS:GO) ====
@@ -497,6 +545,240 @@ function runCaseReel(caseDef, winnerId) {
 document.getElementById("caseRevealClose").addEventListener("click", () => {
   document.getElementById("caseRevealOverlay").classList.add("hidden");
 });
+
+// ==== Маркетплейс: живой рынок с ботами ====
+// state.market.listings — общий пул лотов (и боты, и свои), но UI их не
+// мешает: вкладка "Рынок" показывает только чужие (боты), "Мои
+// объявления" — только свои. Монеты (state.coins) — отдельная валюта от
+// "ценности инвентаря" в шапке (та просто сумма для отображения).
+const MARKET_PAGE_SIZE = 12;
+let marketSubTab = "browse";
+let marketPage = 0;
+const marketPendingBuys = new Set(); // id лотов, для которых сейчас идёт "Обработка сделки..."
+
+function ensureMarket() {
+  if (!state.market) state.market = { listings: [], soldLog: [], lastTick: Date.now() };
+  return state.market;
+}
+
+// Единая точка входа для симуляции рынка — вызывается один раз при
+// загрузке (elapsed может быть часами простоя) и раз в 20с, пока вкладка
+// открыта. Порядок важен: сперва решаем судьбу СВОИХ лотов по старому
+// таймингу, потом уже крутим ротацию ботов на новый now.
+function marketTick() {
+  const market = ensureMarket();
+  const now = Date.now();
+  const elapsed = Math.max(0, now - (market.lastTick || now));
+
+  market.listings.forEach(listing => {
+    if (listing.sellerType !== "player") return;
+    const item = getEffectiveItem(listing.itemId);
+    if (!item) return;
+    if (rollPlayerListingSold(listing, item, now)) {
+      const proceeds = Math.max(1, Math.round(listing.price * (1 - MARKET_COMMISSION - MARKET_LISTING_FEE)));
+      state.coins += proceeds;
+      market.soldLog.unshift({
+        itemId: listing.itemId, qty: listing.qty, price: listing.price,
+        proceeds, soldAt: now,
+      });
+      market.soldLog = market.soldLog.slice(0, 30);
+      listing._sold = true;
+    } else {
+      listing.lastCheckedAt = now;
+    }
+  });
+  market.listings = market.listings.filter(l => !l._sold);
+
+  market.listings = rotateBotListings(market.listings, now, elapsed);
+  market.lastTick = now;
+  saveState();
+}
+
+function buyListing(listingId) {
+  const market = ensureMarket();
+  const listing = market.listings.find(l => l.id === listingId);
+  if (!listing || marketPendingBuys.has(listingId)) return;
+
+  marketPendingBuys.add(listingId);
+  renderMarket();
+
+  setTimeout(() => {
+    marketPendingBuys.delete(listingId);
+    const stillThere = ensureMarket().listings.find(l => l.id === listingId);
+    const item = stillThere ? getEffectiveItem(stillThere.itemId) : null;
+
+    if (!stillThere || rollListingSniped(item, stillThere)) {
+      if (stillThere) market.listings = market.listings.filter(l => l.id !== listingId);
+      showToast("Лот уже продан");
+      renderAll();
+      return;
+    }
+    if (state.coins < stillThere.price) {
+      showToast("Не хватает монет");
+      renderMarket();
+      return;
+    }
+    state.coins -= stillThere.price;
+    addItem(stillThere.itemId, stillThere.qty);
+    market.listings = market.listings.filter(l => l.id !== listingId);
+    saveState();
+    showToast(`Куплено: ${getEffectiveItem(stillThere.itemId).name} x${stillThere.qty}`);
+    renderAll();
+  }, 1000 + Math.random() * 1000);
+}
+
+function createListing() {
+  const hint = document.getElementById("marketCreateHint");
+  const itemId = document.getElementById("marketItemSelect").value;
+  const qty = Math.max(1, Math.floor(Number(document.getElementById("marketQtyInput").value) || 0));
+  const price = Math.max(1, Math.floor(Number(document.getElementById("marketPriceInput").value) || 0));
+  const owned = invQty(itemId);
+
+  function fail(msg) { hint.textContent = msg; hint.classList.add("error"); }
+  if (!itemId || owned <= 0) return fail("Нечего выставлять.");
+  if (qty > owned) return fail(`Максимум ${owned} шт.`);
+  if (!price) return fail("Укажи цену.");
+
+  // Плата за размещение (1%) берётся не сразу монетами (иначе с балансом 0
+  // выставить вообще ничего нельзя — тупик для нового игрока), а вычитается
+  // вместе с комиссией из выручки при продаже, см. marketTick().
+  removeItem(itemId, qty);
+  ensureMarket().listings.push({
+    id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    sellerType: "player",
+    sellerName: "Вы",
+    itemId, qty, price,
+    listedAt: Date.now(),
+    lastCheckedAt: Date.now(),
+  });
+  saveState();
+  renderAll();
+}
+
+function cancelListing(listingId) {
+  const market = ensureMarket();
+  const listing = market.listings.find(l => l.id === listingId && l.sellerType === "player");
+  if (!listing) return;
+  addItem(listing.itemId, listing.qty);
+  market.listings = market.listings.filter(l => l.id !== listingId);
+  saveState();
+  renderAll();
+}
+
+function renderMarketListingCard(listing, { own } = {}) {
+  const item = getEffectiveItem(listing.itemId);
+  if (!item) return "";
+  const pending = marketPendingBuys.has(listing.id);
+  const actionHtml = own
+    ? `<button class="market-cancel-btn" data-id="${listing.id}">Снять</button>`
+    : `<button class="market-buy-btn" data-id="${listing.id}" ${pending ? "disabled" : ""}>${pending ? "Обработка сделки..." : "Купить"}</button>`;
+  // listing.price всегда за ВЕСЬ лот — при qty>1 отдельно показываем цену
+  // за штуку, иначе "x15 — 30" читается неоднозначно (за всё или за одну?).
+  const perUnitHtml = listing.qty > 1
+    ? `<div class="market-price-unit">${Math.round(listing.price / listing.qty)} ${COIN_ICON} / шт</div>`
+    : "";
+  return `
+    <div class="market-item rarity-${getRarity(item)}">
+      <div class="market-seller">${listing.sellerName}</div>
+      ${renderIcon(item)}
+      <div class="inv-name">${item.name}${listing.qty > 1 ? ` x${listing.qty}` : ""}</div>
+      <div class="market-price">${listing.price} ${COIN_ICON}${listing.qty > 1 ? " всего" : ""}</div>
+      ${perUnitHtml}
+      <div class="market-actions">${actionHtml}</div>
+    </div>
+  `;
+}
+
+function renderMarket() {
+  document.getElementById("marketBalance").textContent = state.coins;
+  document.querySelectorAll(".market-subtab-btn").forEach(b => b.classList.toggle("active", b.dataset.msub === marketSubTab));
+  document.getElementById("marketBrowsePage").classList.toggle("hidden", marketSubTab !== "browse");
+  document.getElementById("marketMinePage").classList.toggle("hidden", marketSubTab !== "mine");
+
+  const market = ensureMarket();
+
+  if (marketSubTab === "browse") {
+    const botLots = market.listings.filter(l => l.sellerType === "bot").sort((a, b) => a.id < b.id ? -1 : 1);
+    const maxPage = Math.max(0, Math.ceil(botLots.length / MARKET_PAGE_SIZE) - 1);
+    marketPage = Math.min(marketPage, maxPage);
+    const pageItems = botLots.slice(marketPage * MARKET_PAGE_SIZE, marketPage * MARKET_PAGE_SIZE + MARKET_PAGE_SIZE);
+
+    const grid = document.getElementById("marketGrid");
+    grid.innerHTML = pageItems.length
+      ? pageItems.map(l => renderMarketListingCard(l)).join("")
+      : `<div class="empty-note">Рынок пуст, загляни чуть позже.</div>`;
+    grid.querySelectorAll(".market-buy-btn").forEach(btn => {
+      btn.addEventListener("click", () => buyListing(btn.dataset.id));
+    });
+
+    const pager = document.getElementById("marketPagination");
+    pager.innerHTML = `
+      <button id="marketPrevBtn" ${marketPage <= 0 ? "disabled" : ""}>←</button>
+      <span>${marketPage + 1} / ${maxPage + 1}</span>
+      <button id="marketNextBtn" ${marketPage >= maxPage ? "disabled" : ""}>→</button>
+    `;
+    document.getElementById("marketPrevBtn").addEventListener("click", () => { marketPage--; renderMarket(); });
+    document.getElementById("marketNextBtn").addEventListener("click", () => { marketPage++; renderMarket(); });
+  } else {
+    const hint = document.getElementById("marketCreateHint");
+    hint.classList.remove("error");
+    hint.textContent = `При продаже с выручки удержится ${Math.round((MARKET_COMMISSION + MARKET_LISTING_FEE) * 100)}% (комиссия + размещение).`;
+
+    // Выпадашка предметов на продажу — тот же источник, что у renderInventory
+    // (реальные ключи инвентаря через getEffectiveItem, а не статичный ITEMS,
+    // иначе предметы с ★-качеством из апгрейда туда бы не попали).
+    const select = document.getElementById("marketItemSelect");
+    const prevSelected = select.value;
+    const sellable = Object.keys(state.inventory)
+      .filter(id => state.inventory[id] > 0)
+      .map(id => getEffectiveItem(id))
+      .filter(Boolean);
+    select.innerHTML = sellable.length
+      ? sellable.map(it => `<option value="${it.id}">${it.name} (есть ${invQty(it.id)})</option>`).join("")
+      : `<option value="">Нечего продавать</option>`;
+    if (sellable.some(it => it.id === prevSelected)) select.value = prevSelected;
+    const selectedItem = sellable.find(it => it.id === select.value);
+    document.getElementById("marketQtyInput").max = selectedItem ? invQty(selectedItem.id) : 1;
+
+    const mine = market.listings.filter(l => l.sellerType === "player");
+    const activeEl = document.getElementById("marketMineActive");
+    activeEl.innerHTML = mine.length
+      ? mine.map(l => renderMarketListingCard(l, { own: true })).join("")
+      : `<div class="empty-note">Нет активных лотов.</div>`;
+    activeEl.querySelectorAll(".market-cancel-btn").forEach(btn => {
+      btn.addEventListener("click", () => cancelListing(btn.dataset.id));
+    });
+
+    const soldEl = document.getElementById("marketMineSold");
+    soldEl.innerHTML = market.soldLog.length
+      ? market.soldLog.map(s => {
+          const it = getEffectiveItem(s.itemId);
+          return `<div class="market-sold-row">${renderIcon(it)}<span>${it.name}${s.qty > 1 ? ` x${s.qty}` : ""} — продано за ${s.price}, получено ${s.proceeds} ${COIN_ICON}</span></div>`;
+        }).join("")
+      : `<div class="empty-note">Пока ничего не продано.</div>`;
+  }
+}
+
+document.querySelectorAll(".market-subtab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    marketSubTab = btn.dataset.msub;
+    marketPage = 0;
+    renderMarket();
+  });
+});
+document.getElementById("marketCreateBtn").addEventListener("click", createListing);
+
+// Живая подсказка "= X за шт." под полем цены — цена в форме всегда за
+// ВЕСЬ лот (как и everywhere в listing.price), но при qty>1 легко забыть
+// и вписать цену за штуку по привычке, отсюда и была путаница на скрине.
+function updateMarketPriceUnitHint() {
+  const qty = Math.max(1, Math.floor(Number(document.getElementById("marketQtyInput").value) || 0));
+  const price = Math.floor(Number(document.getElementById("marketPriceInput").value) || 0);
+  const hint = document.getElementById("marketPriceUnitHint");
+  hint.textContent = (qty > 1 && price > 0) ? `= ${Math.round(price / qty)} 🪙 за 1 шт.` : "";
+}
+document.getElementById("marketQtyInput").addEventListener("input", updateMarketPriceUnitHint);
+document.getElementById("marketPriceInput").addEventListener("input", updateMarketPriceUnitHint);
 
 function showItemResult(title, item, qty) {
   const overlay = document.getElementById("resultOverlay");
@@ -775,9 +1057,12 @@ document.getElementById("minimalThemeToggle").addEventListener("change", (e) => 
   applyTheme();
 });
 
-// --- Кейс рамок: золотая коробка с "?" в стиле CS:GO ---
+// --- Кейс рамок: та же рулетка CS:GO-style, что и у предметных кейсов ---
 let frameCaseOpening = false;
-const FRAME_BOX_SHAKE_MS = 1100;
+const FRAME_REEL_TILE_FULL_WIDTH = 96; // 82px плитка + 7+7px отступов (см. .frame-reel-tile)
+const FRAME_REEL_TILE_COUNT = 40;
+const FRAME_REEL_WINNER_INDEX = 34;
+const FRAME_REEL_SPIN_MS = 4200;
 
 function openFrameCase(collection) {
   if (frameCaseOpening) return;
@@ -789,46 +1074,68 @@ function openFrameCase(collection) {
   renderAll();
 
   const wonFrame = pickFrameFromCollection(collection);
-  runFrameBoxReveal(wonFrame);
+  runFrameReel(collection, wonFrame);
 }
 
-function runFrameBoxReveal(frame) {
+function runFrameReel(collection, wonFrame) {
   const overlay = document.getElementById("frameRevealOverlay");
-  const boxStage = document.getElementById("frameBoxStage");
+  const viewport = document.getElementById("frameReelViewport");
+  const track = document.getElementById("frameReelTrack");
   const resultStage = document.getElementById("frameResultStage");
-  const box = document.getElementById("goldBox");
   const closeBtn = document.getElementById("frameRevealClose");
+  const pool = collection.frames;
 
-  boxStage.classList.remove("hidden");
+  viewport.classList.remove("hidden");
   resultStage.classList.add("hidden");
-  box.classList.remove("opening");
-  box.className = "shaking";
-  box.id = "goldBox";
   closeBtn.disabled = true;
   closeBtn.textContent = "Открываю...";
   overlay.classList.remove("hidden");
 
+  const tiles = [];
+  for (let i = 0; i < FRAME_REEL_TILE_COUNT; i++) {
+    tiles.push(i === FRAME_REEL_WINNER_INDEX ? wonFrame : pool[Math.floor(Math.random() * pool.length)]);
+  }
+
+  track.style.transition = "none";
+  track.style.transform = "translateX(0px)";
+  track.innerHTML = tiles.map((f, i) => `
+    <div class="frame-reel-tile" data-i="${i}">
+      <div class="frame-ring ${f.css}"><div class="frame-ring-inner"></div></div>
+    </div>
+  `).join("");
+
+  void track.offsetWidth; // force reflow, чтобы translateX(0) точно применился до анимации
+
+  const viewportWidth = viewport.clientWidth;
+  const jitter = (Math.random() - 0.5) * (FRAME_REEL_TILE_FULL_WIDTH * 0.5);
+  const targetX = -(FRAME_REEL_WINNER_INDEX * FRAME_REEL_TILE_FULL_WIDTH + FRAME_REEL_TILE_FULL_WIDTH / 2 - viewportWidth / 2) + jitter;
+
+  requestAnimationFrame(() => {
+    track.style.transition = `transform ${FRAME_REEL_SPIN_MS}ms cubic-bezier(0.08, 0.66, 0.1, 1)`;
+    track.style.transform = `translateX(${targetX}px)`;
+  });
+
   setTimeout(() => {
-    box.classList.remove("shaking");
-    box.classList.add("opening");
+    const winnerTile = track.querySelector(`[data-i="${FRAME_REEL_WINNER_INDEX}"]`);
+    if (winnerTile) winnerTile.classList.add("reel-winner");
 
     setTimeout(() => {
-      boxStage.classList.add("hidden");
+      viewport.classList.add("hidden");
       resultStage.classList.remove("hidden");
 
       document.getElementById("frameResultAvatarImg").src = ensureProfile().avatar || "icon.svg";
-      document.getElementById("frameResultFrame").className = `frame-ring ${frame.css}`;
-      document.getElementById("frameResultName").textContent = frame.name;
-      document.getElementById("frameResultRarity").textContent = frame.rarity;
+      document.getElementById("frameResultFrame").className = `frame-ring ${wonFrame.css}`;
+      document.getElementById("frameResultName").textContent = wonFrame.name;
+      document.getElementById("frameResultRarity").textContent = wonFrame.rarity;
 
-      if (!state.frames.includes(frame.id)) state.frames.push(frame.id);
+      if (!state.frames.includes(wonFrame.id)) state.frames.push(wonFrame.id);
       saveState();
       frameCaseOpening = false;
       closeBtn.disabled = false;
       closeBtn.textContent = "ОК";
       renderAll();
-    }, 400);
-  }, FRAME_BOX_SHAKE_MS);
+    }, 500);
+  }, FRAME_REEL_SPIN_MS + 150);
 }
 
 document.getElementById("frameRevealClose").addEventListener("click", () => {
@@ -890,6 +1197,7 @@ function renderAll(opts = {}) {
   renderTargetSlot();
   renderChance();
   renderCases();
+  renderMarket();
   renderClicker();
   renderProfile();
   updateClaimButton();
@@ -898,11 +1206,16 @@ function renderAll(opts = {}) {
 
 applyTheme();
 initDailyWheel();
+marketTick(); // разово при загрузке — досыпает рынок и досчитывает офлайн-продажи твоих лотов
 renderAll();
 setInterval(() => {
   updateClaimButton();
   updateDailyButton();
 }, 1000);
+setInterval(() => {
+  marketTick();
+  renderMarket();
+}, MARKET_ROTATION_STEP_MS);
 
 // PWA service worker (для офлайна/установки на телефон).
 // Автообновление: как только активируется новый service worker,
