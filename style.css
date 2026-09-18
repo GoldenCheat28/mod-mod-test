@@ -46,9 +46,15 @@ html, body {
 
 #balanceLine {
   flex: 1;
-  font-size: 14px;
+  font-size: 16px;
   color: #bbb;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
+#balanceLine .coin-icon { flex-shrink: 0; }
 
 #claimBtn {
   background: #c96f3a;
@@ -102,11 +108,11 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 
 #inventoryGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   gap: 8px;
 }
 
-.inv-item, .target-item {
+.inv-item, .target-item, .market-item {
   background: #1e1e1e;
   border: 2px solid #2c2c2c;
   border-radius: 10px;
@@ -119,29 +125,30 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 }
 .inv-item.depleted { opacity: 0.35; pointer-events: none; }
 .target-item.selected { box-shadow: 0 0 0 2px #5de3e0; }
+.market-item { cursor: default; }
 
 /* --- Карточки предметов в стиле рангов DBD: градиент + цветная рамка по редкости ---
    Составные селекторы (.inv-item.rarity-x) специально сильнее одиночного
    .reel-tile / .inv-item, иначе более поздние по файлу базовые правила
    перекрывали бы цвет рамки редкости. */
-.inv-item.rarity-common, .target-item.rarity-common, .reel-tile.rarity-common {
+.inv-item.rarity-common, .target-item.rarity-common, .reel-tile.rarity-common, .market-item.rarity-common {
   border-color: #8d8d8d;
   background: linear-gradient(180deg, rgba(141,141,141,0.22), #1a1a1a 65%);
 }
-.inv-item.rarity-uncommon, .target-item.rarity-uncommon, .reel-tile.rarity-uncommon {
+.inv-item.rarity-uncommon, .target-item.rarity-uncommon, .reel-tile.rarity-uncommon, .market-item.rarity-uncommon {
   border-color: #f2c94c;
   background: linear-gradient(180deg, rgba(242,201,76,0.22), #1a1a1a 65%);
 }
-.inv-item.rarity-rare, .target-item.rarity-rare, .reel-tile.rarity-rare {
+.inv-item.rarity-rare, .target-item.rarity-rare, .reel-tile.rarity-rare, .market-item.rarity-rare {
   border-color: #2ecc71;
   background: linear-gradient(180deg, rgba(46,204,113,0.22), #1a1a1a 65%);
 }
-.inv-item.rarity-epic, .target-item.rarity-epic, .reel-tile.rarity-epic {
+.inv-item.rarity-epic, .target-item.rarity-epic, .reel-tile.rarity-epic, .market-item.rarity-epic {
   border-color: #9b59d0;
   background: linear-gradient(180deg, rgba(155,89,208,0.25), #1a1a1a 65%);
   box-shadow: 0 0 10px rgba(155,89,208,0.3);
 }
-.inv-item.rarity-legendary, .target-item.rarity-legendary, .reel-tile.rarity-legendary {
+.inv-item.rarity-legendary, .target-item.rarity-legendary, .reel-tile.rarity-legendary, .market-item.rarity-legendary {
   border-color: #ff5f96;
   background: linear-gradient(180deg, rgba(255,95,150,0.28), #1a1a1a 65%);
   box-shadow: 0 0 14px rgba(255,95,150,0.45);
@@ -149,32 +156,204 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 .target-item.selected { border-color: #5de3e0 !important; }
 
 .item-tile {
-  width: 36px;
-  height: 36px;
+  width: 72px;
+  height: 72px;
   margin: 0 auto 4px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 30px;
 }
 .item-img {
-  width: 36px;
-  height: 36px;
-  margin: 0 auto 4px;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 6px;
   display: block;
-  image-rendering: pixelated;
+  image-rendering: auto;
   object-fit: contain;
   -webkit-user-drag: none;
   user-drag: none;
   pointer-events: none; /* клики/драг всегда обрабатывает родительская карточка */
 }
 
-.inv-name { font-size: 11px; color: #ccc; }
-.inv-qty { font-size: 11px; color: #5de3e0; }
-.inv-worth { font-size: 10px; color: #888; margin-top: 2px; }
+.coin-icon {
+  width: 42px;
+  height: 42px;
+  vertical-align: -18px;
+  object-fit: contain;
+  image-rendering: auto;
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: none;
+}
+
+.inv-name { font-size: 14px; color: #ccc; }
+.inv-qty { font-size: 14px; color: #5de3e0; }
+.inv-worth { font-size: 13px; color: #888; margin-top: 3px; }
 
 .empty-note { color: #777; font-size: 13px; grid-column: 1 / -1; text-align: center; padding: 20px 0; }
+
+/* ==================== Маркетплейс ==================== */
+#marketBalanceLine {
+  font-size: 15px;
+  color: #5de3e0;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+#marketGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+.market-price {
+  font-size: 12px;
+  color: #888;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.market-price-unit {
+  font-size: 10.5px;
+  color: #5de3e0;
+  margin-top: 1px;
+}
+.market-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.market-sell-btn, .market-buy-btn, .market-cancel-btn {
+  flex: 1;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.market-sell-btn, .market-cancel-btn { background: #3a2323; color: #ff9e9e; }
+.market-sell-btn:disabled, .market-cancel-btn:disabled { background: #262626; color: #555; cursor: default; }
+.market-buy-btn { background: #1f3a2a; color: #7ee6a0; }
+.market-buy-btn:disabled { background: #262626; color: #999; cursor: default; font-size: 10px; }
+
+.market-seller {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Подвкладки Рынок / Мои объявления ---- */
+#marketSubTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #262626;
+}
+.market-subtab-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 4px 10px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.market-subtab-btn.active { color: #5de3e0; border-bottom-color: #5de3e0; }
+.market-subpage.hidden { display: none; }
+
+/* ---- Пагинация ---- */
+#marketPagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #999;
+}
+#marketPagination button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1e1e1e;
+  color: #eee;
+  font-size: 15px;
+  cursor: pointer;
+}
+#marketPagination button:disabled { opacity: 0.35; cursor: default; }
+
+/* ---- Форма выставления лота ---- */
+#marketCreateForm {
+  background: #1a1a1a;
+  border: 1px solid #262626;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+#marketCreateForm h3 { margin-top: 0; }
+#marketCreateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#marketCreateRow select, #marketCreateRow input {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #eee;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+#marketItemSelect { flex: 2 1 160px; min-width: 0; }
+#marketQtyInput { flex: 1 1 60px; width: 60px; }
+#marketPriceInput { flex: 1 1 90px; width: 90px; }
+#marketCreateBtn {
+  flex: 1 1 100px;
+  border: none;
+  border-radius: 8px;
+  background: #2ecc71;
+  color: #06210f;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+#marketCreateHint { margin: 8px 0 0; color: #999; font-size: 12px; }
+#marketCreateHint.error { color: #e05555; }
+#marketPriceUnitHint { margin: 6px 0 0; color: #5de3e0; font-size: 12px; min-height: 15px; }
+
+#marketMineActive, #marketMineSold { margin-bottom: 8px; }
+#marketMineActive {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+.market-sold-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #1a1a1a;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #aaa;
+}
+.market-sold-row .item-img, .market-sold-row .item-tile { width: 28px; height: 28px; flex-shrink: 0; }
 
 #upgraderPanel {
   background: #1a1a1a;
@@ -203,10 +382,10 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   gap: 4px;
 }
 
-.slot-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+.slot-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
 .slot-content { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
 .slot-empty { font-size: 26px; line-height: 1; color: #444; font-weight: 300; }
-.slot-value { font-size: 12px; color: #5de3e0; font-weight: 600; }
+.slot-value { font-size: 15px; color: #5de3e0; font-weight: 600; }
 
 .stake-chip {
   position: relative;
@@ -218,7 +397,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   align-items: center;
   font-size: 10px;
 }
-.stake-chip .item-tile, .stake-chip .item-img { width: 26px; height: 26px; margin-bottom: 2px; }
+.stake-chip .item-tile, .stake-chip .item-img { width: 32px; height: 32px; margin-bottom: 2px; }
 
 .upgrade-arrow { display: flex; align-items: center; font-size: 20px; color: #555; }
 
@@ -437,7 +616,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 
 .target-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
   gap: 8px;
 }
 
@@ -470,10 +649,10 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 }
 
 .case-info { flex: 1; min-width: 0; }
-.case-name { font-size: 15px; font-weight: 700; color: #eee; margin-bottom: 4px; }
-.case-cost { font-size: 12px; color: #999; display: flex; align-items: center; gap: 4px; }
-.case-cost .item-tile, .case-cost .item-img { width: 16px; height: 16px; margin: 0; display: inline-block; vertical-align: middle; }
-.case-pool { font-size: 10px; color: #666; margin-top: 4px; }
+.case-name { font-size: 16px; font-weight: 700; color: #eee; margin-bottom: 4px; }
+.case-cost { font-size: 13px; color: #999; display: flex; align-items: center; gap: 4px; }
+.case-cost .item-tile, .case-cost .item-img { width: 20px; height: 20px; margin: 0; display: inline-block; vertical-align: middle; }
+.case-pool { font-size: 11px; color: #666; margin-top: 4px; }
 
 .case-open-btn {
   border: none;
@@ -671,7 +850,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
 #clickerBtn img {
   width: 110px;
   height: 110px;
-  image-rendering: pixelated;
+  image-rendering: auto;
   object-fit: contain;
   pointer-events: none;
   -webkit-user-drag: none;
@@ -758,7 +937,9 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   align-items: flex-end;
   gap: 12px;
   padding: 0 14px;
-  margin-top: -34px;
+  margin-top: -30px;
+  position: relative;
+  z-index: 1; /* поверх баннера, иначе ник заезжает под него при отрицательном margin-top */
 }
 #profileAvatarWrap { position: relative; flex-shrink: 0; }
 #profileAvatarFrame { width: 72px; height: 72px; }
@@ -776,8 +957,13 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   font-size: 11px;
   padding: 0;
 }
-#profileNameBlock { padding-bottom: 6px; }
-#profileUsername { font-size: 16px; font-weight: 700; color: #eee; }
+#profileNameBlock { padding-bottom: 8px; }
+#profileUsername {
+  font-size: 16px;
+  font-weight: 700;
+  color: #eee;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6);
+}
 .link-btn {
   background: none;
   border: none;
@@ -1033,6 +1219,36 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   --ring: 4.5px;
 }
 
+/* --- Сияние: не процедурный узор, а готовый PNG-тотем с прозрачным фоном.
+   Остальные рамки рисуют ::before ПОД аватаркой (там только тонкая полоса
+   узора и видна, в зазоре между внешним кругом и .frame-ring-inner) — для
+   тотема это не годится, его нужно видно целиком поверх фото. Поэтому:
+   - --ring: 0, аватарка растягивается на весь круг, зазора под узор нет;
+   - ::before поднят выше .frame-ring-inner (z-index) — тотем лежит НАД фото;
+   - фаска ::after у .frame-ring-inner (тонкая белая обводка) выключена,
+     иначе от неё остаётся кольцевая полоска по краю, свою рамку тотем несёт
+     сам в текстуре;
+   - overflow: visible + inset больше 0 — фото-то не идеально кадрировано,
+     и тотем должен вылезать ЗА круг аватарки, как декорации в Discord,
+     а не обрезаться по её границе. Базовый .frame-ring обрезает всё
+     (overflow:hidden) под процедурные узоры, тут это специально снято. */
+.frame-halo {
+  --glow: rgba(255,255,255,.6); --pulse: 3.6s;
+  --ring: 0px;
+  overflow: visible;
+}
+.frame-halo::before {
+  inset: -22%;
+  z-index: 2;
+  border-radius: 0; /* база .frame-ring::before скругляет в круг — тотем должен остаться квадратным, как исходная текстура */
+  background: url('assets/frames/halo.png') center/contain no-repeat;
+  transform: scaleX(-1); /* зеркалим слева-направо, не путать с инверсией цвета */
+  animation: frameGlow var(--pulse) ease-in-out infinite;
+  pointer-events: none;
+}
+.frame-halo::after { display: none; }
+.frame-halo .frame-ring-inner::after { display: none; }
+
 /* дефолт без рамки — тонкий нейтральный ободок, без узора */
 .frame-ring.frame-none { background: #333; --ring: 2px; }
 .frame-ring.frame-none::before,
@@ -1055,50 +1271,70 @@ h3 { margin: 14px 0 8px; font-size: 13px; color: #999; font-weight: 500; }
   border: 1px solid #333;
   border-radius: 16px;
   padding: 28px 20px 20px;
-  width: min(90vw, 340px);
+  width: min(92vw, 380px);
   text-align: center;
 }
 
-#frameBoxStage { height: 180px; display: flex; align-items: center; justify-content: center; }
-#frameBoxStage.hidden { display: none; }
+/* Рулетка кейса рамок — тот же механизм, что у #reelViewport/#reelTrack
+   (см. runCaseReel в app.js), только тайлы — превью рамок, не предметов. */
+#frameReelViewport {
+  position: relative;
+  height: 96px;
+  overflow: hidden;
+  background: #0d0d0d;
+  border-radius: 10px;
+  border: 1px solid #262626;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 90%, transparent 100%);
+}
+#frameReelViewport.hidden { display: none; }
 
-#goldBox {
-  width: 120px;
-  height: 120px;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #ffe08a, #b8860b);
-  border: 3px solid #7a5a12;
-  box-shadow: 0 0 0 rgba(242,201,76,0);
+#frameReelTrack {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  will-change: transform;
+}
+
+.frame-reel-tile {
+  width: 82px;
+  height: 82px;
+  flex-shrink: 0;
+  margin: 7px;
+  border-radius: 10px;
+  border: 2px solid #2c2c2c;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-#goldBoxQuestion {
-  font-size: 52px;
-  font-weight: 800;
-  color: #6b4a05;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+.frame-reel-tile.reel-winner {
+  border-color: #2ecc71 !important;
+  box-shadow: 0 0 12px rgba(46, 204, 113, 0.7);
 }
-#goldBox.shaking {
-  animation: goldBoxShake 0.35s ease-in-out infinite, goldBoxGlow 1.4s ease-in-out infinite;
+.frame-reel-tile .frame-ring { width: 56px; height: 56px; }
+
+#frameReelMarker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #f2c94c;
+  box-shadow: 0 0 6px rgba(242, 201, 76, 0.8);
 }
-@keyframes goldBoxShake {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-6deg); }
-  75% { transform: rotate(6deg); }
+#frameReelMarker::before, #frameReelMarker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
 }
-@keyframes goldBoxGlow {
-  0%, 100% { box-shadow: 0 0 10px rgba(242,201,76,0.5); }
-  50% { box-shadow: 0 0 34px rgba(242,201,76,0.95); }
-}
-#goldBox.opening {
-  animation: goldBoxPop 0.4s ease forwards;
-}
-@keyframes goldBoxPop {
-  0% { transform: scale(1); opacity: 1; }
-  60% { transform: scale(1.3); opacity: 1; }
-  100% { transform: scale(0.2); opacity: 0; }
-}
+#frameReelMarker::before { top: -1px; border-top: 7px solid #f2c94c; }
+#frameReelMarker::after { bottom: -1px; border-bottom: 7px solid #f2c94c; }
 
 #frameResultStage.hidden { display: none; }
 #frameResultAvatar { display: flex; justify-content: center; margin-bottom: 14px; }
@@ -1314,37 +1550,79 @@ body.theme-minimal .case-pool { color: #666; }
    слева, а активная вкладка — справа, вместо того чтобы идти одно под
    другим в узкой ленте. То же содержимое, просто раскладка горизонтальная. */
 @media (min-width: 900px) {
-  #app { max-width: 1080px; }
+  #app { max-width: 1200px; }
+
+  #topbar { padding: 14px 24px; }
+  #tabBar { padding: 10px 24px 0; }
+  .tab-btn { flex: none; padding: 10px 18px; font-size: 14px; }
 
   main {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 320px 1fr;
     align-items: start;
-    gap: 24px;
+    gap: 28px;
+    padding: 24px;
   }
 
   #inventoryPanel {
     grid-column: 1;
     grid-row: 1 / -1;
     position: sticky;
-    top: 84px;
-    max-height: calc(100vh - 104px);
+    top: 88px;
+    max-height: calc(100vh - 112px);
     overflow-y: auto;
+    overscroll-behavior: contain; /* иначе докрут до упора отдаёт скролл странице и Chrome рисует полосу overscroll-glow у края колонки */
+    background: #1a1a1a;
+    border: 1px solid #262626;
+    border-radius: 14px;
+    padding: 16px;
   }
+  #inventoryPanel h2 { font-size: 17px; }
 
   .tab-page { grid-column: 2; }
 
-  /* в узкой боковой колонке чуть плотнее плитки, чем на телефоне */
-  #inventoryGrid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
-
-  /* в широкой правой колонке — в разы больше плиток в ряд */
+  /* плитки крупнее, чем на телефоне — и сама иконка внутри растёт вместе с ними,
+     иначе в увеличенной карточке остаётся тот же мелкий 36px рисунок посередине */
+  #inventoryGrid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
   .target-grid,
-  #ownedFramesGrid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+  #ownedFramesGrid,
+  #marketGrid,
+  #marketMineActive { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+
+  .inv-item, .target-item, .market-item { padding: 16px 8px; border-radius: 12px; }
+  .inv-item .item-img, .target-item .item-img, .market-item .item-img,
+  .inv-item .item-tile, .target-item .item-tile, .market-item .item-tile { width: 88px; height: 88px; }
+  .inv-name { font-size: 15px; }
+  .inv-qty { font-size: 14.5px; }
+  .inv-worth { font-size: 14px; }
+  .coin-icon { width: 48px; height: 48px; vertical-align: -19px; }
 
   #casesGrid,
   #frameCasesGrid { flex-direction: row; flex-wrap: wrap; }
   #casesGrid .case-card,
-  #frameCasesGrid .case-card { flex: 1 1 320px; }
+  #frameCasesGrid .case-card { flex: 1 1 340px; padding: 16px; }
+  .case-icon { width: 72px; height: 72px; }
+  .case-icon .item-img, .case-icon .item-tile { width: 56px; height: 56px; }
+  .case-name { font-size: 16px; }
 
-  #upgraderPanel .upgrade-row { max-width: 620px; }
+  #upgraderPanel { padding: 24px; }
+  #upgraderPanel .upgrade-row { max-width: 640px; gap: 16px; }
+  .upgrade-slot { min-height: 130px; padding: 14px; }
+  .upgrade-slot .item-img, .upgrade-slot .item-tile { width: 60px; height: 60px; }
+
+  #wheelWrap, #dailyWheelWrap { width: 260px; height: 260px; }
+
+  #clickerPanel { padding: 28px 14px 32px; }
+  #clickerBtn { width: 190px; height: 190px; }
+  #clickerBtn img { width: 130px; height: 130px; }
+}
+
+/* Ультра-широкий монитор: колонкам ещё просторнее, но контент не расползается
+   бесконечно — упираемся в комфортный максимум, а не в 100% ширины экрана. */
+@media (min-width: 1300px) {
+  #app { max-width: 1360px; }
+  main { grid-template-columns: 340px 1fr; gap: 36px; padding: 28px 32px; }
+  #inventoryGrid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+  .target-grid,
+  #ownedFramesGrid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); }
 }

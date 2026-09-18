@@ -18,13 +18,14 @@
 
   <header id="topbar">
     <button id="fullscreenBtn" title="На весь экран">⛶</button>
-    <div id="balanceLine">Инвентарь: <span id="totalValue">0</span> ⛃</div>
+    <div id="balanceLine">Инвентарь: <span id="totalValue">0</span> <img class="coin-icon" src="assets/textures/coin.png" alt="" draggable="false"></div>
     <button id="claimBtn" disabled>Медь: --:--</button>
   </header>
 
   <nav id="tabBar">
     <button class="tab-btn active" data-tab="upgrader">Апгрейдер</button>
     <button class="tab-btn" data-tab="cases">Кейсы</button>
+    <button class="tab-btn" data-tab="market">Маркет</button>
     <button class="tab-btn" data-tab="daily">Колесо удачи</button>
     <button class="tab-btn" data-tab="clicker">Кликер</button>
     <button class="tab-btn" data-tab="profile">Профиль</button>
@@ -54,7 +55,7 @@
           <div class="slot-content" id="stakeContent">
             <span class="slot-empty">+</span>
           </div>
-          <div class="slot-value" id="stakeValueLabel">0 ⛃</div>
+          <div class="slot-value" id="stakeValueLabel">0 <img class="coin-icon" src="assets/textures/coin.png" alt="" draggable="false"></div>
         </div>
 
         <div class="upgrade-arrow">→</div>
@@ -64,7 +65,7 @@
           <div class="slot-content" id="targetContent">
             <span class="slot-empty">+</span>
           </div>
-          <div class="slot-value" id="targetValueLabel">0 ⛃</div>
+          <div class="slot-value" id="targetValueLabel">0 <img class="coin-icon" src="assets/textures/coin.png" alt="" draggable="false"></div>
           <div class="qty-stepper" id="targetQtyStepper">
             <button id="qtyMinus" type="button">−</button>
             <span id="qtyValue">x1</span>
@@ -91,6 +92,41 @@
     <section id="casesPanel" class="tab-page hidden">
       <h2>Кейсы</h2>
       <div id="casesGrid"></div>
+    </section>
+
+    <section id="marketPanel" class="tab-page hidden">
+      <h2>Маркетплейс</h2>
+      <div id="marketBalanceLine">Баланс: <span id="marketBalance">0</span> <img class="coin-icon" src="assets/textures/coin.png" alt="" draggable="false"></div>
+
+      <div id="marketSubTabs">
+        <button class="market-subtab-btn active" data-msub="browse">Рынок</button>
+        <button class="market-subtab-btn" data-msub="mine">Мои объявления</button>
+      </div>
+
+      <div id="marketBrowsePage" class="market-subpage">
+        <div id="marketGrid"></div>
+        <div id="marketPagination"></div>
+      </div>
+
+      <div id="marketMinePage" class="market-subpage hidden">
+        <div id="marketCreateForm">
+          <h3>Выставить на продажу</h3>
+          <div id="marketCreateRow">
+            <select id="marketItemSelect"></select>
+            <input id="marketQtyInput" type="number" min="1" value="1" inputmode="numeric">
+            <input id="marketPriceInput" type="number" min="1" placeholder="Цена за лот" inputmode="numeric">
+            <button id="marketCreateBtn">Выставить</button>
+          </div>
+          <div id="marketPriceUnitHint"></div>
+          <div id="marketCreateHint" class="profile-hint"></div>
+        </div>
+
+        <h3>Активные лоты</h3>
+        <div id="marketMineActive"></div>
+
+        <h3>История продаж</h3>
+        <div id="marketMineSold"></div>
+      </div>
     </section>
 
     <section id="clickerPanel" class="tab-page hidden">
@@ -189,10 +225,9 @@
 
   <div id="frameRevealOverlay" class="hidden">
     <div id="frameRevealCard">
-      <div id="frameBoxStage">
-        <div id="goldBox">
-          <div id="goldBoxQuestion">?</div>
-        </div>
+      <div id="frameReelViewport">
+        <div id="frameReelTrack"></div>
+        <div id="frameReelMarker"></div>
       </div>
       <div id="frameResultStage" class="hidden">
         <div id="frameResultAvatar">
@@ -213,6 +248,7 @@
 </div>
 
 <script src="items.js"></script>
+<script src="market.js"></script>
 <script src="cases.js"></script>
 <script src="daily.js"></script>
 <script src="frames.js"></script>
