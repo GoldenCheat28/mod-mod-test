@@ -322,7 +322,7 @@ func _on_casing_hit(_body: Node, rb: RigidBody3D) -> void:
 	_clink_cooldown[rb.get_instance_id()] = now
 	rb.set_meta("clinks", clinks + 1)
 	var sound := &"casing" if rb.get_meta("kind") == "pistol" else &"shell_drop"
-	Game.play_3d(Sfx.get_stream(sound), rb.global_position, -10.0 - clinks * 4.0, 0.12, 3.0)
+	Game.play_3d(Sfx.get_stream(sound), rb.global_position, -17.0 - clinks * 5.0, 0.1, 3.0)
 
 
 ## Drops a physical copy of a weapon part (e.g. an empty magazine).

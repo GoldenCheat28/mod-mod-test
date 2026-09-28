@@ -355,24 +355,26 @@ func _update_pump(delta: float) -> void:
 	# Stroke: 0-0.14 back, 0.14-0.3 forward.
 	var was := _pump_t
 	_pump_t += delta
+	# The recording clicks back at 0.05 s and forward at 0.25 s; start it so the
+	# clicks land on the stroke ends (0.12 and 0.32).
+	if was < 0.07 and _pump_t >= 0.07:
+		Game.play_3d(Sfx.get_stream(&"pump_back"), global_position, -4.0, 0.03, 2.0)
 	if was < 0.12 and _pump_t >= 0.12:
-		Game.play_3d(Sfx.get_stream(&"pump_back"), global_position, -6.0, 0.05, 2.0)
 		if needs_pump:
 			_eject_casing()
 			needs_pump = false
-	if was < 0.28 and _pump_t >= 0.28:
-		Game.play_3d(Sfx.get_stream(&"pump_forward"), global_position, -6.0, 0.05, 2.0)
+	if was < 0.3 and _pump_t >= 0.3:
 		if not chambered and mag > 0:
 			mag -= 1
 			chambered = true
 	var k := 0.0
 	if _pump_t > 0.0:
-		k = clampf(_pump_t / 0.14, 0.0, 1.0) if _pump_t < 0.14 else clampf(1.0 - (_pump_t - 0.14) / 0.16, 0.0, 1.0)
+		k = clampf(_pump_t / 0.12, 0.0, 1.0) if _pump_t < 0.12 else clampf(1.0 - (_pump_t - 0.12) / 0.2, 0.0, 1.0)
 	if _pump:
 		_pump.position.z = smoothstep(0.0, 1.0, k) * 0.085
 	_action_pose_rot.z = lerpf(_action_pose_rot.z, k * 0.12, 0.5)
 	_action_pose_pos.z = lerpf(_action_pose_pos.z, k * 0.02, 0.5)
-	if _pump_t >= 0.34:
+	if _pump_t >= 0.38:
 		_pump_t = -1.0
 		state = State.IDLE
 
@@ -382,7 +384,7 @@ func _update_pistol_reload(delta: float) -> void:
 	_action_t += delta
 	var empty := _slide_locked
 	# Keyframes: tilt, drop mag, bring new mag, seat, (slide release), return.
-	var tilt := smoothstep(0.0, 0.25, t) * (1.0 - smoothstep(1.35 if empty else 1.2, 1.7 if empty else 1.5, t))
+	var tilt := smoothstep(0.0, 0.25, t) * (1.0 - smoothstep(1.5 if empty else 1.2, 1.85 if empty else 1.5, t))
 	_action_pose_rot = Vector3(0.25, 0.35, 0.55) * tilt
 	_action_pose_pos = Vector3(-0.03, 0.03, 0.02) * tilt
 	if _reload_step == 0 and t > 0.28:
@@ -411,7 +413,13 @@ func _update_pistol_reload(delta: float) -> void:
 			_rec_pos_v += Vector3(0, 0.2, 0)
 			_rec_rot_v += Vector3(-40.0, 0, 0)
 	if _reload_step == 4:
-		if empty and t > 1.35:
+		if empty and t > 1.2 and not has_meta("racked"):
+			# Grab the slide and pull it back before letting it fly.
+			set_meta("racked", true)
+			Game.play_3d(Sfx.get_stream(&"slide_back"), global_position, -5.0, 0.03, 2.0)
+			_rec_rot_v += Vector3(-15.0, 0, 20.0)
+		if empty and t > 1.5:
+			remove_meta("racked")
 			_reload_step = 5
 			_slide_locked = false
 			_slide_t = 0.05
@@ -421,7 +429,7 @@ func _update_pistol_reload(delta: float) -> void:
 			_rec_rot_v += Vector3(25.0, 0, -30.0)
 		elif not empty:
 			_reload_step = 5
-	if _reload_step == 5 and t > (1.75 if empty else 1.55):
+	if _reload_step == 5 and t > (1.9 if empty else 1.55):
 		state = State.IDLE
 		_action_pose_rot = Vector3.ZERO
 		_action_pose_pos = Vector3.ZERO
@@ -479,6 +487,8 @@ func _update_shotgun_reload(delta: float) -> void:
 
 ## Switching away mid-action finishes it instantly so parts are not left displaced.
 func _abort_actions() -> void:
+	if has_meta("racked"):
+		remove_meta("racked")
 	if state == State.RELOADING:
 		if kind == "pistol":
 			if _reload_step >= 1:

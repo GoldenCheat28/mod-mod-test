@@ -36,6 +36,7 @@ var _target: Array[Vector3] = []     # target joint euler per part (YXZ), relati
 var _weak: PackedFloat32Array = []   # per-part muscle weakness from injuries
 var _joint_rid: Array[RID] = []
 var _motor_limit: PackedFloat32Array = []
+var _arm: PackedByteArray = []        # 1 for arm segments (keep a little tone when limp)
 var total_mass := 0.0
 var stand_height := 0.98
 
@@ -179,6 +180,7 @@ func _add_part(part_name: String, parent_name: String, center: Vector3, shape: S
 	_weak.append(1.0)
 	_joint_rid.append(RID())
 	_motor_limit.append(-1.0)
+	_arm.append(1 if part_name.begins_with("upper_arm") or part_name.begins_with("forearm") or part_name.begins_with("hand") else 0)
 	_inertia.append(Vector3.ZERO)
 	_icm.append(_shape_inertia(shape, shape_rot, rb.mass))
 	total_mass += rb.mass
@@ -439,14 +441,14 @@ func _update_state(delta: float) -> void:
 		_death_t += delta
 		match _death_kind:
 			"headshot":
-				# Sharp involuntary tension, short hold, then a smooth, medium-paced release.
-				if _death_t < 0.12:
-					tone = lerpf(tone, 1.5, _death_t / 0.12)
-				elif _death_t < 0.4:
-					tone = 1.5
+				# Brain shot: postural tone is gone almost at once and the body drops.
+				# What is left is a weak, brief involuntary stiffening (mostly arms)
+				# that fades smoothly over about a second.
+				if _death_t < 0.1:
+					tone = lerpf(tone, 0.32, _death_t / 0.1)
 				else:
-					var k := clampf((_death_t - 0.4) / 1.7, 0.0, 1.0)
-					tone = lerpf(1.5, 0.03, 1.0 - pow(1.0 - k, 2.2))
+					var k := clampf((_death_t - 0.1) / 1.1, 0.0, 1.0)
+					tone = lerpf(0.32, 0.02, 1.0 - pow(1.0 - k, 2.0))
 			_:
 				var k := clampf(_death_t / 1.4, 0.0, 1.0)
 				tone = lerpf(tone, 0.08 if alive else 0.03, k * 0.2)
@@ -526,7 +528,7 @@ func _side(part: String, side: String, euler: Vector3) -> void:
 func _compose_pose(delta: float) -> void:
 	for i in _target.size():
 		_target[i] = Vector3.ZERO
-	if _death_kind == "headshot" and _death_t >= 0.0 and _death_t < 1.2:
+	if _death_kind == "headshot" and _death_t >= 0.0 and _death_t < 0.7:
 		_pose_decerebrate()
 		return
 	if not alive or not conscious:
@@ -623,17 +625,17 @@ func _compose_pose(delta: float) -> void:
 			_pose_set("abdomen", Vector3(-0.3, 0, 0))
 
 
+## Weak, asymmetric involuntary arm posture right after a brain injury (one
+## arm extends, the other flexes). Legs and trunk are left to gravity.
 func _pose_decerebrate() -> void:
-	for side in ["r", "l"]:
-		_side("upper_arm", side, Vector3(0.15, 0.6, -0.05))
-		_side("forearm", side, Vector3(0.05, 1.0, 0))
-		_side("hand", side, Vector3(0.9, 0, 0))
-		_side("thigh", side, Vector3(0.0, 0.2, -0.05))
-		_side("shin", side, Vector3(-0.02, 0, 0))
-		_side("foot", side, Vector3(-0.6, 0, 0))
-	_pose_set("abdomen", Vector3(0.2, 0, 0))
-	_pose_set("chest", Vector3(0.2, 0, 0))
-	_pose_set("head", Vector3(0.5, 0, 0))
+	var ext := "r" if bot_seed % 2 == 0 else "l"
+	var flex := "l" if ext == "r" else "r"
+	_side("upper_arm", ext, Vector3(0.5, 0.2, 0.15))
+	_side("forearm", ext, Vector3(0.15, 0.6, 0))
+	_side("hand", ext, Vector3(0.6, 0, 0))
+	_side("upper_arm", flex, Vector3(0.2, 0.0, 0.1))
+	_side("forearm", flex, Vector3(1.6, 0.0, 0))
+	_side("hand", flex, Vector3(0.8, 0, 0))
 
 
 ## Muscles: each joint runs a velocity servo on the Jolt joint motors. The
@@ -660,6 +662,8 @@ func _apply_muscles() -> void:
 		if s > 1e-6:
 			err = v / s * (2.0 * atan2(s, qe.w))
 		var t_i := tone * _weak[i]
+		if _death_t >= 0.0 and _arm[i] == 0:
+			t_i *= 0.15   # trunk and legs go limp first
 		var des := (pb.transposed() * err) * _omega[i] * clampf(t_i, 0.0, 1.0)
 		des = des.limit_length(14.0)
 		var rid := _joint_rid[i]
@@ -755,6 +759,9 @@ func receive_hit(body: RigidBody3D, point: Vector3, dir: Vector3, impulse: float
 	Game.bot_hurt.emit(self, point)
 
 	var was_alive := alive
+	var bleed_before := bleed_rate
+	var wound_kind := "limb"
+	var arterial := false
 	_flinch = minf(_flinch + 0.7 * dmg, 1.0)
 	_flinch_dir = dir
 	_stagger += (0.35 if pellet else 0.55) * dmg * (0.6 + 0.4 * absf(dir.y))
@@ -768,24 +775,32 @@ func receive_hit(body: RigidBody3D, point: Vector3, dir: Vector3, impulse: float
 			bleed_rate += 38.0 * dmg
 			shock += 0.3
 			clutch_part = "head"
+			wound_kind = "neck"
+			arterial = true
 		else:
+			wound_kind = "head"
 			_die("headshot")
 	elif part == "chest":
 		var heart := local.x < 0.02 and local.x > -0.1 and local.y < 0.05
 		bleed_rate += (55.0 if heart else 14.0) * dmg
 		shock += (0.7 if heart else 0.22) * dmg
 		clutch_part = "chest"
+		wound_kind = "torso"
+		arterial = heart
 	elif part == "abdomen":
 		bleed_rate += 9.0 * dmg
 		shock += 0.2 * dmg
 		clutch_part = "abdomen"
+		wound_kind = "torso"
 	elif part == "pelvis":
 		bleed_rate += 10.0 * dmg
 		leg_health["l"] -= 0.15 * dmg
 		leg_health["r"] -= 0.15 * dmg
 		clutch_part = "pelvis"
+		wound_kind = "torso"
 	elif part.begins_with("thigh"):
 		var femoral := rng.randf() < 0.15
+		arterial = femoral
 		bleed_rate += (40.0 if femoral else 5.0) * dmg
 		leg_health[side] -= 0.4 * dmg
 		_weak[part_index[part]] *= 0.75
@@ -806,6 +821,10 @@ func receive_hit(body: RigidBody3D, point: Vector3, dir: Vector3, impulse: float
 		leg_health[k] = clampf(leg_health[k], 0.0, 1.0)
 	for k in arm_health:
 		arm_health[k] = clampf(arm_health[k], 0.0, 1.0)
+	if Game.blood:
+		# A shot to the brain still leaks, it just does not pump.
+		var added := bleed_rate - bleed_before if wound_kind != "head" else 8.0
+		Game.blood.on_hit(self, body, point, dir, weapon, wound_kind, added, arterial)
 	if was_alive and ai:
 		ai.on_hurt(point, dir)
 

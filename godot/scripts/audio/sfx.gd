@@ -4,10 +4,47 @@ extends RefCounted
 
 const RATE := 44100
 
+## Recorded sounds (res://assets/sounds/<name>.ogg). A sound listed here with
+## no files is intentionally silent (covered by another recording).
+const FILES := {
+	&"pistol_shot": ["pistol_shot"],
+	&"shotgun_shot": ["shotgun_shot"],
+	&"body_fall": ["body_fall"],
+	&"metal_hit": ["barrel_hit_1", "barrel_hit_2"],
+	&"casing": ["casing_1", "casing_2"],
+	&"shell_drop": ["shell_drop"],
+	&"pump_back": ["pump"],          # one recording holds the whole back-forward stroke
+	&"pump_forward": [],
+	&"slide_forward": ["slide_forward"],
+	&"slide_back": ["slide_back"],
+	&"mag_out": ["mag_out"],
+	&"mag_in": ["mag_in"],
+	&"mag_drop": ["mag_drop"],
+	&"flesh": ["flesh"],
+	&"step": ["steps/step_01", "steps/step_02", "steps/step_03", "steps/step_04", "steps/step_05",
+			"steps/step_06", "steps/step_07", "steps/step_08", "steps/step_09", "steps/step_10"],
+	&"puddle_walk": ["puddle_walk"],
+	&"puddle_run": ["puddle_run"],
+}
+
 static var _cache := {}
 
 
-static func get_stream(sound: StringName) -> AudioStreamWAV:
+## Loads/synthesizes everything up front so the first shot does not hitch.
+static func prewarm() -> void:
+	for s in FILES.keys() + [&"dry_fire", &"shell_insert", &"land", &"impact"]:
+		get_stream(s)
+
+
+static func get_stream(sound: StringName) -> AudioStream:
+	if FILES.has(sound):
+		if not _cache.has(sound):
+			var list: Array[AudioStream] = []
+			for f in FILES[sound]:
+				list.append(load("res://assets/sounds/%s.ogg" % f))
+			_cache[sound] = list
+		var files: Array = _cache[sound]
+		return files[randi() % files.size()] if not files.is_empty() else null
 	if not _cache.has(sound):
 		var variants: Array[AudioStreamWAV] = []
 		for v in _variant_count(sound):

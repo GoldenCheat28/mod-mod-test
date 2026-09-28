@@ -4,6 +4,7 @@ extends CharacterBody3D
 
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
+const HandIcon = preload("res://scripts/ui/hand_icon.gd")
 
 const WALK_SPEED := 3.0
 const SPRINT_SPEED := 5.8
@@ -15,6 +16,9 @@ const MOUSE_SENS := 0.0022
 const EYE_HEIGHT := 1.62
 const STEP_HEIGHT := 0.36
 const BASE_FOV := 78.0
+const GRAB_REACH := 2.4
+const GRAB_MAX_FORCE := 950.0      # N: a person can drag a body, not throw it
+const GRAB_MAX_MASS := 90.0
 
 var cam: Camera3D
 var yaw := 0.0
@@ -39,6 +43,19 @@ var _kick_roll_v := 0.0
 var _turn_roll := 0.0
 var _strafe_roll := 0.0
 var _time := 0.0
+
+# Grabbing.
+var _hand: Control
+var _held: RigidBody3D
+var _held_local := Vector3.ZERO
+var _held_dist := 1.5
+var _aim_body: RigidBody3D
+
+# Wet footsteps: looping puddle recordings faded in while moving through water.
+var _splash_walk: AudioStreamPlayer
+var _splash_run: AudioStreamPlayer
+var _wet := 0.0
+var _step_side := 1.0
 
 
 func _ready() -> void:
@@ -74,6 +91,13 @@ func _ready() -> void:
 		weapons[k] = w
 	current = weapons["pistol"]
 	current.raise()
+
+	var ui := CanvasLayer.new()
+	add_child(ui)
+	_hand = HandIcon.new()
+	ui.add_child(_hand)
+	_splash_walk = _loop_player(&"puddle_walk")
+	_splash_run = _loop_player(&"puddle_run")
 	yaw = PI
 	_cam_y = global_position.y
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -146,11 +170,20 @@ func _physics_process(delta: float) -> void:
 		var prev := int(_bob_phase / PI)
 		_bob_phase += speed / stride * PI * delta
 		if int(_bob_phase / PI) != prev:
-			Game.play_3d(Sfx.get_stream(&"step"), global_position, -16.0 + _sprint * 5.0, 0.15, 2.0)
+			_step_side = -_step_side
+			if _wet < 0.3:
+				Game.play_3d(Sfx.get_stream(&"step"), global_position, -9.0 + _sprint * 3.0, 0.07, 2.0)
+			if Game.blood:
+				var fwd := -Basis(Vector3.UP, yaw).z
+				Game.blood.footstep(global_position + Basis(Vector3.UP, yaw).x * 0.11 * _step_side, fwd, self)
 	_bob_amount = move_toward(_bob_amount, clampf(speed / SPRINT_SPEED, 0.0, 1.0) if is_on_floor() else 0.0, delta * 4.0)
 
-	if Game.is_mouse_captured() and Input.is_action_just_pressed("fire"):
-		current.try_fire(cam, [get_rid()])
+	_update_grab(delta)
+	_update_wet(delta, speed)
+
+	if Game.is_mouse_captured() and Input.is_action_just_pressed("fire") and _held == null:
+		var exclude: Array[RID] = [get_rid()]
+		current.try_fire(cam, exclude)
 
 
 func _try_step_up(motion: Vector3, _pre: Vector3) -> void:
@@ -236,3 +269,96 @@ func _process(delta: float) -> void:
 				"cam": cam,
 			})
 	_look_delta = Vector2.ZERO
+
+
+func _loop_player(sound: StringName) -> AudioStreamPlayer:
+	var p := AudioStreamPlayer.new()
+	var s := Sfx.get_stream(sound)
+	if s is AudioStreamOggVorbis:
+		(s as AudioStreamOggVorbis).loop = true
+	p.stream = s
+	p.bus = &"World"
+	p.volume_linear = 0.0
+	add_child(p)
+	return p
+
+
+# --- Grabbing ------------------------------------------------------------------
+
+func _grab_ray() -> Dictionary:
+	var from := cam.global_position
+	var q := PhysicsRayQueryParameters3D.create(from, from - cam.global_basis.z * GRAB_REACH,
+			Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_BOTS | Game.LAYER_DEBRIS)
+	var ex: Array[RID] = [get_rid()]
+	q.exclude = ex
+	return get_world_3d().direct_space_state.intersect_ray(q)
+
+
+func _grabbable(body: Object) -> bool:
+	return body is RigidBody3D and not (body as RigidBody3D).freeze and (body as RigidBody3D).mass <= GRAB_MAX_MASS
+
+
+## Hold E: the grabbed point is pulled towards a spot in front of the camera by
+## a force-limited spring, so light things follow the hand and heavy things
+## (a body) get dragged. Release E to let go.
+func _update_grab(delta: float) -> void:
+	_aim_body = null
+	if _held == null:
+		var hit := _grab_ray()
+		if not hit.is_empty() and _grabbable(hit.collider):
+			_aim_body = hit.collider
+			if Input.is_action_just_pressed("grab"):
+				_held = _aim_body
+				_held_local = _held.to_local(hit.position)
+				_held_dist = clampf(cam.global_position.distance_to(hit.position), 0.7, GRAB_REACH)
+				_held.sleeping = false
+	elif not Input.is_action_pressed("grab") or not is_instance_valid(_held):
+		_held = null
+	else:
+		var target := cam.global_position - cam.global_basis.z * _held_dist
+		var point := _held.to_global(_held_local)
+		var offset := point - _held.global_position
+		var point_vel := _held.linear_velocity + _held.angular_velocity.cross(offset)
+		var err := target - point
+		if err.length() > 1.6:
+			_held = null   # snagged on something, the grip slips
+		else:
+			var m := minf(_held.mass, 20.0)
+			var f := (err * 260.0 - (point_vel - velocity) * 26.0) * m
+			f += Vector3.UP * _held.mass * 9.81 * clampf(1.0 - _held.mass / GRAB_MAX_MASS, 0.0, 1.0)
+			_held.apply_force(f.limit_length(GRAB_MAX_FORCE), offset)
+			_held.angular_velocity *= 1.0 - minf(delta * 3.0, 0.5)
+	if _hand:
+		_hand.set_mode(HandIcon.Mode.CLOSED if _held else (HandIcon.Mode.OPEN if _aim_body else HandIcon.Mode.HIDDEN))
+
+
+# --- Wet footsteps ------------------------------------------------------------------
+
+func _update_wet(delta: float, speed: float) -> void:
+	var on_water := false
+	if is_on_floor():
+		var p := global_position
+		for spot in Game.water_spots:
+			var c: Vector3 = spot[0]
+			if absf(c.y - p.y) < 0.35 and Vector2(c.x - p.x, c.z - p.z).length() < spot[1]:
+				on_water = true
+				break
+		if not on_water and Game.blood and Game.blood.is_pool(p):
+			on_water = true
+	_wet = move_toward(_wet, 1.0 if on_water else 0.0, delta * 5.0)
+	var moving := clampf(speed / WALK_SPEED, 0.0, 1.0) if is_on_floor() else 0.0
+	_fade_loop(_splash_walk, _wet * moving * (1.0 - _sprint) * 0.8, delta)
+	_fade_loop(_splash_run, _wet * moving * _sprint * 0.8, delta)
+
+
+## Smoothly fades a looping recording in and out, pausing it when silent.
+func _fade_loop(p: AudioStreamPlayer, target: float, delta: float) -> void:
+	if p.stream == null:
+		return
+	p.volume_linear = move_toward(p.volume_linear, target, delta * 2.5)
+	if p.volume_linear > 0.001:
+		if not p.playing and not p.stream_paused:
+			p.play(randf() * 20.0)
+		p.stream_paused = false
+	else:
+		p.stream_paused = true

@@ -15,6 +15,9 @@ const SLOWMO_SCALE := 0.5
 
 var player: Node3D
 var fx: Node3D
+var blood: Node3D
+## Rain puddles on the map: [centre, radius].
+var water_spots: Array = []
 var bots: Array[Node3D] = []
 var slowmo := false
 
@@ -35,6 +38,7 @@ func _setup_input() -> void:
 	_bind_key("jump", KEY_SPACE)
 	_bind_key("sprint", KEY_SHIFT)
 	_bind_key("reload", KEY_R)
+	_bind_key("grab", KEY_E)
 	_bind_key("weapon_pistol", KEY_1)
 	_bind_key("weapon_shotgun", KEY_3)
 	_bind_key("slowmo", KEY_Z)

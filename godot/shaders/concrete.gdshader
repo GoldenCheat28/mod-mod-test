@@ -4,6 +4,7 @@ shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
 
 #include "res://shaders/triplanar.gdshaderinc"
+#include "res://shaders/blood.gdshaderinc"
 
 uniform vec3 base_color : source_color = vec3(0.56, 0.55, 0.52);
 uniform vec3 dirt_color : source_color = vec3(0.30, 0.27, 0.22);
@@ -60,8 +61,12 @@ void fragment() {
 	}
 
 	vec3 wn = tp_normal(tex_normal, p * 1.7, n, w, normal_strength * (1.0 + moss * 0.6));
+	float rough = clamp(0.93 - damp * 0.25 - moss * 0.05, 0.0, 1.0);
+	float spec = 0.35;
+	vec3 nv = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
+	blood_apply(v_wpos, n, pores, VERTEX, NORMAL, col, rough, spec, nv);
 	ALBEDO = col;
-	ROUGHNESS = clamp(0.93 - damp * 0.25 - moss * 0.05, 0.0, 1.0);
-	SPECULAR = 0.35;
-	NORMAL = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+	NORMAL = nv;
 }

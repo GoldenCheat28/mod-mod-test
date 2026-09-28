@@ -40,17 +40,39 @@ window/size/viewport_height=900
 
 [physics]
 
-3d/physics_engine="Jolt Physics"
 common/physics_ticks_per_second=120
 common/max_physics_steps_per_frame=6
-common/physics_interpolation=true
+3d/physics_engine="Jolt Physics"
 jolt_physics_3d/simulation/velocity_steps=12
 jolt_physics_3d/simulation/position_steps=4
+common/physics_interpolation=true
 
 [rendering]
 
-anti_aliasing/quality/screen_space_aa=1
 textures/default_filters/anisotropic_filtering_level=3
-lights_and_shadows/directional_shadow/size=4096
-lights_and_shadows/directional_shadow/soft_shadow_filter_quality=2
 environment/ssao/quality=1
+limits/cluster_builder/max_clustered_elements=2048
+anti_aliasing/quality/screen_space_aa=1
+
+[shader_globals]
+
+blood_floor={
+"type": "sampler2D",
+"value": ""
+}
+blood_wall_x={
+"type": "sampler2D",
+"value": ""
+}
+blood_wall_z={
+"type": "sampler2D",
+"value": ""
+}
+blood_area={
+"type": "vec4",
+"value": Vector4(-36, 72, -0.5, 11.25)
+}
+blood_time={
+"type": "float",
+"value": 0.0
+}

@@ -611,6 +611,7 @@ func _puddles() -> void:
 				s[0] + Vector3(0, 0.004, 0))
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
+		Game.water_spots.append([s[0] as Vector3, size * 0.4])
 		i += 1
 
 

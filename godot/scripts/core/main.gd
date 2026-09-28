@@ -5,6 +5,7 @@ const MapBuilder = preload("res://scripts/world/map_builder.gd")
 const Player = preload("res://scripts/player/player.gd")
 const Humanoid = preload("res://scripts/bots/humanoid.gd")
 const Fx = preload("res://scripts/fx/fx.gd")
+const Blood = preload("res://scripts/fx/blood.gd")
 
 const BOT_COUNT := 8
 
@@ -12,12 +13,18 @@ var map: Node3D
 
 
 func _ready() -> void:
+	preload("res://scripts/audio/sfx.gd").prewarm()
 	_environment()
 
 	var fx := Fx.new()
 	fx.name = "Fx"
 	add_child(fx)
 	Game.fx = fx
+
+	var blood := Blood.new()
+	blood.name = "Blood"
+	add_child(blood)
+	Game.blood = blood
 
 	map = MapBuilder.new()
 	map.name = "Map"
@@ -31,9 +38,13 @@ func _ready() -> void:
 	player.global_position = Vector3(0, 0.3, 10)
 	Game.player = player
 
-	# The navigation map syncs on the next physics frames.
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	# The navigation map syncs asynchronously; wait until it has the baked mesh.
+	var nav_map := get_world_3d().navigation_map
+	for i in 600:
+		await get_tree().physics_frame
+		if NavigationServer3D.map_get_iteration_id(nav_map) > 0 \
+				and NavigationServer3D.map_get_random_point(nav_map, 1, true) != Vector3.ZERO:
+			break
 	_spawn_bots()
 
 
