@@ -1,13 +1,14 @@
-extends Node
-## Dev tool: runs the main scene, positions the camera and saves screenshots.
-## Usage: godot --path . res://tests/screenshot.tscn -- <out_dir> [views]
+extends Node3D
+## Dev tool: instances the main scene as a child (so this controller survives),
+## positions the camera and saves screenshots.
+## Usage: godot --path . res://tests/screenshot.tscn -- <out_dir>
 
 var views := [
 	# [time, player position, yaw, pitch, name]
-	[4.0, Vector3(0, 0.2, 10), PI, -0.05, "street"],
-	[5.5, Vector3(-4, 0.2, -2), PI + 0.4, 0.05, "building"],
-	[7.0, Vector3(-2, 0.3, -12), PI * 0.5, 0.0, "inside"],
-	[8.5, Vector3(12, 1.4, -8), PI * 0.9, 0.1, "dock"],
+	[3.0, Vector3(0, 0.2, 10), PI, -0.05, "street"],
+	[4.5, Vector3(-4, 0.2, -2), PI + 0.4, 0.05, "building"],
+	[6.0, Vector3(-2, 0.3, -12), PI * 0.5, 0.0, "inside"],
+	[7.5, Vector3(12, 1.4, -8), PI * 0.9, 0.1, "dock"],
 ]
 var out := "/tmp"
 var t := 0.0
@@ -18,9 +19,8 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out = args[0]
-	get_tree().change_scene_to_file.call_deferred("res://scenes/main.tscn")
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	reparent.call_deferred(get_tree().root)
+	var main: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(main)
 
 
 func _process(delta: float) -> void:

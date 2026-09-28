@@ -31,9 +31,17 @@ func _ready() -> void:
 	player.global_position = Vector3(0, 0.3, 10)
 	Game.player = player
 
-	# The navigation map syncs on the next physics frames.
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	# The navmesh region needs a couple of server syncs after baking before
+	# random-point queries return real results (they answer (0,0,0) until
+	# then), so probe for an actual valid point rather than trusting a
+	# fixed frame count or the iteration id.
+	var nav_map := get_world_3d().navigation_map
+	var waited := 0
+	while waited < 180:
+		await get_tree().physics_frame
+		waited += 1
+		if NavigationServer3D.map_get_random_point(nav_map, 1, true) != Vector3.ZERO:
+			break
 	_spawn_bots()
 
 

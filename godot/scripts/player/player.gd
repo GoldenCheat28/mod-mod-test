@@ -150,7 +150,7 @@ func _physics_process(delta: float) -> void:
 	_bob_amount = move_toward(_bob_amount, clampf(speed / SPRINT_SPEED, 0.0, 1.0) if is_on_floor() else 0.0, delta * 4.0)
 
 	if Game.is_mouse_captured() and Input.is_action_just_pressed("fire"):
-		current.try_fire(cam, [get_rid()])
+		current.try_fire(cam, [get_rid()] as Array[RID])
 
 
 func _try_step_up(motion: Vector3, _pre: Vector3) -> void:
