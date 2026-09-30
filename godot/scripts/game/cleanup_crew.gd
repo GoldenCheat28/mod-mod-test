@@ -272,43 +272,84 @@ func _drop_corpse(w: Dictionary) -> void:
 
 # --- Mops and rags --------------------------------------------------------------------------
 
-## The floor round the table: the pools first (nearest first), then a
-## sweep round the table for the rest. Two mops split it between them.
-func _floor_jobs(which: int) -> Array:
+## Where the blood actually is (blood.gd keeps a note of every splat): on
+## the floor of the hall for the mops, on the walls and the table top for
+## the rags - gathered into patches, split between the two of each, nearest
+## first from the cellar door.
+func _blood_jobs(floor_jobs: bool, which: int) -> Array:
+	if Game.blood == null:
+		return []
 	var c: Vector3 = hall["center"]
+	var bounds: Array = hall["bounds"]
+	var x0: float = bounds[0]
+	var x1: float = bounds[1]
+	var z0: float = bounds[2]
+	var z1: float = bounds[3]
+	var r_table: float = float(Game.main.map.game_tables[0]["radius"])
+	var spots: Array = Game.blood.spots_in(Vector3(x0 - 0.1, c.y - 0.2, z0 - 0.1), Vector3(x1 + 0.1, c.y + 3.0, z1 + 0.1))
+	var patches := {}
+	for p in spots:
+		var q: Vector3 = p
+		var key: Variant = null
+		var n := Vector3.UP
+		if absf(q.y - c.y) < 0.14:
+			if not floor_jobs:
+				continue
+			key = Vector3i(floori(q.x / 0.9), 0, floori(q.z / 0.9))
+		elif floor_jobs:
+			continue
+		elif absf(q.y - (c.y + 0.77)) < 0.1 and Vector2(q.x - c.x, q.z - c.z).length() < r_table + 0.05:
+			key = Vector3i(floori(q.x / 0.5), 1, floori(q.z / 0.5))
+		else:
+			var d := [q.x - x0, x1 - q.x, q.z - z0, z1 - q.z]
+			var best := 0
+			for i in 4:
+				if float(d[i]) < float(d[best]):
+					best = i
+			if float(d[best]) > 0.3:
+				continue
+			n = [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)][best]
+			var along := q.z if best < 2 else q.x
+			key = Vector3i(10 + best, floori(along / 0.7), floori(q.y / 0.7))
+		if not patches.has(key):
+			patches[key] = {"sum": Vector3.ZERO, "n": 0, "normal": n, "table": key is Vector3i and (key as Vector3i).y == 1 and (key as Vector3i).x < 10}
+		var pt: Dictionary = patches[key]
+		pt["sum"] = (pt["sum"] as Vector3) + q
+		pt["n"] = int(pt["n"]) + 1
 	var jobs: Array = []
-	if Game.blood:
-		for pool in Game.blood._pools:
-			var p: Vector3 = pool.pos
-			if p.distance_to(c) < 6.0 and absf(p.y - c.y) < 0.5 and pool.vol > 0.3:
-				jobs.append({"at": p, "n": Vector3.UP, "r": maxf(pool.r, 0.3)})
-	for k in 10:
-		var a := TAU * float(k) / 10.0 + (0.3 if which == 1 else 0.0)
-		var rr := 1.9 if k % 2 == 0 else 2.6
-		jobs.append({"at": c + Vector3(cos(a), 0, sin(a)) * rr + Vector3.UP * 0.005, "n": Vector3.UP, "r": 0.45})
+	for key in patches.keys():
+		var pt: Dictionary = patches[key]
+		var at: Vector3 = (pt["sum"] as Vector3) / float(pt["n"])
+		var nn: Vector3 = pt["normal"]
+		if nn.y < 0.5:
+			at.y = clampf(at.y, c.y + 0.3, c.y + 2.25)
+		jobs.append({"at": at, "n": nn, "r": 0.55 if nn.y > 0.5 and not pt["table"] else 0.42, "table": pt["table"],
+				"time": clampf(float(pt["n"]) / 20.0, 2.0, 5.0)})
+	# Nearest first, from the door; every other one for this worker.
+	var from: Vector3 = (hall["cellar"] as Dictionary)["out"]
+	var ordered: Array = []
+	while not jobs.is_empty():
+		var bi := 0
+		for i in jobs.size():
+			if (jobs[i]["at"] as Vector3).distance_to(from) < (jobs[bi]["at"] as Vector3).distance_to(from):
+				bi = i
+		var j: Dictionary = jobs[bi]
+		jobs.remove_at(bi)
+		ordered.append(j)
+		from = j["at"]
 	var mine: Array = []
-	for i in jobs.size():
+	for i in ordered.size():
 		if i % 2 == which:
-			mine.append(jobs[i])
+			mine.append(ordered[i])
 	return mine
 
 
-## The walls near the table and the table top itself.
+func _floor_jobs(which: int) -> Array:
+	return _blood_jobs(true, which)
+
+
 func _wall_jobs(which: int) -> Array:
-	var c: Vector3 = hall["center"]
-	var bounds: Array = hall["bounds"]
-	var jobs: Array = []
-	if which == 0:
-		for k in 5:
-			var a := TAU * float(k) / 5.0
-			jobs.append({"at": c + Vector3(cos(a) * 0.4, 0.78, sin(a) * 0.4), "n": Vector3.UP, "r": 0.35, "table": true})
-	var zs := [float(bounds[2]) + 0.01, float(bounds[3]) - 0.01]
-	for dx in [-3.0, -1.5, 0.0, 1.5, 3.0]:
-		var x := clampf(c.x + dx, float(bounds[0]) + 1.5, float(bounds[1]) - 0.5)
-		var z: float = zs[which]
-		jobs.append({"at": Vector3(x, c.y + 1.35, z), "n": Vector3(0, 0, 1) if which == 0 else Vector3(0, 0, -1), "r": 0.45})
-		jobs.append({"at": Vector3(x, c.y + 0.7, z), "n": Vector3(0, 0, 1) if which == 0 else Vector3(0, 0, -1), "r": 0.45})
-	return jobs
+	return _blood_jobs(false, which)
 
 
 func _scrub(w: Dictionary, delta: float) -> void:
@@ -318,8 +359,16 @@ func _scrub(w: Dictionary, delta: float) -> void:
 	if j < 0 or j >= jobs.size():
 		j += 1
 		if j >= jobs.size():
-			w["state"] = "home"
-			return
+			# Done with the list: a look round for anything left (or new).
+			var again := _floor_jobs(workers.filter(func(x): return x["role"] == "mop").find(w) % 2) if w["role"] == "mop" \
+					else _wall_jobs(workers.filter(func(x): return x["role"] == "wash").find(w) % 2)
+			w["rescans"] = int(w.get("rescans", 0)) + 1
+			if again.is_empty() or int(w["rescans"]) > 3:
+				w["state"] = "home"
+				return
+			w["jobs"] = again
+			jobs = again
+			j = 0
 		w["job"] = j
 		w["job_t"] = 0.0
 		w["arrived"] = false
@@ -335,9 +384,13 @@ func _scrub(w: Dictionary, delta: float) -> void:
 	elif n.y > 0.5:
 		var out2 := Vector3(at.x - c.x, 0.0, at.z - c.z)
 		out2 = out2.normalized() if out2.length() > 0.1 else Vector3(1, 0, 0)
-		stand = Vector3(at.x, c.y, at.z) + out2 * 0.75
+		stand = Vector3(at.x, c.y, at.z) + out2 * 0.6
 	else:
 		stand = Vector3(at.x, c.y, at.z) + n * 0.65
+	var nav: RID = b.get_world_3d().navigation_map
+	var snapped := NavigationServer3D.map_get_closest_point(nav, stand)
+	if Vector2(snapped.x - stand.x, snapped.z - stand.z).length() < 1.0:
+		stand = Vector3(snapped.x, stand.y, snapped.z)
 	if not w.get("arrived", false):
 		_carry_prop(w, delta, false)
 		b.hand_goal["r"] = Vector3.INF
@@ -357,7 +410,8 @@ func _scrub(w: Dictionary, delta: float) -> void:
 	var along := Vector3(face.z, 0.0, -face.x).normalized() if face.length() > 0.05 else Vector3.RIGHT
 	var up := Vector3.UP if n.y < 0.5 else (face.normalized() if face.length() > 0.05 else Vector3.FORWARD)
 	var r: float = job["r"]
-	var head := at + along * sin(t * 3.2) * r * 0.8 + up * sin(t * 6.4) * r * 0.35
+	# (back and forth across it, working down its length: the whole patch)
+	var head := at + along * sin(t * 3.4) * r * 0.85 + up * sin(t * 1.3) * r * 0.85
 	w["head"] = head
 	_carry_prop(w, delta, true)
 	b.look_target = at
@@ -365,13 +419,13 @@ func _scrub(w: Dictionary, delta: float) -> void:
 	w["wipe_t"] = float(w["wipe_t"]) - delta
 	if w["wipe_t"] <= 0.0 and Game.blood:
 		w["wipe_t"] = 0.12
-		Game.blood.wipe(head, n, 0.28, 0.3)
-	if t > 4.5:
+		Game.blood.wipe(head, n, 0.38, 0.6)
+	if t > float(job.get("time", 5.0)):
 		w["job"] = j + 1
 		w["job_t"] = 0.0
 		w["arrived"] = false
 		if int(w["job"]) >= jobs.size():
-			w["state"] = "home"
+			w["job"] = jobs.size()          # (the next frame looks round again)
 
 
 ## The mop (handle from the hands down to the head on the floor) or the rag

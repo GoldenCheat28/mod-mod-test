@@ -29,6 +29,10 @@ func _process(delta: float) -> void:
 			if is_instance_valid(b) and not b.alive:
 				dead += 1
 		var line := "t=%.1f dead=%d" % [t, dead]
+		var hb: Array = Game.main.map.event_hall["bounds"]
+		var hc: Vector3 = Game.main.map.event_hall["center"]
+		line += " floor=%d walls=%d" % [Game.blood.spots_in(Vector3(hb[0], hc.y - 0.14, hb[2]), Vector3(hb[1], hc.y + 0.14, hb[3])).size(),
+				Game.blood.spots_in(Vector3(hb[0], hc.y + 0.3, hb[2]), Vector3(hb[1], hc.y + 2.25, hb[3])).size()]
 		if is_instance_valid(tg.crew):
 			for w in tg.crew.workers:
 				if not is_instance_valid(w["who"]):
@@ -41,7 +45,7 @@ func _process(delta: float) -> void:
 					line += " | guard:%s %s" % [gd["stage"], (gd["who"] as Node3D).position_ground().snapped(Vector3.ONE * 0.1)]
 		line += " || bar: " + str(tg.bar.patrons.map(func(p): return [p["sat"], p["served"]]))
 		print(line)
-		if t > 700.0 or (_done.has("over") and not is_instance_valid(tg.crew) and t > float(_done.get("over_t", 0.0)) + 60.0):
+		if t > 900.0 or (_done.has("over") and not is_instance_valid(tg.crew) and t > float(_done.get("over_t", 0.0)) + 60.0):
 			get_tree().quit()
 		return
 	if t > 1.0 and _g == null and not _done.has("start"):

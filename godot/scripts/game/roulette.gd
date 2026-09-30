@@ -518,6 +518,9 @@ static func slump_on_table(b: Node3D, dir: Vector3, centre: Vector3, muzzle: Vec
 			part.angular_velocity = tip * 1.6
 	b.pelvis.linear_velocity = Vector3.ZERO
 	b.pelvis.angular_velocity = Vector3.ZERO
+	# (the dead man at the table does not knock the others about, nor they him)
+	for part in b.parts:
+		(part as RigidBody3D).collision_mask &= ~Game.LAYER_BOTS
 	# The dead weight goes where it's pulled: a short, fading tug keeps the
 	# fall on course (forward, face onto the tabletop) and the hips on the
 	# seat, instead of him sliding off backwards or under the table.

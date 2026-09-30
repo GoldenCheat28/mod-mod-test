@@ -2795,6 +2795,9 @@ func _update_squat_hold(delta: float) -> void:
 			_hold_angle.append(_target[i])
 			p.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 			p.freeze = true
+			# (held still, he is moved by hand: he would throw anyone lying
+			# against him about - other people pass through him meanwhile)
+			p.collision_mask &= ~Game.LAYER_BOTS
 		_hold_at = pelvis.global_position
 	_hold_blend = minf(_hold_blend + delta / 0.6, 1.0)
 	# Arms and head follow the pose targets smoothly; the legs are the pose's.
@@ -2911,6 +2914,7 @@ func wake() -> void:
 	for p in parts:
 		p.freeze = false
 		p.linear_velocity = Vector3.ZERO
+		p.collision_mask |= Game.LAYER_BOTS
 		p.angular_velocity = Vector3.ZERO
 
 

@@ -782,9 +782,8 @@ func _bang() -> void:
 	for p in seats_taken:
 		if not p["out"] and not p["player"] and is_instance_valid(p["who"]):
 			var b2: Node3D = p["who"]
-			b2._flinch = 1.0
 			if b2.ai:
-				b2.ai.fear = 0.9
+				b2.ai.fear = maxf(b2.ai.fear, 0.5)
 	_go("after")
 
 

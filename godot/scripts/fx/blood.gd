@@ -1730,6 +1730,16 @@ func _process_real(delta: float) -> void:
 ## `amount`; returns how much blood (ml) it took up.
 func wipe(p: Vector3, n: Vector3, r: float, amount: float) -> float:
 	_canvas.erase(p, n, r, amount)
+	# (what is wiped is no longer known as blood there)
+	if amount >= 0.2:
+		var c := _cell(p)
+		var k := int(ceil(r / 0.06))
+		for x in range(-k, k + 1):
+			for y in range(-k, k + 1):
+				for z in range(-k, k + 1):
+					var cc := c + Vector3i(x, y, z)
+					if _splat_grid.has(cc) and (Vector3(cc) * 0.06 + Vector3.ONE * 0.03).distance_to(p) < r:
+						_splat_grid.erase(cc)
 	var took := 0.0
 	for pool in _pools:
 		if pool.pos.distance_to(p) < pool.r + r:
@@ -1739,6 +1749,20 @@ func wipe(p: Vector3, n: Vector3, r: float, amount: float) -> float:
 			# It stops growing back: what is shown is what is left.
 			pool.r = minf(pool.r, pool.shown)
 	return took
+
+
+## Where blood is known to lie (cells of 6 cm) inside the box a..b.
+func spots_in(a: Vector3, b: Vector3) -> Array:
+	var out: Array = []
+	for k in _splat_grid.keys():
+		var p := Vector3(k) * 0.06 + Vector3.ONE * 0.03
+		if p.x >= a.x and p.x <= b.x and p.y >= a.y and p.y <= b.y and p.z >= a.z and p.z <= b.z:
+			out.append(p)
+	for pool in _pools:
+		var q: Vector3 = pool.pos
+		if pool.vol > 0.3 and q.x >= a.x and q.x <= b.x and q.y >= a.y and q.y <= b.y and q.z >= a.z and q.z <= b.z:
+			out.append(q)
+	return out
 
 
 ## A dry or dirty mop drags blood along: thin streaks behind it.
