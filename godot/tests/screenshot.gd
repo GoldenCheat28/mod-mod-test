@@ -1,6 +1,7 @@
-extends Node
-## Dev tool: runs the main scene, positions the camera and saves screenshots.
-## Usage: godot --path . res://tests/screenshot.tscn -- <out_dir> [views]
+extends Node3D
+## Dev tool: instances the main scene as a child (so this controller survives),
+## positions the camera and saves screenshots.
+## Usage: godot --path . res://tests/screenshot.tscn -- <out_dir>
 
 var views := [
 	# [time, player position, yaw, pitch, name]

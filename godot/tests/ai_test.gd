@@ -8,9 +8,8 @@ const NAMES := ["WANDER", "IDLE", "NERVOUS", "SURRENDER", "FLEE", "HIDE", "DOWNE
 
 
 func _ready() -> void:
-	get_tree().change_scene_to_file.call_deferred("res://scenes/main.tscn")
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	reparent.call_deferred(get_tree().root)
+	var main: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(main)
 
 
 func _physics_process(delta: float) -> void:
@@ -34,7 +33,7 @@ func _physics_process(delta: float) -> void:
 			var target: Vector3 = best.chest.global_position if shots.size() > 2 else best.head.global_position
 			p.cam.look_at(target)
 			p.current._cooldown = 0.0
-			p.current.try_fire(p.cam, [p.get_rid()])
+			p.current.try_fire(p.cam, [p.get_rid()] as Array[RID])
 			print("SHOT at ", best.name, " alive_after=", best.alive, " bleed=", best.bleed_rate)
 	if t > 32.0:
 		get_tree().quit()
