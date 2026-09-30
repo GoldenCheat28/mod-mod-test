@@ -35,6 +35,11 @@ var views3 := [
 	[Vector3(5.2, 1.7, 20.6), Vector3(7.6, 1.3, 23.9), "h_cellar"],
 	[Vector3(3.0, 1.9, 32.5), Vector3(5.2, 0.6, 29.9), "h_dumpster"],
 ]
+var views4 := [
+	[Vector3(-14.0, 1.7, 49.5), Vector3(-15.0, 3.5, 66.0), "s_yard"],
+	[Vector3(4.0, 1.7, 47.0), Vector3(9.0, 1.6, 55.0), "s_street"],
+	[Vector3(26.0, 1.7, 66.0), Vector3(14.0, 4.0, 80.0), "s_block2"],
+]
 var _vi := 0
 var _cam: Camera3D
 
@@ -83,6 +88,8 @@ func _process(delta: float) -> void:
 			views = views2
 		elif OS.get_environment("VIEWS") == "3":
 			views = views3
+		elif OS.get_environment("VIEWS") == "4":
+			views = views4
 		_cam = Camera3D.new()
 		_cam.fov = 75.0
 		add_child(_cam)

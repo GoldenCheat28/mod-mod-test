@@ -12,6 +12,7 @@ const Tex = preload("res://scripts/world/textures.gd")
 const StreetEnv = preload("res://scripts/world/street_env.gd")
 
 const GROUND_HALF := 60
+const SOUTH_EDGE := 92.0          # the yard's wall on the south (south_district.gd lies between 36 and here)
 const T := 0.3            # wall thickness
 const F1 := 0.15          # ground floor level
 const F2 := 3.4           # first floor level
@@ -59,6 +60,9 @@ func steps() -> Array:
 			var TB = load("res://scripts/world/tall_building.gd")
 			TB.build(self, {"x0": -4.0, "x1": 10.0, "z0": 17.0, "z1": 28.0, "kind": "event", "stair": "east", "seed": 71})
 			TB.build(self, {"x0": -21.0, "x1": -9.0, "z0": 26.0, "z1": 35.0, "kind": "flats", "stair": "west", "seed": 72, "brick": true})],
+		["Южный квартал", func():
+			_ground_patch(-60.0, 60.0, 60.0, SOUTH_EDGE + 16.0)
+			preload("res://scripts/world/south_district.gd").build(self)],
 		["Расставляем мебель", func():
 			_table_and_chairs(Vector3(7.0, F1, -11.0))
 			_bucket(Vector3(9.0, F1, -9.2))
@@ -99,7 +103,7 @@ func _begin() -> void:
 	nm.cell_height = 0.1
 	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
 	nm.geometry_collision_mask = Game.LAYER_WORLD
-	nm.filter_baking_aabb = AABB(Vector3(-36, -1, -36), Vector3(72, 12, 72))
+	nm.filter_baking_aabb = AABB(Vector3(-36, -1, -36), Vector3(72, 12, SOUTH_EDGE + 36.0))
 	nav_region.navigation_mesh = nm
 
 	geo = Geo.new(nav_region)
@@ -190,6 +194,65 @@ func _ground() -> void:
 	cs.shape = hm
 	body.add_child(cs)
 	nav_region.add_child(body)
+
+
+## More ground beyond the first square (x0..x1, z0..z1): coarser (0.5 m),
+## with its own 1 m collision grid.
+func _ground_patch(x0: float, x1: float, z0: float, z1: float) -> void:
+	var res := 0.5
+	var nx := int((x1 - x0) / res) + 1
+	var nz := int((z1 - z0) / res) + 1
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	for zi in nz:
+		for xi in nx:
+			var x := x0 + xi * res
+			var z := z0 + zi * res
+			var h := ground_height(x, z)
+			verts.append(Vector3(x, h, z))
+			var dx := (ground_height(x + res, z) - ground_height(x - res, z)) / (2.0 * res)
+			var dz := (ground_height(x, z + res) - ground_height(x, z - res)) / (2.0 * res)
+			normals.append(Vector3(-dx, 1.0, -dz).normalized())
+			uvs.append(Vector2(x, z))
+	var idx := PackedInt32Array()
+	for zi in nz - 1:
+		for xi in nx - 1:
+			var a := zi * nx + xi
+			idx.append_array([a, a + 1, a + nx, a + 1, a + nx + 1, a + nx])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mi := MeshInstance3D.new()
+	mi.name = "GroundSouth"
+	mi.mesh = mesh
+	mi.material_override = Mat.asphalt()
+	nav_region.add_child(mi)
+	var w := int(x1 - x0) + 1
+	var d := int(z1 - z0) + 1
+	var hm := HeightMapShape3D.new()
+	hm.map_width = w
+	hm.map_depth = d
+	var data := PackedFloat32Array()
+	data.resize(w * d)
+	for zi in d:
+		for xi in w:
+			data[zi * w + xi] = ground_height(x0 + xi, z0 + zi)
+	hm.map_data = data
+	var body := StaticBody3D.new()
+	body.name = "GroundSouthBody"
+	body.collision_layer = Game.LAYER_WORLD
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	cs.shape = hm
+	body.add_child(cs)
+	nav_region.add_child(body)
+	body.position = Vector3(x0 + (w - 1) * 0.5, 0.0, z0 + (d - 1) * 0.5)
 
 
 # --- Abandoned building -----------------------------------------------------
@@ -450,23 +513,27 @@ func _perimeter() -> void:
 	var c := Mat.concrete("dark")
 	var brick := Mat.concrete("brick")
 	geo.block(Vector3(-36, -0.2, -36.5), Vector3(36, 5.0, -36), c)
-	geo.block(Vector3(-36, -0.2, 36), Vector3(36, 3.2, 36.5), c)
-	geo.block(Vector3(-36.5, -0.2, -36.5), Vector3(-36, 4.0, 36.5), c)
-	geo.block(Vector3(36, -0.2, -36.5), Vector3(36.5, 4.0, 36.5), c)
+	geo.block(Vector3(-36, -0.2, SOUTH_EDGE), Vector3(36, 3.2, SOUTH_EDGE + 0.5), c)
+	geo.block(Vector3(-36.5, -0.2, -36.5), Vector3(-36, 4.0, SOUTH_EDGE + 0.5), c)
+	geo.block(Vector3(36, -0.2, -36.5), Vector3(36.5, 4.0, SOUTH_EDGE + 0.5), c)
 	# Background buildings beyond the wall (visual only).
 	var brng := RandomNumberGenerator.new()
 	brng.seed = 99
 	for side in 4:
-		var along := -34.0
-		while along < 34.0:
+		# (the east and west rows run on down past the south district; the
+		# south row stands beyond its wall)
+		var along := -34.0 if side != 1 else -(SOUTH_EDGE - 2.0)
+		var end := 34.0 if side != 3 else SOUTH_EDGE - 2.0
+		while along < end:
 			var w := brng.randf_range(6.0, 12.0)
 			var h := brng.randf_range(7.0, 20.0)
 			var d := brng.randf_range(8.0, 14.0)
-			var centre := Vector3(along + w * 0.5, h * 0.5 - 0.2, -38.0 - d * 0.5)
+			var face := -38.0 if side != 2 else -(SOUTH_EDGE + 2.0)
+			var centre := Vector3(along + w * 0.5, h * 0.5 - 0.2, face - d * 0.5)
 			var b := Basis(Vector3.UP, side * PI * 0.5)
 			var m := brick if brng.randf() < 0.4 else c
 			geo.box(b * centre, Vector3(w, h, d).abs() if side % 2 == 0 else Vector3(d, h, w), m, Vector3.ZERO, false)
-			_facade(b, along, w, h, -38.0, brng)
+			_facade(b, along, w, h, face, brng)
 			along += w + brng.randf_range(0.5, 3.0)
 
 

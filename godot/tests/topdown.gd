@@ -17,10 +17,10 @@ func _process(delta: float) -> void:
 	if _cam == null:
 		_cam = Camera3D.new()
 		_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-		_cam.size = 76.0
+		_cam.size = 136.0
 		add_child(_cam)
 		_cam.make_current()
-		_cam.global_transform = Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD), Vector3(0, 60, 0))
+		_cam.global_transform = Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD), Vector3(0, 60, 28))
 	if t > 2.0:
 		get_viewport().get_texture().get_image().save_png(out + "/top.png")
 		get_tree().quit()

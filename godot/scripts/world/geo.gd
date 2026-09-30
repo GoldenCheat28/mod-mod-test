@@ -1,9 +1,13 @@
 extends RefCounted
 ## Level geometry builder. Static pieces are merged into one mesh per
-## material and one compound StaticBody3D, which keeps draw calls and
-## physics broadphase cheap.
+## material per patch of ground (CHUNK m square) and one compound
+## StaticBody3D: few draw calls, and what is out of view (or out of a
+## shadow's reach) is still culled patch by patch - a bigger map does not
+## mean drawing all of it all the time.
 
-var _tools := {}        # Material -> {v, n, t, uv, i}: the merged vertex arrays
+const CHUNK := 24.0
+
+var _tools := {}        # [Material, patch] -> {v, n, t, uv, i}: the merged vertex arrays
 var _body: StaticBody3D
 var _root: Node3D
 
@@ -17,11 +21,12 @@ func _init(root: Node3D) -> void:
 	_root.add_child(_body)
 
 
-func _tool(mat: Material) -> Dictionary:
-	if not _tools.has(mat):
-		_tools[mat] = {"v": PackedVector3Array(), "n": PackedVector3Array(), "t": PackedFloat32Array(),
-				"uv": PackedVector2Array(), "i": PackedInt32Array()}
-	return _tools[mat]
+func _tool(mat: Material, at := Vector3.ZERO) -> Dictionary:
+	var key := [mat, Vector2i(floori(at.x / CHUNK), floori(at.z / CHUNK))]
+	if not _tools.has(key):
+		_tools[key] = {"v": PackedVector3Array(), "n": PackedVector3Array(), "t": PackedFloat32Array(),
+				"uv": PackedVector2Array(), "i": PackedInt32Array(), "mat": mat}
+	return _tools[key]
 
 
 ## A mesh's vertex arrays, read on the CPU side: a primitive makes them
@@ -40,7 +45,7 @@ static func arrays_of(mesh: Mesh, surface := 0) -> Array:
 func add_mesh(mesh: Mesh, xf: Transform3D, mat: Material) -> void:
 	var surfaces := 1 if mesh is PrimitiveMesh or mesh.has_meta("arrays") else mesh.get_surface_count()
 	for s in surfaces:
-		_append(_tool(mat), arrays_of(mesh, s), xf)
+		_append(_tool(mat, xf.origin), arrays_of(mesh, s), xf)
 
 
 func _append(acc: Dictionary, arr: Array, xf: Transform3D) -> void:
@@ -336,8 +341,9 @@ func commit() -> void:
 		m.size = b[1]
 		add_mesh(m, Transform3D(Basis(), b[0]), b[2])
 	_boxes.clear()
-	for mat in _tools:
-		var acc: Dictionary = _tools[mat]
+	for key in _tools:
+		var acc: Dictionary = _tools[key]
+		var mat: Material = acc["mat"]
 		if (acc["v"] as PackedVector3Array).is_empty():
 			continue
 		var arrays := []
