@@ -19,7 +19,7 @@ const BT = preload("res://scripts/fx/blood_tex.gd")
 const BloodCanvas = preload("res://scripts/fx/blood_canvas.gd")
 const Tex = preload("res://scripts/world/textures.gd")
 
-const MAX_DROPS := 360
+const MAX_DROPS := 560
 const MAX_RUNS := 160
 const MAX_BODY_RUNS := 70
 const MAX_POOLS := 160
@@ -1489,8 +1489,8 @@ func _build_mist() -> void:
 ## elongated the way they were going - and the heavy middle runs down the
 ## wall. It arrives as it would: the far bits a moment after the near ones.
 func exit_splatter(origin: Vector3, dir: Vector3, strength := 1.0, ignore: Array[RID] = []) -> void:
-	# (a head blown through is a lot: twice what it was, and harder)
-	strength *= 2.2
+	# (a head blown through is a lot, and hard)
+	strength *= 3.0
 	var space := get_world_3d().direct_space_state
 	var d := dir.normalized()
 	var helper := Vector3.UP if absf(d.y) < 0.95 else Vector3.RIGHT
@@ -1498,13 +1498,22 @@ func exit_splatter(origin: Vector3, dir: Vector3, strength := 1.0, ignore: Array
 	var mask := Game.LAYER_WORLD | Game.LAYER_PROPS
 	var speed := 20.0
 	# The flying part of it, seen going.
-	_spray(origin, d, 30.0, 8.0, 22.0, int(70 * strength), 55.0 * strength, ignore)
-	_spray(origin, d, 55.0, 2.0, 7.0, int(20 * strength), 10.0 * strength, ignore)
+	_spray(origin, d, 30.0, 8.0, 24.0, int(80 * strength), 65.0 * strength, ignore)
+	_spray(origin, d, 55.0, 2.0, 7.0, int(24 * strength), 12.0 * strength, ignore)
 	_mist_burst(origin, d, clampf(strength * 1.2, 0.3, 1.0))
+	# A jet that follows the bullet out: a few more waves of it over a tenth of
+	# a second, tighter and a little slower each time, so a stream of blood
+	# is seen going after the round, and a second cloud further along it.
+	for k in 5:
+		var wave := k + 1
+		get_tree().create_timer(0.022 * wave).timeout.connect(func():
+			_spray(origin + d * 0.02, d, 16.0 - wave * 1.6, 5.0, 17.0 - wave * 1.5, int(26 * strength / wave), 16.0 * strength / wave, ignore))
+	get_tree().create_timer(0.05).timeout.connect(func():
+		_mist_burst(origin + d * 0.45, d, clampf(strength * 0.8, 0.3, 1.0)))
 	if Game.gibs:
 		Game.gibs.burst(origin, d, int(5 * strength), 7.5, 0.6)
 	# The middle of it.
-	var q := PhysicsRayQueryParameters3D.create(origin, origin + d * 6.0, mask)
+	var q := PhysicsRayQueryParameters3D.create(origin, origin + d * 8.0, mask)
 	q.exclude = ignore
 	var hit := space.intersect_ray(q)
 	if not hit.is_empty():
@@ -1515,12 +1524,12 @@ func exit_splatter(origin: Vector3, dir: Vector3, strength := 1.0, ignore: Array
 		get_tree().create_timer(dist / speed).timeout.connect(func():
 			_splash_at(p, n, d, spread, strength))
 	# The spatter round it: many rays in a cone, each a drop where it hits.
-	var n_rays := int(60 * strength)
+	var n_rays := int(75 * strength)
 	for i in n_rays:
 		var a := randf() * TAU
 		var r := pow(randf(), 0.7) * deg_to_rad(32.0)
 		var rd := (fwd * Vector3(cos(a) * sin(r), sin(a) * sin(r), -cos(r))).normalized()
-		var rq := PhysicsRayQueryParameters3D.create(origin, origin + rd * 7.0, mask)
+		var rq := PhysicsRayQueryParameters3D.create(origin, origin + rd * 9.0, mask)
 		rq.exclude = ignore
 		var h := space.intersect_ray(rq)
 		if h.is_empty():

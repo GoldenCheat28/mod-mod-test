@@ -86,6 +86,23 @@ func _physics_process(delta: float) -> void:
 			p.global_position += Vector3(0, 0, 3.0) * delta
 	elif _r != null and _once("over", 0.0):
 		print("t=%.2f over: bot_alive=%s player_dead=%s" % [t, _b.alive, p._dead])
+	if _b and not _b.alive:
+		if not _done.has("dead_t"):
+			_done["dead_t"] = t
+		if OS.get_environment("OUT") != "" and _view:
+			for k in [0.3, 1.0, 3.0]:
+				if t > float(_done["dead_t"]) + k and _once("shot%.1f" % k, 0.0):
+					get_viewport().get_texture().get_image().save_png("%s/slump_%.1f.png" % [OS.get_environment("OUT"), k])
+		elif t > float(_done["dead_t"]) + 3.0 and _once("slump", 0.0) and Game.main.map.roulette_table.has("center"):
+			# Where he ended up: over the table (head near its middle, low) or off to the side.
+			var c: Vector3 = Game.main.map.roulette_table["center"]
+			var seat: Vector3 = Game.main.map.roulette_table["bot"]
+			var hd: Vector3 = _b.head.global_position
+			var along := (c - seat).normalized()
+			var off := hd - seat
+			print("slump: head forward=%.2f side=%.2f height=%.2f pelvis_on_seat=%.2f" % [off.dot(along),
+					absf(off.cross(Vector3.UP).normalized().dot(along.cross(Vector3.UP))) * 0.0 + absf((off - along * off.dot(along)).x * along.z - (off - along * off.dot(along)).z * along.x),
+					hd.y, (_b.pelvis.global_position - seat).length()])
 
 
 func _once(key: String, at: float) -> bool:

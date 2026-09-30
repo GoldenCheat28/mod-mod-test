@@ -16,6 +16,7 @@ const BodyBlood = preload("res://scripts/fx/body_blood.gd")
 const Slicer = preload("res://scripts/fx/slicer.gd")
 const Guts = preload("res://scripts/fx/guts.gd")
 const FleshWounds = preload("res://scripts/fx/flesh_wounds.gd")
+const Shape = preload("res://scripts/weapons/shape.gd")
 
 const G := 9.81
 const VECTOR3_AXIS_X := Vector3.AXIS_X
@@ -113,6 +114,11 @@ var _shoes: StandardMaterial3D
 var _hair: StandardMaterial3D
 var _long_sleeves := false
 var _has_hair := false
+## What he wears: "casual", "suit", "hoodie", "tracksuit", "jacket".
+var outfit := "casual"
+var _tee: Material                 # the shirt under a jacket, the suit's white shirt
+var _eye_mat: StandardMaterial3D
+var _extra_cloth: Array = []       # more cloth the blood on him shows in
 var _head_meshes: Array[MeshInstance3D] = []   # replaced by the soft head once it is hit
 var _face_eyes: Array[MeshInstance3D] = []
 var _face_brows: Array[MeshInstance3D] = []
@@ -183,18 +189,61 @@ func _make_materials() -> void:
 	_skin.set_shader_parameter("albedo", skin_color)
 	_skin.set_shader_parameter("rough", 0.58)
 
+	var r := rng.randf()
+	if OS.get_environment("OUTFIT") != "":           # (dev: everyone in one outfit)
+		r = {"casual": 0.1, "suit": 0.4, "hoodie": 0.6, "tracksuit": 0.8, "jacket": 0.9}.get(OS.get_environment("OUTFIT"), r)
+	outfit = "casual" if r < 0.34 else "suit" if r < 0.52 else "hoodie" if r < 0.7 else "tracksuit" if r < 0.85 else "jacket"
 	var shirts := [Color(0.72, 0.72, 0.7), Color(0.16, 0.2, 0.3), Color(0.35, 0.12, 0.1), Color(0.22, 0.3, 0.2),
 			Color(0.1, 0.1, 0.1), Color(0.55, 0.5, 0.38), Color(0.4, 0.42, 0.46)]
-	_shirt = _fabric(shirts[rng.randi() % shirts.size()], 0.92)
 	var pants := [Color(0.16, 0.2, 0.3), Color(0.12, 0.12, 0.13), Color(0.35, 0.31, 0.22), Color(0.26, 0.27, 0.25)]
-	_pants = _fabric(pants[rng.randi() % pants.size()], 0.95)
+	var shoe_cols := [Color(0.08, 0.07, 0.07), Color(0.25, 0.18, 0.12), Color(0.8, 0.8, 0.78)]
+	var shoe_rough := 0.7
+	match outfit:
+		"suit":
+			# Jacket and trousers of one cloth, a white shirt, black shoes.
+			var cloth: Color = [Color(0.08, 0.085, 0.1), Color(0.1, 0.12, 0.2), Color(0.2, 0.2, 0.21), Color(0.18, 0.14, 0.11)][rng.randi() % 4]
+			_shirt = _fabric(cloth, 0.8)
+			_pants = _fabric(cloth.darkened(0.08), 0.82)
+			_tee = _fabric(Color(0.9, 0.9, 0.88), 0.85)
+			_long_sleeves = true
+			shoe_cols = [Color(0.03, 0.03, 0.03), Color(0.14, 0.07, 0.04)]
+			shoe_rough = 0.3
+		"hoodie":
+			_shirt = _fabric([Color(0.3, 0.3, 0.32), Color(0.1, 0.1, 0.11), Color(0.35, 0.1, 0.1), Color(0.12, 0.2, 0.32),
+					Color(0.25, 0.3, 0.2)][rng.randi() % 5], 0.97)
+			_pants = _fabric(pants[rng.randi() % pants.size()], 0.95)
+			_long_sleeves = true
+		"tracksuit":
+			# The same colour top and bottom, white stripes down the sides.
+			var ts: Color = [Color(0.08, 0.1, 0.22), Color(0.07, 0.07, 0.08), Color(0.4, 0.06, 0.06), Color(0.08, 0.25, 0.14)][rng.randi() % 4]
+			_shirt = _fabric(ts, 0.7)
+			_pants = _fabric(ts, 0.7)
+			_tee = _fabric(Color(0.92, 0.92, 0.9), 0.7)
+			_long_sleeves = true
+			shoe_cols = [Color(0.85, 0.85, 0.83), Color(0.1, 0.1, 0.1)]
+		"jacket":
+			# Leather or a bomber, open over a T-shirt.
+			_shirt = _fabric([Color(0.07, 0.05, 0.04), Color(0.2, 0.12, 0.07), Color(0.14, 0.17, 0.12), Color(0.06, 0.06, 0.08)][rng.randi() % 4], 0.55)
+			_pants = _fabric(pants[rng.randi() % pants.size()], 0.95)
+			_tee = _fabric(shirts[rng.randi() % shirts.size()], 0.92)
+			_long_sleeves = true
+		_:
+			_shirt = _fabric(shirts[rng.randi() % shirts.size()], 0.92)
+			_pants = _fabric(pants[rng.randi() % pants.size()], 0.95)
+			_long_sleeves = rng.randf() < 0.45
+	if _tee:
+		_extra_cloth.append(_tee)
 	_shoes = StandardMaterial3D.new()
-	_shoes.albedo_color = [Color(0.08, 0.07, 0.07), Color(0.25, 0.18, 0.12), Color(0.8, 0.8, 0.78)][rng.randi() % 3]
-	_shoes.roughness = 0.7
+	_shoes.albedo_color = shoe_cols[rng.randi() % shoe_cols.size()]
+	_shoes.roughness = shoe_rough
 	_hair = StandardMaterial3D.new()
-	_hair.albedo_color = [Color(0.07, 0.05, 0.04), Color(0.2, 0.13, 0.07), Color(0.45, 0.33, 0.2), Color(0.3, 0.3, 0.3)][rng.randi() % 4]
+	_hair.albedo_color = [Color(0.05, 0.04, 0.035), Color(0.07, 0.05, 0.04), Color(0.2, 0.13, 0.07), Color(0.45, 0.33, 0.2),
+			Color(0.62, 0.5, 0.3), Color(0.5, 0.5, 0.5), Color(0.45, 0.2, 0.08)][rng.randi() % 7]
 	_hair.roughness = 0.85
-	_long_sleeves = rng.randf() < 0.45
+	# (the eyes stay dark whatever the hair)
+	_eye_mat = StandardMaterial3D.new()
+	_eye_mat.albedo_color = Color(0.04, 0.035, 0.03)
+	_eye_mat.roughness = 0.3
 
 
 ## Clothes (shaders/cloth.gdshader).
@@ -440,7 +489,7 @@ func _set_rest(mi: MeshInstance3D, part: Node3D) -> void:
 
 ## The materials the blood on him shows in.
 func blood_materials() -> Array:
-	return [_skin, _shirt, _pants]
+	return [_skin, _shirt, _pants] + _extra_cloth
 
 
 ## A heavy blow to the whole body (buckshot): every part pushed along `dir`
@@ -562,7 +611,7 @@ func _build_visuals() -> void:
 	_mesh(head, _cap_mesh(0.014, 0.05), _skin, Vector3(0, -0.005, -0.103), Vector3(-0.35, 0, 0), Vector3(1.2, 1, 1))
 	for sx in [-1.0, 1.0]:
 		_mesh(head, _sphere_mesh(0.022, 0.05), _skin, Vector3(0.093 * sx, 0.0, 0.01), Vector3.ZERO, Vector3(0.5, 1, 0.9))
-		var eye := _mesh(head, _sphere_mesh(0.011, 0.022), _hair, Vector3(0.035 * sx, 0.025, -0.092))
+		var eye := _mesh(head, _sphere_mesh(0.011, 0.022), _eye_mat, Vector3(0.035 * sx, 0.025, -0.092))
 		eye.scale = Vector3(1, 0.7, 0.5)
 		var brow := _mesh(head, _cap_mesh(0.008, 0.04), _hair, Vector3(0.035 * sx, 0.047, -0.094), Vector3(0, 0, PI * 0.5 + 0.15 * sx))
 		_face_eyes.append(eye)
@@ -572,14 +621,13 @@ func _build_visuals() -> void:
 	lips.albedo_color = Color(0.22, 0.08, 0.07)
 	lips.roughness = 0.6
 	_face_mouth = _mesh(head, _sphere_mesh(0.02, 0.04), lips, Vector3(0, -0.072, -0.108), Vector3.ZERO, Vector3(1.25, 0.2, 0.35))
-	_has_hair = rng.randf() < 0.8
-	if _has_hair:
-		_mesh(head, _sphere_mesh(0.104, 0.2), _hair, Vector3(0, 0.05, 0.012), Vector3(-0.25, 0, 0), Vector3(0.96, 0.8, 1.06))
+	_hair_style()
 	_head_wear()
 	for i in range(first_head_mesh, head.get_child_count()):
 		if head.get_child(i) is MeshInstance3D:
 			_head_meshes.append(head.get_child(i))
 	_body_wear()
+	_outfit_wear()
 	# Limbs.
 	for side in ["r", "l"]:
 		var ua := parts[part_index["upper_arm_" + side]]
@@ -606,6 +654,170 @@ func _build_visuals() -> void:
 		var ft := parts[part_index["foot_" + side]]
 		_mesh(ft, _cap_mesh(0.05, 0.26), _shoes, Vector3(0, -0.005, -0.005), Vector3(PI * 0.5, 0, 0), Vector3(1.0, 1.0, 0.8))
 		_mesh(ft, _sphere_mesh(0.05, 0.06), _shoes, Vector3(0, 0.03, 0.06))
+
+
+## The hair: cropped short, parted with a fringe, long to the collar,
+## curly, shaved to stubble, or none; some have a moustache or a beard.
+func _hair_style() -> void:
+	var r := rng.randf()
+	_has_hair = r < 0.9
+	var cap := func(extra_r: float, y: float) -> void:
+		_mesh(head, _sphere_mesh(0.104 + extra_r, 0.2 + extra_r * 2.0), _hair, Vector3(0, y, 0.012), Vector3(-0.25, 0, 0), Vector3(0.96, 0.8, 1.06))
+	if r < 0.3:
+		cap.call(0.0, 0.05)                                   # short
+	elif r < 0.5:
+		cap.call(0.002, 0.052)                                # parted, a fringe swept to one side
+		var side := 1.0 if rng.randf() < 0.5 else -1.0
+		var fringe := BoxMesh.new()
+		fringe.size = Vector3(0.13, 0.022, 0.06) * scale_factor
+		_mesh(head, fringe, _hair, Vector3(0.015 * side, 0.1, -0.065), Vector3(-0.55, 0.0, 0.18 * side))
+	elif r < 0.62:
+		cap.call(0.004, 0.05)                                 # long: down over the nape and the ears
+		_mesh(head, _cap_mesh(0.085, 0.22), _hair, Vector3(0, -0.035, 0.055), Vector3(0.12, 0, 0), Vector3(1.05, 1.0, 0.55))
+		for sx in [-1.0, 1.0]:
+			_mesh(head, _cap_mesh(0.03, 0.14), _hair, Vector3(0.088 * sx, -0.02, 0.02), Vector3(0, 0, 0.08 * sx), Vector3(0.7, 1.0, 1.0))
+	elif r < 0.74:
+		_mesh(head, _sphere_mesh(0.118, 0.2), _hair, Vector3(0, 0.06, 0.012), Vector3(-0.2, 0, 0), Vector3(1.04, 0.86, 1.08))   # curly
+	elif r < 0.9:
+		# Shaved to stubble: the colour of it over the scalp, no bulk.
+		var stub := StandardMaterial3D.new()
+		stub.albedo_color = (_hair.albedo_color as Color).lerp(skin_color, 0.45)
+		stub.roughness = 0.9
+		_mesh(head, _sphere_mesh(0.1015, 0.21), stub, Vector3(0, 0.03, 0.008), Vector3(-0.25, 0, 0), Vector3(0.94, 0.9, 1.08))
+	# Facial hair.
+	var f := rng.randf()
+	if f < 0.2:
+		var moustache := _mesh(head, _cap_mesh(0.01, 0.055), _hair, Vector3(0, -0.058, -0.108), Vector3(0, 0, PI * 0.5))
+		moustache.scale = Vector3(1.0, 1.0, 0.7)
+	elif f < 0.34:
+		_mesh(head, _cap_mesh(0.01, 0.055), _hair, Vector3(0, -0.058, -0.108), Vector3(0, 0, PI * 0.5))
+		_mesh(head, _sphere_mesh(0.034, 0.05), _hair, Vector3(0, -0.103, -0.088), Vector3.ZERO, Vector3(1.35, 1.0, 1.0))   # goatee
+	elif f < 0.44:
+		# A full short beard: along the jaw from ear to ear, the mouth clear.
+		for i in 7:
+			var a := lerpf(-1.25, 1.25, float(i) / 6.0)
+			_mesh(head, _sphere_mesh(0.026, 0.05), _hair, Vector3(sin(a) * 0.07, -0.085 - cos(a) * 0.012, -cos(a) * 0.075 + 0.005),
+					Vector3.ZERO, Vector3(1.0, 1.0, 0.8))
+		_mesh(head, _cap_mesh(0.01, 0.055), _hair, Vector3(0, -0.058, -0.108), Vector3(0, 0, PI * 0.5))
+
+
+## A strap, a cord or a flat band lying along `pts` (the part's rest frame,
+## before scaling), `w` wide and `h` thick, its flat side turned out from
+## `centre`. `widths` (one per point) overrides `w`.
+func _band(part: Node3D, pts: Array, w: float, h: float, mat: Material, centre := Vector3.ZERO, widths: Array = []) -> MeshInstance3D:
+	var sections := []
+	var n := pts.size()
+	for i in n:
+		var p: Vector3 = pts[i]
+		var t: Vector3 = ((pts[mini(i + 1, n - 1)] as Vector3) - (pts[maxi(i - 1, 0)] as Vector3)).normalized()
+		var face := p - centre
+		face -= t * face.dot(t)
+		if face.length() < 1e-4:
+			face = Vector3.FORWARD
+		var x := t.cross(face.normalized()).normalized()
+		var y := x.cross(t).normalized()
+		var wi: float = widths[i] if i < widths.size() else w
+		sections.append([Transform3D(Basis(x, y, t), p * scale_factor),
+				Shape.rrect(wi * scale_factor, h * scale_factor, minf(wi, h) * 0.45 * scale_factor, 2)])
+	return _mesh(part, Shape.loft_mesh(sections), mat)
+
+
+## Where the front of the chest and belly is, at height `y` (the chest's rest
+## frame): the chest's and the belly's round sections, whichever sticks out.
+func _front_z(y: float, x := 0.0) -> float:
+	var cr := sqrt(maxf(0.0225 - maxf(absf(x) - 0.05, 0.0) ** 2, 0.0))
+	var chest_z := -0.8 * sqrt(maxf(cr * cr - y * y, 0.0))
+	var ab_y := y + 0.22
+	var ab_z := -0.82 * sqrt(maxf(0.0156 - ab_y * ab_y, 0.0))
+	return minf(chest_z, ab_z)
+
+
+## The clothes that are more than a colour: the suit's shirt front, collar
+## and tie; the hoodie's hood, pocket and cords; the tracksuit's stripes and
+## zip; the open jacket with the T-shirt showing down the front.
+func _outfit_wear() -> void:
+	match outfit:
+		"suit":
+			# The white shirt showing in the V of the jacket, its collar, the tie.
+			var v_pts := []
+			var v_w := []
+			for i in 7:
+				var y := lerpf(0.145, 0.0, float(i) / 6.0)
+				v_pts.append(Vector3(0, y, _front_z(y) - 0.004))
+				v_w.append(lerpf(0.12, 0.018, float(i) / 6.0))
+			_band(chest, v_pts, 0.1, 0.004, _tee, Vector3(0, 0.0, 0.02), v_w)
+			var collar := TorusMesh.new()
+			collar.inner_radius = 0.05 * scale_factor
+			collar.outer_radius = 0.068 * scale_factor
+			collar.rings = 20
+			collar.ring_segments = 6
+			_mesh(chest, collar, _tee, Vector3(0, 0.165, -0.005), Vector3(0.25, 0, 0), Vector3(1.0, 0.7, 1.05))
+			var tie_m := StandardMaterial3D.new()
+			tie_m.albedo_color = [Color(0.45, 0.05, 0.06), Color(0.06, 0.08, 0.2), Color(0.04, 0.04, 0.04), Color(0.3, 0.25, 0.1)][rng.randi() % 4]
+			tie_m.roughness = 0.45
+			var t_pts := []
+			var t_w := []
+			for i in 10:
+				var y := lerpf(0.128, -0.25, float(i) / 9.0)
+				t_pts.append(Vector3(0, y, _front_z(y) - 0.009))
+				t_w.append(0.03 if i == 0 else lerpf(0.035, 0.07, float(i) / 9.0))
+			_band(chest, t_pts, 0.05, 0.007, tie_m, Vector3(0, 0.0, 0.02), t_w)
+			# Lapels down the edges of the V, and the buttons.
+			for sx in [-1.0, 1.0]:
+				var l_pts := []
+				for i in 5:
+					var y := lerpf(0.15, 0.0, float(i) / 4.0)
+					var x: float = lerpf(0.065, 0.012, float(i) / 4.0) * sx
+					l_pts.append(Vector3(x, y, _front_z(y, x) - 0.007))
+				_band(chest, l_pts, 0.03, 0.006, _shirt, Vector3(0, 0.0, 0.02))
+			var btn := StandardMaterial3D.new()
+			btn.albedo_color = Color(0.05, 0.05, 0.05)
+			for y in [-0.04, -0.12]:
+				_mesh(chest, _sphere_mesh(0.009, 0.012), btn, Vector3(0.022, y, _front_z(y, 0.022) - 0.006))
+		"hoodie":
+			_mesh(chest, _sphere_mesh(0.1, 0.12), _shirt, Vector3(0, 0.17, 0.075), Vector3(0.4, 0, 0), Vector3(1.5, 1.0, 1.1))    # the hood down the back
+			var ab := parts[part_index["abdomen"]]
+			var pocket := BoxMesh.new()
+			pocket.size = Vector3(0.2, 0.085, 0.012) * scale_factor
+			_mesh(ab, pocket, _shirt, Vector3(0, -0.02, -0.098))
+			var cord := StandardMaterial3D.new()
+			cord.albedo_color = Color(0.85, 0.85, 0.82)
+			for sx in [-1.0, 1.0]:
+				var c_pts := []
+				for i in 4:
+					var y := lerpf(0.14, 0.02, float(i) / 3.0)
+					c_pts.append(Vector3(0.03 * sx, y, _front_z(y, 0.03) - 0.006))
+				_band(chest, c_pts, 0.007, 0.007, cord, Vector3(0, 0.0, 0.02))
+		"tracksuit":
+			var stripe := _tee
+			for side in ["r", "l"]:
+				var sx := 1.0 if side == "r" else -1.0
+				for seg in [["upper_arm_", 0.059, 0.14], ["forearm_", 0.048, 0.13], ["thigh_", 0.083, 0.21], ["shin_", 0.063, 0.21]]:
+					var part := parts[part_index[seg[0] + side]]
+					var rr: float = seg[1]
+					var hl: float = seg[2]
+					_band(part, [Vector3(rr * sx, hl, 0), Vector3(rr * sx, 0, 0), Vector3(rr * sx, -hl, 0)], 0.018, 0.004, stripe)
+			var z_pts := []
+			for i in 8:
+				var y := lerpf(0.15, -0.3, float(i) / 7.0)
+				z_pts.append(Vector3(0, y, _front_z(y) - 0.004))
+			var zip := StandardMaterial3D.new()
+			zip.albedo_color = Color(0.6, 0.6, 0.6)
+			zip.metallic = 0.8
+			_band(chest, z_pts, 0.008, 0.004, zip, Vector3(0, 0.0, 0.02))
+		"jacket":
+			# The T-shirt down the open front, the collar turned up round the neck.
+			var o_pts := []
+			for i in 9:
+				var y := lerpf(0.15, -0.32, float(i) / 8.0)
+				o_pts.append(Vector3(0, y, _front_z(y) - 0.004))
+			_band(chest, o_pts, 0.085, 0.005, _tee, Vector3(0, 0.0, 0.02))
+			var collar := TorusMesh.new()
+			collar.inner_radius = 0.055 * scale_factor
+			collar.outer_radius = 0.08 * scale_factor
+			collar.rings = 20
+			collar.ring_segments = 6
+			_mesh(chest, collar, _shirt, Vector3(0, 0.17, 0.005), Vector3(0.3, 0, 0), Vector3(1.05, 1.1, 1.0))
 
 
 ## What people wear on their heads and faces: a knitted beanie or a cap, a
@@ -669,13 +881,17 @@ func _body_wear() -> void:
 	gold.albedo_color = Color(0.85, 0.65, 0.2) if rng.randf() < 0.6 else Color(0.75, 0.76, 0.78)
 	gold.metallic = 1.0
 	gold.roughness = 0.25
-	if rng.randf() < 0.2:
-		var chain := TorusMesh.new()
-		chain.inner_radius = 0.085 * scale_factor
-		chain.outer_radius = 0.092 * scale_factor
-		chain.rings = 24
-		chain.ring_segments = 4
-		_mesh(chest, chain, gold, Vector3(0, 0.13, -0.035), Vector3(-1.2, 0, 0), Vector3(1.0, 1.0, 1.3))
+	if rng.randf() < 0.2 and outfit != "suit":
+		# A chain round the neck, lying on the chest and dipping in front.
+		var c_pts := []
+		for i in 21:
+			var th := TAU * float(i) / 20.0
+			var fr := maxf(cos(th), 0.0)
+			var y := 0.168 - 0.085 * fr * fr
+			var x := 0.074 * sin(th)
+			var z := (_front_z(y, x) - 0.006) * fr if fr > 0.0 else 0.062 * -cos(th)
+			c_pts.append(Vector3(x, y, minf(z, -0.045 * fr)) if fr > 0.3 else Vector3(x, y, z))
+		_band(chest, c_pts, 0.007, 0.007, gold, Vector3(0, 0.1, 0.0))
 	if rng.randf() < 0.15:
 		var scarf_m := StandardMaterial3D.new()
 		scarf_m.albedo_color = [Color(0.6, 0.1, 0.1), Color(0.15, 0.15, 0.35), Color(0.4, 0.35, 0.3)][rng.randi() % 3]
@@ -684,10 +900,15 @@ func _body_wear() -> void:
 		scarf.inner_radius = 0.05 * scale_factor
 		scarf.outer_radius = 0.085 * scale_factor
 		scarf.rings = 16
-		_mesh(chest, scarf, scarf_m, Vector3(0, 0.2, 0.0), Vector3(0.1, 0, 0), Vector3(1.0, 1.4, 1.0))
-		var tail := BoxMesh.new()
-		tail.size = Vector3(0.07, 0.25, 0.02) * scale_factor
-		_mesh(chest, tail, scarf_m, Vector3(0.05, 0.06, -0.15), Vector3(0.15, 0, 0.1))
+		_mesh(chest, scarf, scarf_m, Vector3(0, 0.18, 0.0), Vector3(0.1, 0, 0), Vector3(1.0, 1.2, 1.0))
+		# The two ends hanging down the front from the knot, lying on him.
+		for k in 2:
+			var x0 := 0.035 if k == 0 else 0.055
+			var e_pts := []
+			for i in 5:
+				var y := lerpf(0.14, -0.08 - 0.04 * k, float(i) / 4.0)
+				e_pts.append(Vector3(x0, y, _front_z(y, x0) - 0.012 - 0.008 * k))
+			_band(chest, e_pts, 0.06, 0.014, scarf_m, Vector3(0, 0.0, 0.02))
 	if rng.randf() < 0.3:
 		var strap := StandardMaterial3D.new()
 		strap.albedo_color = Color(0.08, 0.08, 0.08)
@@ -713,10 +934,13 @@ func _body_wear() -> void:
 		var pocket := BoxMesh.new()
 		pocket.size = Vector3(0.2, 0.14, 0.04) * scale_factor
 		_mesh(chest, pocket, bag, Vector3(0, -0.1, 0.27))
+		# The straps: out of the top of the pack, over the shoulders and down
+		# the front of the chest to under the arms, lying on him.
 		for sx in [-1.0, 1.0]:
-			var st := BoxMesh.new()
-			st.size = Vector3(0.035, 0.34, 0.012) * scale_factor
-			_mesh(chest, st, bag, Vector3(0.1 * sx, 0.02, -0.13), Vector3(0.15, 0, 0))
+			var s_pts := [Vector3(0.1 * sx, 0.1, 0.13), Vector3(0.1 * sx, 0.15, 0.08), Vector3(0.1 * sx, 0.17, 0.0),
+					Vector3(0.1 * sx, 0.14, -0.075), Vector3(0.105 * sx, 0.06, _front_z(0.06, 0.105) - 0.008),
+					Vector3(0.115 * sx, -0.04, _front_z(-0.04, 0.115) - 0.008), Vector3(0.14 * sx, -0.12, -0.075)]
+			_band(chest, s_pts, 0.036, 0.008, bag, Vector3(0.06 * sx, 0.04, 0.0))
 
 
 # --- Simulation ----------------------------------------------------------------------

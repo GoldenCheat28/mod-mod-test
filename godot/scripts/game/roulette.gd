@@ -487,28 +487,41 @@ func _bang_bot() -> void:
 	var dir: Vector3 = -gun.global_basis.z
 	Game.play_3d(Sfx.get_stream(&"rev_shot"), m, 4.0, 0.05, 1.0)
 	_bang_moment()
-	bot.receive_hit(bot.head, m + dir * 0.01, dir, 6.0, "pistol")
-	if bot.alive:
-		bot._die("headshot")
-	# Sitting at the table he slumps forward onto it, not off the chair to
-	# the side: the blow from the side taken off the top of him, and he
-	# goes over forward, head and arms on the table.
-	if _table.has("center"):
-		var toward: Vector3 = (_table["center"] as Vector3) - bot.position_ground()
-		toward.y = 0.0
-		toward = toward.normalized()
-		for pn in ["head", "chest", "abdomen", "upper_arm_r", "upper_arm_l", "forearm_r", "forearm_l", "hand_r", "hand_l"]:
-			if bot.part_index.has(pn):
-				var part: RigidBody3D = bot.parts[bot.part_index[pn]]
-				var up_k := 1.0 if pn in ["head", "chest"] else 0.7
-				part.linear_velocity = toward * 1.8 * up_k + Vector3.DOWN * 0.4
-				part.angular_velocity = Vector3.ZERO
-		var pel: RigidBody3D = bot.pelvis
-		pel.linear_velocity = Vector3.ZERO
+	slump_on_table(bot, dir, _table.get("center", Vector3.INF), m)
+
 	_say("Ты победил", 4.0)
 	_drop_gun()
 	_crowd_react("bot")
 	_finish(4.2)
+
+
+## The shot man at a table slumps forward onto it, face first - not off the
+## chair to the side. Sat, he is held still (kinematic); he is let go first,
+## so what starts him going is his own: the round's push from the side is
+## taken off, the top of him tips forward over the hips, which stay on the
+## chair. Away from a table (`centre` INF) it is just the shot.
+static func slump_on_table(b: Node3D, dir: Vector3, centre: Vector3, muzzle: Vector3) -> void:
+	if centre == Vector3.INF:
+		b.receive_hit(b.head, muzzle + dir * 0.01, dir, 6.0, "pistol")
+		if b.alive:
+			b._die("headshot")
+		return
+	b.wake()
+	b.receive_hit(b.head, muzzle + dir * 0.01, dir, 1.0, "pistol")
+	if b.alive:
+		b._die("headshot")
+	var toward: Vector3 = centre - b.position_ground()
+	toward.y = 0.0
+	toward = toward.normalized()
+	var tip := Vector3.UP.cross(toward)          # the axis he goes over about
+	for pn in ["head", "chest", "abdomen", "upper_arm_r", "upper_arm_l", "forearm_r", "forearm_l", "hand_r", "hand_l"]:
+		if b.part_index.has(pn):
+			var part: RigidBody3D = b.parts[b.part_index[pn]]
+			var up_k := 1.0 if pn in ["head", "chest"] else 0.7
+			part.linear_velocity = toward * 1.9 * up_k + Vector3.DOWN * 0.5
+			part.angular_velocity = tip * (2.2 if pn in ["head", "chest", "abdomen"] else 0.8)
+	b.pelvis.linear_velocity = Vector3.ZERO
+	b.pelvis.angular_velocity = Vector3.ZERO
 
 
 ## Out of the hand: it falls where it is and stays, a thing on the ground.

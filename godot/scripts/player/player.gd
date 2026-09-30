@@ -825,6 +825,7 @@ func _process_real(delta: float) -> void:
 	elif not Input.is_action_pressed("fire"):
 		_fire_blocked = false
 	_process_note(delta)
+	_pickup_tick(delta)
 	_update_sleep(delta)
 	if _r_down >= 0.0 and Game.clock - _r_down > 0.45:
 		_r_down = -1.0
@@ -875,6 +876,13 @@ func _process_real(delta: float) -> void:
 	if _bandaging_leg():
 		var look := smoothstep(0.0, 0.6, _bandage_t) * (1.0 - smoothstep(BANDAGE_TIME - 0.5, BANDAGE_TIME, _bandage_t))
 		cam_pitch = lerpf(cam_pitch, -1.05, look)
+	# Picking something up: a glance down at it while the hand goes out.
+	if not _pickup.is_empty():
+		var pt: float = _pickup["t"]
+		var to: Vector3 = (_pickup["at"] as Vector3) - cam.global_position
+		var want := atan2(to.y, Vector2(to.x, to.z).length())
+		var gw := smoothstep(0.0, 0.2, pt) * (1.0 - smoothstep(0.5, 0.8, pt)) * 0.55
+		cam_pitch = lerpf(cam_pitch, minf(want, cam_pitch), gw)
 	var cam_roll := _strafe_roll + _turn_roll + _kick_roll * 0.03 + bob.x * 0.5 + _climb_view.y
 	# High: the view drifts and sways slowly.
 	cam_pitch += sin(_time * 0.37) * 0.018 * Game.high
@@ -1381,6 +1389,10 @@ func _update_body() -> void:
 		feet_t = limbs[1]
 	if _held:
 		hands[1 if hands[0] != Vector3.INF else 0] = _held.to_global(_held_local)
+	var ph := _pickup_hand()
+	if ph != Vector3.INF:
+		hands[1] = ph
+		dirs[1] = Vector3.ZERO
 	# The body hangs from the head: placed under the camera, so it moves as one
 	# piece with the view (jumps, landing dips) and the neck keeps its length.
 	var origin := get_global_transform_interpolated().origin
@@ -1771,6 +1783,10 @@ func _seated(delta: float) -> bool:
 ## headroom.
 func _update_crouch(delta: float) -> void:
 	var want := 1.0 if (Input.is_action_pressed("crouch") and Game.is_mouse_captured()) or _bandaging_leg() else 0.0
+	# Down to pick something off the floor, and back up with it.
+	if not _pickup.is_empty() and float((_pickup["at"] as Vector3).y) < global_position.y + 0.8:
+		var pt: float = _pickup["t"]
+		want = maxf(want, 1.0 - smoothstep(0.55, 0.85, pt))
 	if want < _crouch:
 		var up := Vector3.UP * (STAND_H - _cap.height + 0.02)
 		if test_move(global_transform, up):
@@ -2425,12 +2441,93 @@ func _pick_up() -> void:
 		if left > 0 and not Net.active:
 			thing.count = left
 			_notify("Не всё поместилось")
+			Game.play_3d(Sfx.get_stream(&"item_pickup"), at, -6.0, 0.05, 2.0)
 		elif is_instance_valid(thing) and not thing.is_queued_for_deletion():
-			if thing.has_method("take") and Net.active:
-				thing.take()
+			# The thing itself is picked up by hand and put away (_pickup_tick).
+			var mdl: Node3D = thing.get("model")
+			var xf: Transform3D = mdl.global_transform if mdl and mdl.is_inside_tree() else Transform3D(Basis(), at)
+			if thing.has_method("take"):
+				mdl = thing.take()
 			else:
 				thing.queue_free()
-		Game.play_3d(Sfx.get_stream(&"item_pickup"), at, -6.0, 0.05, 2.0))
+			_start_pickup(mdl, xf, at))
+
+
+## Picking something up, played out: the left hand goes out to it and closes
+## on it, brings it in past the chest and puts it away in the bag at the
+## hip; the eyes go down to it on the way. What is in the hand is the thing
+## itself (its model), shrinking into the bag at the end.
+var _pickup := {}
+const PICKUP_TIME := 1.15
+
+
+func _start_pickup(mdl: Node3D, xf: Transform3D, at: Vector3) -> void:
+	_end_pickup()
+	if mdl == null:
+		Game.play_3d(Sfx.get_stream(&"item_pickup"), at, -6.0, 0.05, 2.0)
+		return
+	if mdl.get_parent():
+		mdl.get_parent().remove_child(mdl)
+	get_parent().add_child(mdl)
+	mdl.global_transform = xf
+	for c in mdl.find_children("*", "GeometryInstance3D", true, false):
+		(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_pickup = {"t": 0.0, "model": mdl, "from": xf, "at": at, "scale": mdl.scale}
+
+
+func _end_pickup() -> void:
+	if _pickup.is_empty():
+		return
+	var m: Node3D = _pickup["model"]
+	if is_instance_valid(m):
+		m.queue_free()
+	_pickup = {}
+
+
+## Where the left hand is while picking up (INF when not), for _update_body.
+func _pickup_hand() -> Vector3:
+	if _pickup.is_empty():
+		return Vector3.INF
+	var t: float = _pickup["t"]
+	var cx := cam.global_transform
+	var rest := cx * Vector3(-0.2, -0.45, -0.2)
+	var at: Vector3 = _pickup["at"]
+	var chest := cx * Vector3(-0.1, -0.3, -0.32)
+	var bag := get_global_transform_interpolated() * Vector3.ZERO + Basis(Vector3.UP, yaw) * Vector3(-0.22, 0.92, 0.06)
+	if t < 0.4:
+		return rest.lerp(at, smoothstep(0.0, 0.4, t))
+	if t < 0.52:
+		return at
+	# In to the chest and down to the bag: a curve through the chest point.
+	var k := smoothstep(0.52, PICKUP_TIME - 0.08, t)
+	var a := at.lerp(chest, k)
+	var b := chest.lerp(bag, k)
+	return a.lerp(b, k)
+
+
+func _pickup_tick(delta: float) -> void:
+	if _pickup.is_empty():
+		return
+	_pickup["t"] = float(_pickup["t"]) + delta
+	var t: float = _pickup["t"]
+	var m: Node3D = _pickup["model"]
+	if not is_instance_valid(m) or t >= PICKUP_TIME or _dead or _ragdoll:
+		Game.play_3d(Sfx.get_stream(&"item_pickup"), cam.global_position, -8.0, 0.05, 2.0)
+		_end_pickup()
+		return
+	var hand := _pickup_hand()
+	var from: Transform3D = _pickup["from"]
+	if t < 0.46:
+		# Lying where it is until the hand is on it.
+		m.global_transform = from
+	else:
+		# In the hand, turned with it, and at the end into the bag.
+		var held := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -0.4)
+		var k := smoothstep(0.46, 0.6, t)
+		var q := from.basis.get_rotation_quaternion().slerp(held.get_rotation_quaternion(), k)
+		var sc: Vector3 = _pickup["scale"]
+		var shrink := 1.0 - smoothstep(PICKUP_TIME - 0.22, PICKUP_TIME, t) * 0.85
+		m.global_transform = Transform3D(Basis(q).scaled(sc * shrink), from.origin.lerp(hand, k))
 
 
 func _look_humanoid(reach: float) -> Node3D:
