@@ -260,7 +260,8 @@ func _ready() -> void:
 	hearing.player = self
 	add_child(hearing)
 	var ui := CanvasLayer.new()
-	ui.layer = 2
+	# (above the black bars of a cinematic moment, on 3: the HUD stays readable)
+	ui.layer = 4
 	add_child(ui)
 	_hand = HandIcon.new()
 	ui.add_child(_hand)
@@ -881,11 +882,8 @@ func _process_real(delta: float) -> void:
 	var view_yaw := yaw
 	var eye_off := Vector3.ZERO
 	if Game.bodycam and not _ragdoll:
-		# A camera clipped to the chest (after Unrecord): it is the body that
-		# turns it, and the body comes round a moment after the eyes and a
-		# little past; every step rocks the chest from side to side and jolts
-		# it; the clip itself shivers. Lower than the eyes and in front of the
-		# chest.
+		# A body camera (after Unrecord): it is the body that turns it; every
+		# step rocks it from side to side and jolts it; the clip itself shivers.
 		var w := TAU * 3.0
 		var zeta := 0.6
 		var want_p := cam_pitch * 0.85
@@ -904,7 +902,9 @@ func _process_real(delta: float) -> void:
 		view_yaw = _bc_rot.y + side * 0.018 * sway + n2 * 0.002
 		cam_pitch = _bc_rot.x - (bounce - 0.64) * 0.03 * sway + _bc_pos.y * 0.25 + n1 * 0.002
 		cam_roll = cam_roll * 0.5 + side * 0.04 * sway + _bc_pos.x * 0.3 + n2 * 0.003
-		eye_off = Basis(Vector3.UP, view_yaw) * Vector3(side * 0.02 * sway, -0.3 + _bc_pos.y * 0.04, -0.17)
+		# (worn at eye level, on the brow: the picture is what the eyes see,
+		# and the hands on the gun stay in reach of it)
+		eye_off = Basis(Vector3.UP, view_yaw) * Vector3(side * 0.02 * sway, _bc_pos.y * 0.04, -0.03)
 	else:
 		_bc_rot = Vector3(cam_pitch, yaw, 0.0)
 		_bc_rot_v = Vector3.ZERO

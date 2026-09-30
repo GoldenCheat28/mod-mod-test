@@ -476,6 +476,10 @@ func try_reload() -> void:
 	_reload_interrupt = false
 	_reload_empty = _slide_locked
 	_roulette_load = false
+	# (the bolt's one-shot events are armed afresh for each reload - cleared at
+	# its end instead, they fired again every frame the reload was finishing)
+	remove_meta("ejected")
+	remove_meta("bolt_home")
 
 
 ## Revolver, R held: out with everything, one round in, shut it and spin -
@@ -1082,11 +1086,6 @@ func update(delta: float, ctx: Dictionary) -> void:
 	var lowered := 1.0 - smoothstep(0.0, 1.0, _equip)
 
 	var pos := hip_pos.lerp(aim_pos, ak)
-	if Game.bodycam:
-		# The camera is on the chest, below and in front of the eyes: the
-		# gun is held up in front of the face - higher and further out from
-		# it; aimed, out at arm's length along the top of the picture.
-		pos += Vector3(0.0, 0.14, -0.1).lerp(Vector3(0.0, 0.2, -0.2), ak)
 	# The shoulders turn only part of the way with the eyes: looking down the
 	# gun comes up into the view and looking up it drops, as held by arms.
 	if cam:
@@ -1337,9 +1336,6 @@ func _reload_props(t: float, dur: float) -> void:
 				if t > 1.3 and not has_meta("bolt_home"):
 					set_meta("bolt_home", true)
 					Game.play_3d(Sfx.get_stream(&"slide_forward"), global_position, -6.0, 0.05, 2.0)
-				if t > dur - 0.05:
-					remove_meta("ejected")
-					remove_meta("bolt_home")
 			plan = [["round", model, Vector3(0.07, -0.13, 0.08), Vector3(0.0, 0.021, -0.03), 0.65, 1.05]]
 		"sawnoff":
 			if barrels:

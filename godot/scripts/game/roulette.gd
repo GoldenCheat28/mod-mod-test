@@ -73,8 +73,12 @@ func start(p: Node3D, b: Node3D, table := false) -> bool:
 
 
 func _init() -> void:
+	# The bars on 3, under the player's HUD (4); what is said on top of them.
+	var bars_ui := CanvasLayer.new()
+	bars_ui.layer = 3
+	add_child(bars_ui)
 	var ui := CanvasLayer.new()
-	ui.layer = 3
+	ui.layer = 4
 	add_child(ui)
 	_label = Label.new()
 	_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -110,7 +114,7 @@ func _init() -> void:
 		bar.color = Color.BLACK
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bar.set_anchors_preset(Control.PRESET_TOP_WIDE if k == 0 else Control.PRESET_BOTTOM_WIDE)
-		ui.add_child(bar)
+		bars_ui.add_child(bar)
 		_bars.append(bar)
 
 
@@ -757,6 +761,9 @@ func _cinema(delta: float) -> void:
 		_bars[0].size = Vector2(vs.x, h)
 		_bars[1].position = Vector2(0, vs.y - h)
 		_bars[1].size = Vector2(vs.x, h)
+	# The words go just under the top bar, never behind it.
+	_label.position.y = maxf(90.0, h + 18.0)
+	_crowd.position.y = _label.position.y + 60.0
 	if not is_instance_valid(p):
 		return
 	# His turn: the view drawn slowly to his face, tighter and tighter while

@@ -16,6 +16,7 @@ const UPPER_ARM := 0.3
 const FOREARM := 0.28
 const BodyShader = preload("res://shaders/player_body.gdshader")
 const MAX_TWIST := 0.8       # rad the chest can turn over the hips before the feet follow
+const REACH := UPPER_ARM + FOREARM
 
 var _seg := {}        # name -> MeshInstance3D (unit-height cylinder, scaled)
 var _ball := {}       # name -> MeshInstance3D (joint / hand / foot)
@@ -30,6 +31,7 @@ var _wound_mi: Array = []         # per wound: [soaked patch, hole, bandage]
 var _hip_yaw := 0.0
 var _hip_init := false
 var _turning := false
+var _blade := 0.0            # rad the chest is turned right to hold a long gun
 
 ## Filled every update, for the weapon reach limits.
 var shoulder_r := Vector3.ZERO
@@ -202,7 +204,16 @@ func update(root: Transform3D, phase: float, stride: float, move_dir: Vector3, h
 	var pitch := view.basis.get_euler().x
 	var lean := clampf(-pitch - 0.25, 0.0, 1.0) * 0.18 - clampf(pitch - 0.3, 0.0, 1.0) * 0.08
 	lean += crouch * 0.35
-	var cb := Basis(Vector3.UP, _hip_yaw + twist * 0.85) * Basis(Vector3.RIGHT, -lean)
+	# A long gun held in both hands is held bladed: the chest turns a little to
+	# the right so the left shoulder comes forward to the forend.
+	var blade_want := 0.0
+	var tl: Vector3 = hands[1]
+	if tl != Vector3.INF and hands[0] != Vector3.INF:
+		var cb0 := Basis(Vector3.UP, _hip_yaw + twist * 0.85)
+		var sh0 := hips * Vector3(0, 0.95 - 0.5 * crouch, 0.1 + 0.12 * crouch) + cb0 * Vector3(-0.19, 0.45, 0.06)
+		blade_want = clampf((sh0.distance_to(tl) - REACH * 0.8) / 0.19, 0.0, 0.75)
+	_blade = move_toward(_blade, blade_want, delta * 3.0)
+	var cb := Basis(Vector3.UP, _hip_yaw + twist * 0.85 - _blade) * Basis(Vector3.RIGHT, -lean)
 	# Crouching: the hips drop and go back, the knees bend forward.
 	var waist := hips * Vector3(0, 0.95 - 0.5 * crouch, 0.1 + 0.12 * crouch)
 	_pelvis.global_transform = Transform3D(Basis(Vector3.UP, _hip_yaw + twist * 0.3) * Basis(Vector3.FORWARD, PI * 0.5), waist)
@@ -255,6 +266,13 @@ func update(root: Transform3D, phase: float, stride: float, move_dir: Vector3, h
 		if target == Vector3.INF:
 			var swing := sin(ph + PI) * 0.12 * stride
 			target = shoulder + cb.x * 0.04 * sx + Vector3.DOWN * 0.56 + (-cb.z) * (0.06 + swing)
+		else:
+			# The shoulder reaches out (protracts) toward a hold just out of reach.
+			var d := target - shoulder
+			var excess := d.length() - REACH * 0.985
+			if excess > 0.0:
+				shoulder += d.normalized() * minf(excess, 0.16)
+				_ball["shoulder_" + side].global_position = shoulder
 		var arm := _ik(shoulder, target, UPPER_ARM, FOREARM, Vector3.DOWN + cb.x * sx * 0.8 + cb.z * 0.3)
 		_place(_seg["upper_arm_" + side], shoulder, arm[0])
 		_place(_seg["forearm_" + side], arm[0], arm[1])
@@ -262,6 +280,7 @@ func update(root: Transform3D, phase: float, stride: float, move_dir: Vector3, h
 		pts["shoulder_" + side] = shoulder
 		pts["elbow_" + side] = arm[0]
 		pts["wrist_" + side] = arm[1]
+		pts["target_" + side] = target
 		# The fist carries on straight from the forearm, closed round what it holds.
 		var hy := ((arm[1] as Vector3) - (arm[0] as Vector3)).normalized()
 		var hd: Vector3 = hand_dirs[0 if side == "r" else 1]
