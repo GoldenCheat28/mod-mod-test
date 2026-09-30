@@ -352,7 +352,10 @@ static func _game_table(c: Dictionary, centre: Vector3, n: int, kind: String, ju
 	foot.bottom_radius = 0.34
 	foot.height = 0.04
 	geo.add_mesh(foot, Transform3D(Basis(), centre + Vector3(0, 0.02, 0)), wood)
-	geo.add_collision_box(Transform3D(Basis(), centre + Vector3(0, 0.75, 0)), Vector3(r * 1.5, 0.05, r * 1.5))
+	# (round, near enough: four boxes turned about each other, out to the rim -
+	# blood and whatever falls there lands on the top, not through it)
+	for k in 4:
+		geo.add_collision_box(Transform3D(Basis(Vector3.UP, PI * 0.25 * k), centre + Vector3(0, 0.75, 0)), Vector3(r * 2.0, 0.05, r * 0.82))
 	geo.add_collision_box(Transform3D(Basis(), centre + Vector3(0, 0.37, 0)), Vector3(0.18, 0.74, 0.18))
 	var seats := []
 	var gap := 1 if judge else 0

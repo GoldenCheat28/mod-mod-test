@@ -161,8 +161,11 @@ func stance_for(b: Node3D, delta: float) -> void:
 			var arrived := _walk(g, pile, delta, 0.9, cp)
 			var fwd := Vector3(b.facing.x, 0.0, b.facing.z).normalized()
 			var side := fwd.cross(Vector3.UP)
-			var grip: Vector3 = b.position_ground() + fwd * 0.5 + Vector3.UP * 0.5
-			chest.linear_velocity = ((grip - cp) * 4.0).limit_length(2.5)
+			# (low and steady: dragged along the floor, not thrown about)
+			var grip: Vector3 = b.position_ground() + fwd * 0.45 + Vector3.UP * 0.3
+			var v := ((grip - cp) * 3.0).limit_length(1.6)
+			v.y = clampf(v.y, -1.0, 0.35)
+			chest.linear_velocity = v
 			b.hand_goal["r"] = cp - side * 0.13
 			b.hand_goal["l"] = cp + side * 0.13
 			b.look_target = cp

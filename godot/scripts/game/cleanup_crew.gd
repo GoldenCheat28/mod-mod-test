@@ -9,7 +9,7 @@ extends Node
 const Sfx = preload("res://scripts/audio/sfx.gd")
 
 const ROLES := ["drag", "drag", "mop", "mop", "wash", "wash"]
-const SHIFT := 150.0             # nobody stays up here longer than this
+const SHIFT := 320.0             # nobody stays up here longer than this
 
 var at_table := false
 var hall := {}
@@ -207,14 +207,14 @@ func _drag(w: Dictionary, delta: float) -> void:
 				corpse.wake()
 		"grab":
 			b.move_velocity = Vector3.ZERO
-			_hold_corpse(w, corpse, delta, 0.35)
+			_hold_corpse(w, corpse, delta, 0.25)
 			if float(w["stage_t"]) > 0.8:
 				w["stage"] = "drag"
 				w["stage_t"] = 0.0
 		"drag":
 			# Backwards to the dumpster, pulling him along the floor.
-			_walk(w, dump, delta, 0.85, cp)
-			_hold_corpse(w, corpse, delta, 0.5)
+			_walk(w, dump, delta, 1.05, cp)
+			_hold_corpse(w, corpse, delta, 0.3)
 			var me: Vector3 = b.position_ground()
 			if Vector2(dump.x - me.x, dump.z - me.z).length() < 0.6 or float(w["stage_t"]) > 60.0:
 				w["stage"] = "heave"
@@ -253,7 +253,10 @@ func _hold_corpse(w: Dictionary, corpse: Node3D, _delta: float, lift: float) -> 
 	var fwd := Vector3(b.facing.x, 0.0, b.facing.z).normalized()
 	var side := fwd.cross(Vector3.UP)
 	var grip: Vector3 = b.position_ground() + fwd * 0.5 + Vector3.UP * lift
-	chest.linear_velocity = ((grip - chest.global_position) * 4.0).limit_length(2.5)
+	# (low and steady: dragged along the floor, not thrown about)
+	var v := ((grip - chest.global_position) * 3.0).limit_length(1.6)
+	v.y = clampf(v.y, -1.0, 0.35)
+	chest.linear_velocity = v
 	b.hand_goal["r"] = chest.global_position - side * 0.13
 	b.hand_goal["l"] = chest.global_position + side * 0.13
 	b.look_target = chest.global_position
