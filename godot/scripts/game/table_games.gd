@@ -16,6 +16,7 @@ extends Node
 const Game_ = preload("res://scripts/game/roulette_game.gd")
 const Bar = preload("res://scripts/game/bar.gd")
 const Crew = preload("res://scripts/game/cleanup_crew.gd")
+const Guards = preload("res://scripts/game/guards.gd")
 
 const EVENT_EVERY := 90.0
 const EVENT_PRIZE := 3000
@@ -29,6 +30,7 @@ var _games := {}                 # table index -> roulette_game
 var _bot_game_in := 50.0
 var bar: Node = null
 var crew: Node = null
+var guards: Node = null
 var _crew_in := -1.0             # seconds to the cleaners coming up (after the event)
 var _drink_in := 30.0            # to someone off the street dropping in for a drink
 
@@ -54,6 +56,11 @@ func _physics_process(delta: float) -> void:
 		bar.name = "Bar"
 		add_child(bar)
 		bar.setup(hall["bar"])
+	if guards == null and hall.has("bounds"):
+		guards = Guards.new()
+		guards.name = "Guards"
+		add_child(guards)
+		guards.setup(hall)
 	if bar:
 		bar.ensure_bartender()
 		_drink_in -= delta
@@ -92,6 +99,8 @@ func start_event() -> void:
 	var t: Dictionary = _tables()[ti]
 	_clear_table(t)
 	_ensure_judge(t)
+	if guards:
+		guards.ensure()
 	var g = Game_.new()
 	g.name = "EventGame"
 	add_child(g)
@@ -249,6 +258,13 @@ func refill(g: Node) -> void:
 		g.add_bot(b, seat)
 
 
+## Someone died at a table (roulette_game.gd): at the event table the
+## guards move him off it.
+func body_down(g: Node, b: Node3D) -> void:
+	if guards and g.get("table_i") == _event_table():
+		guards.body_down(b)
+
+
 func game_over(g: Node) -> void:
 	for k in _games.keys():
 		if _games[k] == g:
@@ -270,7 +286,7 @@ func _free_bots(centre: Vector3, n: int, within: float) -> Array:
 	var cands: Array = []
 	for b in Game.bots:
 		if not is_instance_valid(b) or b == judge or b.has_meta("trader") or b.has_meta("puppet") \
-				or b.has_meta("bartender") or b.has_meta("cleaner") or float(b.get_meta("late_until", -1.0)) > Game.clock:
+				or b.has_meta("bartender") or b.has_meta("cleaner") or b.has_meta("guard") or float(b.get_meta("late_until", -1.0)) > Game.clock:
 			continue
 		if not b.alive or not b.conscious or b.fallen or b.cuffed or b.weapon:
 			continue

@@ -273,7 +273,6 @@ func _smoke(delta: float) -> void:
 		var f: Vector3 = -body.head.global_basis.z
 		_wisps().jet(mouth + f * 0.04, (f + Vector3.DOWN * 0.15).normalized(), clampf(_exhale / 1.5, 0.0, 1.0))
 		_wisps().thread(tip, false)
-		Game.smoke.add(mouth + f * 0.35, delta * 0.1, 0.035, f * 0.3)
 	else:
 		_wisps().jet(Vector3.ZERO, Vector3.FORWARD, 0.0)
 		_wisps().thread(tip, _drag_t < 0.0)

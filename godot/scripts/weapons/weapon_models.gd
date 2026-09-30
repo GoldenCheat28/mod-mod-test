@@ -157,57 +157,92 @@ static func _node(parent: Node3D, name: String, pos := Vector3.ZERO) -> Node3D:
 
 
 static func pistol() -> Node3D:
+	# A Glock 17 (186 mm long, the grip raked 22 degrees): the polymer frame
+	# with its rail and squared trigger guard, the finger-grooved grip with
+	# textured sides, the slide with its bevelled top, serrations and the
+	# barrel hood in the ejection port. Smooth lofted solids, run into each
+	# other so no light shows between them.
 	var root := Node3D.new()
 	root.name = "Pistol"
-	# Frame and grip in one piece: the dust cover in front, the beavertail
-	# over the web of the hand, the raked grip with its finger swell.
-	_ext(root, [Vector2(-0.142, 0.013), Vector2(0.022, 0.013), Vector2(0.042, 0.008), Vector2(0.05, -0.004),
-			Vector2(0.047, -0.012), Vector2(0.058, -0.055), Vector2(0.066, -0.1), Vector2(0.062, -0.108),
-			Vector2(0.024, -0.108), Vector2(0.018, -0.1), Vector2(0.008, -0.06), Vector2(0.004, -0.045),
-			Vector2(0.007, -0.035), Vector2(0.002, -0.025), Vector2(-0.004, -0.015), Vector2(-0.03, -0.013),
-			Vector2(-0.142, -0.013), Vector2(-0.146, 0.0)], 0.0135, "polymer")
+	var R := Shape.rrect
+	var poly := _mat("polymer")
+	var steel := _mat("steel")
+	# Frame: the dust cover under the front of the slide back to the tang,
+	# the little beavertail over the web of the hand.
+	# (its top runs up inside the slide: no light between them)
+	_lz(root, [[-0.151, R.call(0.022, 0.02, 0.004, 3, 0.0, 0.006)], [-0.146, R.call(0.026, 0.025, 0.004, 3, 0.0, 0.0055)],
+			[0.028, R.call(0.027, 0.025, 0.004, 3, 0.0, 0.0055)], [0.04, R.call(0.027, 0.022, 0.006, 3, 0.0, 0.007)],
+			[0.05, R.call(0.022, 0.012, 0.005, 3, 0.0, 0.009)]], poly)
+	# The rail's slots.
 	for i in 3:
-		_box(root, Vector3(0.026, 0.003, 0.004), Vector3(0, -0.0135, -0.1 - i * 0.012), "polymer")
-	var grip_rot := Vector3(-0.3, 0, 0)
-	# Stippled grip panels.
+		_box(root, Vector3(0.0275, 0.004, 0.0045), Vector3(0, -0.006, -0.135 + i * 0.012), "bore")
+	# Grip: down and back along the rake, finger grooves on the front strap.
+	var gpath := []
+	var grings := []
+	var bumps := [0.0, 0.0, 0.004, 0.0, 0.004, 0.0, 0.003, 0.0]
+	for i in 8:
+		var k := float(i) / 7.0
+		var y := lerpf(-0.004, -0.108, k)
+		gpath.append(Vector3(0, y, 0.026 + (-0.004 - y) * 0.404))
+		var h := 0.05 + float(bumps[i]) + (0.003 if i == 0 else 0.0)
+		# (the back strap stays put, the front swells over each finger)
+		grings.append(R.call(0.03 if i < 7 else 0.028, h, 0.009, 4, 0.0, h * 0.5 - 0.024))
+	root.add_child(Shape.sweep(gpath, grings, poly))
+	# The textured panels on its sides.
+	var tex_path := gpath.slice(2, 7)
+	var tex_rings := []
+	for i in tex_path.size():
+		tex_rings.append(R.call(0.0312, 0.036, 0.008, 4, 0.0, 0.0))
+	root.add_child(Shape.sweep(tex_path, tex_rings, _mat("rubber")))
+	# Trigger guard: squared off at the front (a finger rest), back into the frame.
+	var guard := Shape.sweep([Vector3(0, -0.006, -0.004), Vector3(0, -0.02, -0.008), Vector3(0, -0.033, -0.016),
+			Vector3(0, -0.036, -0.036), Vector3(0, -0.036, -0.056), Vector3(0, -0.032, -0.064), Vector3(0, -0.02, -0.067),
+			Vector3(0, -0.007, -0.066)], R.call(0.01, 0.0045, 0.0018, 3), poly)
+	root.add_child(guard)
+	# Trigger: the curved blade with the safety lever in its face.
+	var trig := _node(root, "Trigger", Vector3(0, -0.008, -0.026))
+	trig.add_child(Shape.sweep([Vector3(0, 0.0, 0.0), Vector3(0, -0.01, -0.003), Vector3(0, -0.019, -0.001), Vector3(0, -0.024, 0.004)],
+			R.call(0.0065, 0.004, 0.0015, 3), poly))
+	_box(trig, Vector3(0.0022, 0.012, 0.003), Vector3(0, -0.012, -0.0035), "steel")
+	# Controls: slide stop (left), takedown lever, magazine catch.
+	_box(root, Vector3(0.003, 0.004, 0.022), Vector3(-0.0145, 0.009, -0.035), "steel")
 	for sx in [-1.0, 1.0]:
-		var panel := _ext(root, [Vector2(0.014, -0.03), Vector2(0.046, -0.03), Vector2(0.056, -0.09), Vector2(0.026, -0.098),
-				Vector2(0.014, -0.06)], 0.0008, "rubber")
-		panel.position.x = 0.0138 * sx
-	# Trigger guard.
-	_ext(root, [Vector2(-0.002, -0.012), Vector2(-0.008, -0.035), Vector2(-0.052, -0.036), Vector2(-0.062, -0.024),
-			Vector2(-0.063, -0.012), Vector2(-0.058, -0.012), Vector2(-0.057, -0.022), Vector2(-0.05, -0.031),
-			Vector2(-0.012, -0.03), Vector2(-0.007, -0.012)], 0.0055, "polymer")
-	_box(root, Vector3(0.006, 0.022, 0.006), Vector3(0, -0.022, -0.026), "steel", Vector3(0.25, 0, 0), "Trigger")
-	# Barrel (static; the slide moves over it).
-	_cyl(root, 0.0068, 0.03, Vector3(0, 0.03, -0.155), "steel_worn", 12)
-	_cyl(root, 0.0048, 0.031, Vector3(0, 0.03, -0.155), "bore", 10)
-	# Slide.
+		_box(root, Vector3(0.0025, 0.005, 0.008), Vector3(sx * 0.0142, 0.008, -0.075), "steel")
+	_box(root, Vector3(0.0032, 0.009, 0.008), Vector3(-0.0148, -0.011, -0.002), "polymer")
+	# Barrel (fixed; the slide moves over it): the crown seen at the muzzle.
+	_cyl(root, 0.0068, 0.03, Vector3(0, 0.03, -0.152), "steel_worn", 14)
+	_cyl(root, 0.0046, 0.031, Vector3(0, 0.03, -0.152), "bore", 12)
+	# Slide: square sides, the top edges bevelled, the nose chamfered.
 	var slide := _node(root, "Slide")
-	# The slide: squared sides, the top rounded off, the muzzle end sloped.
-	_ext(slide, [Vector2(-0.16, 0.015), Vector2(0.026, 0.015), Vector2(0.026, 0.041), Vector2(0.021, 0.047),
-			Vector2(-0.15, 0.047), Vector2(-0.16, 0.041)], 0.0125, "steel")
-	_box(slide, Vector3(0.01, 0.018, 0.035), Vector3(0.0126, 0.037, -0.05), "bore")      # ejection port
-	_box(slide, Vector3(0.012, 0.012, 0.03), Vector3(0.0112, 0.038, -0.05), "brass")     # barrel hood
-	for i in 6:
-		for side in [-1.0, 1.0]:
-			_box(slide, Vector3(0.001, 0.022, 0.002), Vector3(side * 0.0128, 0.03, 0.012 - i * 0.005), "bore")
-	# Sights: a front post with a white dot, seen through the notch of the rear sight.
-	_box(slide, Vector3(0.0035, 0.009, 0.006), Vector3(0, 0.052, -0.152), "steel")                # front post
-	_box(slide, Vector3(0.0022, 0.0022, 0.001), Vector3(0, 0.0545, -0.1554), "sight")
+	var sring: PackedVector2Array = R.call(0.0255, 0.031, 0.0015, 3, 0.0, 0.0305, 0.006)
+	var mi := _lz(slide, [[-0.1605, R.call(0.021, 0.026, 0.0015, 3, 0.0, 0.0305, 0.005)], [-0.154, sring], [0.021, sring],
+			[0.0265, R.call(0.0245, 0.029, 0.0015, 3, 0.0, 0.0305, 0.005)]], steel)
+	mi.name = "SlideBody"
+	# Serrations at the back, both sides.
+	for i in 8:
+		for sx in [-1.0, 1.0]:
+			_box(slide, Vector3(0.0012, 0.02, 0.0018), Vector3(sx * 0.0126, 0.029, 0.018 - i * 0.0042), "bore")
+	# Ejection port: the opening, the barrel's hood in it, the extractor.
+	_box(slide, Vector3(0.012, 0.0125, 0.037), Vector3(0.0072, 0.0415, -0.05), "bore")
+	_box(slide, Vector3(0.012, 0.009, 0.034), Vector3(0.006, 0.0405, -0.05), "steel_worn")
+	_box(slide, Vector3(0.0016, 0.005, 0.02), Vector3(0.0129, 0.036, -0.022), "steel_worn")
+	# Sights: a front post with a white dot, seen through the notch of the
+	# rear sight (its white outline).
+	_box(slide, Vector3(0.0035, 0.009, 0.006), Vector3(0, 0.05, -0.15), "steel")
+	_box(slide, Vector3(0.0022, 0.0022, 0.001), Vector3(0, 0.0525, -0.1534), "sight")
 	for sx in [-1.0, 1.0]:
-		_box(slide, Vector3(0.0065, 0.009, 0.007), Vector3(sx * 0.0065, 0.052, 0.018), "steel")    # rear sight, either side of the notch
-		_box(slide, Vector3(0.0016, 0.0016, 0.001), Vector3(sx * 0.0058, 0.0535, 0.0145), "sight")
-	_box(slide, Vector3(0.0066, 0.004, 0.007), Vector3(0, 0.0495, 0.018), "steel")                # notch floor
-	# Magazine: travels along the grip axis.
-	var mag := _node(root, "Mag", Vector3(0, -0.058, 0.03))
-	mag.rotation = grip_rot
-	_box(mag, Vector3(0.022, 0.1, 0.032), Vector3(0, 0.0, 0.0), "steel")
-	_box(mag, Vector3(0.028, 0.012, 0.046), Vector3(0, -0.056, 0.002), "polymer")
+		_box(slide, Vector3(0.0065, 0.009, 0.007), Vector3(sx * 0.0065, 0.05, 0.016), "steel")
+		_box(slide, Vector3(0.0016, 0.0016, 0.001), Vector3(sx * 0.0058, 0.0515, 0.0124), "sight")
+	_box(slide, Vector3(0.0066, 0.004, 0.007), Vector3(0, 0.0475, 0.016), "steel")
+	# Magazine: travels along the grip; its floor plate shows under the grip.
+	var mag := _node(root, "Mag", Vector3(0, -0.058, 0.046))
+	mag.rotation = Vector3(-0.384, 0, 0)
+	_box(mag, Vector3(0.021, 0.1, 0.031), Vector3(0, 0.0, 0.0), "steel")
+	_lz(mag, [[-0.026, R.call(0.029, 0.012, 0.004, 3, 0.0, -0.056)], [0.026, R.call(0.029, 0.012, 0.004, 3, 0.0, -0.056)]], poly)
 	_box(mag, Vector3(0.008, 0.004, 0.012), Vector3(0, 0.051, -0.006), "brass")
 	# Markers.
-	_node(root, "Muzzle", Vector3(0, 0.03, -0.172))
-	_node(root, "Eject", Vector3(0.018, 0.04, -0.05))
+	_node(root, "Muzzle", Vector3(0, 0.03, -0.17))
+	_node(root, "Eject", Vector3(0.018, 0.042, -0.05))
 	return root
 
 

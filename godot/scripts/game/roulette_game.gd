@@ -769,6 +769,8 @@ func _bang() -> void:
 		var b: Node3D = c["who"]
 		b.hand_goal["r"] = Vector3.INF
 		Roulette.slump_on_table(b, dir, table["center"], m)
+		if _manager and _manager.has_method("body_down"):
+			_manager.body_down(self, b)
 		if b.ai:
 			b.ai.roulette = null
 		if _hears() and Game.player:

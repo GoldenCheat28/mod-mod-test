@@ -151,8 +151,8 @@ var _bot_counter := 0
 
 func spawn_bot(p: Vector3, yaw: float, seed_v := -1, outfit := "") -> Node3D:
 	var bot := Humanoid.new()
-	if outfit == "judge":
-		bot.set_meta("judge", true)
+	if outfit == "judge" or outfit == "guard":
+		bot.set_meta(outfit, true)
 		outfit = "suit"
 	elif outfit == "bartender" or outfit == "cleaner":
 		bot.set_meta(outfit, true)

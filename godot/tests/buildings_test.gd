@@ -32,7 +32,7 @@ var views2 := [
 ]
 var views3 := [
 	[Vector3(0.5, 1.75, 20.5), Vector3(-2.6, 1.1, 22.3), "h_bar"],
-	[Vector3(2.5, 1.75, 21.0), Vector3(5.1, 1.2, 18.2), "h_cellar"],
+	[Vector3(5.2, 1.7, 20.6), Vector3(7.6, 1.3, 23.9), "h_cellar"],
 	[Vector3(3.0, 1.9, 32.5), Vector3(5.2, 0.6, 29.9), "h_dumpster"],
 ]
 var _vi := 0

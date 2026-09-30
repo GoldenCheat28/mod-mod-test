@@ -583,8 +583,6 @@ func _process(delta: float) -> void:
 		# A thin thread off the smouldering tip, into the air (smoke_field.gd).
 		var smoulder: bool = state == S.IDLE or (state == S.DRAG and (_t < 0.4 or _t > 2.4))
 		_wisps().thread(_ember.global_position, smoulder)
-		if smoulder and Game.smoke:
-			Game.smoke.add(_ember.global_position, delta * 0.03, 0.025, Vector3.UP * 0.05)
 	elif _cig:
 		_wisps().thread(Vector3.ZERO, false)
 		_ember_mat.emission_energy_multiplier = 0.0
@@ -619,8 +617,6 @@ func _process(delta: float) -> void:
 		var mouth: Vector3 = _breath.global_position
 		var fwd: Vector3 = -player.cam.global_basis.z
 		_wisps().jet(mouth + fwd * 0.04, (fwd + Vector3.DOWN * 0.1).normalized(), clampf(left, 0.0, 1.0))
-		# (a trace into the air: the haze that hangs about after)
-		Game.smoke.add(mouth + fwd * 0.35, delta * 0.12 * clampf(left + 0.2, 0.2, 1.0), 0.03, fwd * 0.3)
 
 
 func _took_drag() -> void:

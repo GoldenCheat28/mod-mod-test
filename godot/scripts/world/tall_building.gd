@@ -424,12 +424,13 @@ static func _event_interior(c: Dictionary) -> void:
 		var bxx := hall_x - 2.4 + i * 3.2
 		Furn._sofa(mb, geo, Vector3(bxx, f0, bz), PI, Mat.standard("sofa_brown", Color(0.28, 0.18, 0.12), 0.95), centre + Vector3(0, 1.0, 0))
 	Furn._rug(mb, centre + Vector3(0, 0.004, 0), Vector2(4.2, 4.2), Color(0.35, 0.08, 0.07))
-	# Crates in the corner by the bar.
+	# Crates in the corners.
 	geo.box(Vector3(x0 + T + 0.6, f0 + 0.3, z0 + T + 0.5), Vector3(0.9, 0.6, 0.6), dark_wood)
 	geo.box(Vector3(x0 + T + 0.6, f0 + 0.85, z0 + T + 0.5), Vector3(0.7, 0.5, 0.5), wood, Vector3(0, 0.3, 0))
+	geo.box(Vector3(float(c["bay_x0"]) - 1.0, f0 + 0.3, z0 + 1.0), Vector3(0.9, 0.6, 0.6), dark_wood)
 	# The way down to the cellar (where the cleaners come up from), and the
 	# dumpster out the back.
-	_cellar(c, Vector3(float(c["bay_x0"]) - 1.0, f0, z0 + T))
+	_cellar(c)
 	var bin_at := Vector3((x0 + x1) * 0.5 + 2.2, 0.0, z1 + 1.9)
 	mb._dumpster(bin_at, 0.0)
 	mb.event_hall["dumpster"] = Vector3(bin_at.x, mb._gy(bin_at.x, bin_at.z), bin_at.z)
@@ -545,62 +546,88 @@ static func _bar(c: Dictionary, dark_wood: Material, wood: Material) -> void:
 			"in_at": Vector3(x0 + T + 0.65, f0, cz1 + 0.5), "wall_x": wall_x, "cz0": cz0, "cz1": cz1, "top_y": f0 + 1.07, "cx0": cx0, "cx1": cx1}
 
 
-## The cellar door in the hall's front corner: a concrete stair head with a
-## steel door (the stairs going down, dark, behind it). Locked to the
-## player; the cleaners come up through it and go back down.
-static func _cellar(c: Dictionary, at: Vector3) -> void:
+## The cellar door under the stairs: the space under the first flight up
+## from the hall walled off, a steel door in it with a sign, the stairs down
+## behind it in the dark. Locked to the player; the cleaners come up through
+## it and go back down.
+static func _cellar(c: Dictionary) -> void:
 	var geo = c["geo"]
 	var mb: Node3D = c["mb"]
 	var conc: Material = c["wall"]
 	var dark: Material = c["dark"]
-	# The stair head: a box 1.6 x 1.8 against the front wall, door on its west side.
-	var bx0 := at.x - 0.8
-	var bx1 := at.x + 0.8
-	var bz0 := at.z
-	var bz1 := at.z + 1.8
-	var top := at.y + 2.3
-	geo.block(Vector3(bx0 + 0.15, at.y, bz1 - 0.15), Vector3(bx1, top, bz1), conc)          # back
-	geo.block(Vector3(bx1 - 0.15, at.y, bz0), Vector3(bx1, top, bz1), conc)                   # east
-	geo.block(Vector3(bx0, top - 0.15, bz0), Vector3(bx1, top, bz1), conc)                    # roof
-	geo.block(Vector3(bx0, at.y + 2.05, bz0), Vector3(bx0 + 0.15, top, bz1), conc)            # over the door
-	geo.block(Vector3(bx0, at.y, bz1 - 0.15), Vector3(bx0 + 0.15, top, bz1), conc)            # jamb
-	# Inside: black, steps going down out of sight (and the outer wall's
-	# window, if there is one there, shut off from inside).
+	var f0: float = c["floors"][0]
+	var half: float = c["half"]
+	var bx0: float = c["b_x0"]                  # under flight B (it rises toward the front)
+	var bx1: float = bx0 + half - 0.04          # (the rail wall between the flights)
+	var z := float(c["sz0"]) + 0.05
+	var dw := 0.9
+	var d0 := (bx0 + bx1) * 0.5 - dw * 0.5
+	var d1 := d0 + dw
+	var top := f0 + 3.0                          # up to the underside of the flight
+	var dh := 2.05
+	# The wall across the front of the space under the stairs, the doorway in it.
+	geo.block(Vector3(bx0, f0, z), Vector3(d0, top, z + 0.15), conc)
+	geo.block(Vector3(d1, f0, z), Vector3(bx1, top, z + 0.15), conc)
+	geo.block(Vector3(d0, f0 + dh, z), Vector3(d1, top, z + 0.15), conc)
+	# A steel frame round the door.
+	geo.block(Vector3(d0 - 0.04, f0, z - 0.02), Vector3(d0, f0 + dh + 0.04, z + 0.17), dark)
+	geo.block(Vector3(d1, f0, z - 0.02), Vector3(d1 + 0.04, f0 + dh + 0.04, z + 0.17), dark)
+	geo.block(Vector3(d0, f0 + dh, z - 0.02), Vector3(d1, f0 + dh + 0.04, z + 0.17), dark)
+	# Behind it: black, the stairs going down out of sight.
 	var black := Mat.standard("cellar_dark", Color(0.01, 0.01, 0.012), 1.0)
-	geo.block(Vector3(bx0, at.y, bz0 - 0.02), Vector3(bx1, top, bz0 + 0.04), black)
-	geo.box(Vector3(at.x + 0.05, at.y + 0.004, (bz0 + bz1) * 0.5), Vector3(1.3, 0.008, 1.45), black, Vector3.ZERO, false)
+	geo.box(Vector3((d0 + d1) * 0.5, f0 + 1.0, z + 1.3), Vector3(dw + 0.2, 2.0, 0.02), black, Vector3.ZERO, false)
 	for k in 4:
-		geo.box(Vector3(at.x + 0.3 - k * 0.0, at.y - 0.09 - k * 0.18, bz0 + 0.3 + k * 0.28), Vector3(0.9, 0.04, 0.28), dark, Vector3.ZERO, false)
-	# (the doorway is closed to the player by an invisible wall; the door leaf swings)
-	geo.add_collision_box(Transform3D(Basis(), Vector3(bx0 + 0.075, at.y + 1.0, (bz0 + bz1 - 0.15) * 0.5)), Vector3(0.15, 2.0, bz1 - bz0 - 0.15))
+		geo.box(Vector3((d0 + d1) * 0.5, f0 - 0.06 - k * 0.18, z + 0.35 + k * 0.26), Vector3(dw, 0.04, 0.26), dark, Vector3.ZERO, false)
+	geo.box(Vector3((d0 + d1) * 0.5, f0 + 0.004, z + 0.2), Vector3(dw, 0.008, 0.12), black, Vector3.ZERO, false)
+	# (closed to the player by an invisible wall; the leaf swings)
+	geo.add_collision_box(Transform3D(Basis(), Vector3((d0 + d1) * 0.5, f0 + 1.0, z + 0.1)), Vector3(dw, 2.0, 0.12))
 	var hinge := Node3D.new()
 	hinge.name = "CellarDoor"
 	mb.add_child(hinge)
-	hinge.position = Vector3(bx0 + 0.03, at.y, bz0 + 0.05)
-	var steel := Mat.standard("cellar_door", Color(0.22, 0.24, 0.23), 0.6, 0.6)
+	hinge.position = Vector3(d1 - 0.02, f0, z + 0.03)
+	var steel := Mat.standard("cellar_door", Color(0.2, 0.22, 0.21), 0.55, 0.6)
 	var leaf := MeshInstance3D.new()
 	var lm := BoxMesh.new()
-	lm.size = Vector3(0.05, 2.0, bz1 - bz0 - 0.22)
+	lm.size = Vector3(dw - 0.04, dh - 0.03, 0.05)
 	leaf.mesh = lm
 	leaf.material_override = steel
-	leaf.position = Vector3(0, 1.0, lm.size.z * 0.5)
+	leaf.position = Vector3(-lm.size.x * 0.5, lm.size.y * 0.5, 0)
 	hinge.add_child(leaf)
+	# Stiffening ribs, the handle, a padlock hasp.
+	for ry in [0.4, 0.95, 1.85]:
+		var rib := MeshInstance3D.new()
+		var rm := BoxMesh.new()
+		rm.size = Vector3(dw - 0.14, 0.04, 0.02)
+		rib.mesh = rm
+		rib.material_override = steel
+		rib.position = Vector3(-lm.size.x * 0.5, ry, -0.03)
+		hinge.add_child(rib)
 	var handle := MeshInstance3D.new()
 	var hm := BoxMesh.new()
-	hm.size = Vector3(0.06, 0.03, 0.14)
+	hm.size = Vector3(0.14, 0.03, 0.05)
 	handle.mesh = hm
 	handle.material_override = Mat.rust()
-	handle.position = Vector3(-0.05, 1.0, lm.size.z - 0.12)
+	handle.position = Vector3(-lm.size.x + 0.12, 1.02, -0.05)
 	hinge.add_child(handle)
-	var plate := Label3D.new()
-	plate.text = "ПОСТОРОННИМ ВХОД ВОСПРЕЩЁН"
-	plate.font_size = 22
-	plate.modulate = Color(0.75, 0.1, 0.08)
-	plate.position = Vector3(-0.04, 1.6, lm.size.z * 0.5)
-	plate.rotation = Vector3(0, -PI * 0.5, 0)
+	# The sign on the door: a white enamel plate, red letters.
+	var plate := MeshInstance3D.new()
+	var pm := BoxMesh.new()
+	pm.size = Vector3(0.56, 0.3, 0.006)
+	plate.mesh = pm
+	plate.material_override = Mat.standard("sign_enamel", Color(0.86, 0.85, 0.8), 0.4)
+	plate.position = Vector3(-lm.size.x * 0.5, 1.45, -0.046)
 	hinge.add_child(plate)
-	mb.event_hall["cellar"] = {"door": hinge, "out": Vector3(bx0 - 0.7, at.y, (bz0 + bz1) * 0.5),
-			"in": Vector3(at.x, at.y, (bz0 + bz1) * 0.5)}
+	var words := Label3D.new()
+	words.text = "ПОДВАЛ\nПОСТОРОННИМ\nВХОД ВОСПРЕЩЁН"
+	words.font_size = 26
+	words.pixel_size = 0.0032
+	words.outline_size = 0
+	words.modulate = Color(0.7, 0.06, 0.05)
+	words.position = Vector3(-lm.size.x * 0.5, 1.45, -0.0505)
+	words.rotation = Vector3(0, PI, 0)
+	hinge.add_child(words)
+	mb.event_hall["cellar"] = {"door": hinge, "out": Vector3((d0 + d1) * 0.5, f0, z - 0.8),
+			"in": Vector3((d0 + d1) * 0.5, f0, z + 0.8)}
 
 
 static func _flats_interior(c: Dictionary) -> void:

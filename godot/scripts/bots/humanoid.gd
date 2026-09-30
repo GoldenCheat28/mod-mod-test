@@ -826,7 +826,7 @@ func _outfit_wear() -> void:
 ## hood, glasses or shades, an earring (some of each, none on most).
 func _head_wear() -> void:
 	var r := rng.randf()
-	var judge := has_meta("judge")
+	var judge := has_meta("judge") or has_meta("guard")
 	if judge:
 		r = 1.0                     # (the judge: bare-headed, in dark glasses)
 	var wool := StandardMaterial3D.new()
@@ -886,6 +886,18 @@ func _head_wear() -> void:
 func _body_wear() -> void:
 	if has_meta("judge"):
 		_briefcase()
+		return
+	if has_meta("guard"):
+		# Nothing on him but the suit; an earpiece, its coiled lead down the collar.
+		var black := StandardMaterial3D.new()
+		black.albedo_color = Color(0.04, 0.04, 0.04)
+		black.roughness = 0.4
+		_mesh(head, _sphere_mesh(0.009, 0.018), black, Vector3(0.094, 0.005, 0.0))
+		var lead := CylinderMesh.new()
+		lead.top_radius = 0.0025
+		lead.bottom_radius = 0.0025
+		lead.height = 0.1
+		_mesh(head, lead, black, Vector3(0.09, -0.05, 0.02), Vector3(0.25, 0, 0))
 		return
 	if has_meta("bartender") or has_meta("cleaner"):
 		_apron(has_meta("cleaner"))

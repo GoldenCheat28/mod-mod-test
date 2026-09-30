@@ -35,6 +35,10 @@ func _process(delta: float) -> void:
 					continue
 				var wb: Node3D = w["who"]
 				line += " | %s:%s/%s job=%d at %s" % [w["role"], w["state"], w.get("stage", ""), int(w["job"]), wb.position_ground().snapped(Vector3.ONE * 0.1)]
+		if tg.guards:
+			for gd in tg.guards.guards:
+				if is_instance_valid(gd["who"]):
+					line += " | guard:%s %s" % [gd["stage"], (gd["who"] as Node3D).position_ground().snapped(Vector3.ONE * 0.1)]
 		line += " || bar: " + str(tg.bar.patrons.map(func(p): return [p["sat"], p["served"]]))
 		print(line)
 		if t > 700.0 or (_done.has("over") and not is_instance_valid(tg.crew) and t > float(_done.get("over_t", 0.0)) + 60.0):
