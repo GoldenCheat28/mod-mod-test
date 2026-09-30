@@ -55,7 +55,6 @@ static func asphalt() -> ShaderMaterial:
 	m.shader = load("res://shaders/asphalt.gdshader")
 	m.set_shader_parameter("tex_detail", Tex.detail())
 	m.set_shader_parameter("tex_large", Tex.large())
-	m.set_shader_parameter("tex_cells", Tex.cells())
 	m.set_shader_parameter("tex_normal", Tex.detail_normal())
 	_cache["asphalt"] = m
 	return m
@@ -87,6 +86,19 @@ static func standard(key: String, color: Color, roughness := 0.8, metallic := 0.
 		m.uv1_world_triplanar = false
 		m.uv1_scale = Vector3.ONE * 2.0
 	_cache[key] = m
+	return m
+
+
+## Wood that shows the blood that falls on it (tables, chairs, benches).
+static func wood(key: String, color: Color, roughness := 0.78) -> ShaderMaterial:
+	if _cache.has("wood_" + key):
+		return _cache["wood_" + key]
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/wood_blood.gdshader")
+	m.set_shader_parameter("base_color", color)
+	m.set_shader_parameter("rough", roughness)
+	m.set_shader_parameter("tex_detail", Tex.detail())
+	_cache["wood_" + key] = m
 	return m
 
 

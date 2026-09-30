@@ -59,7 +59,20 @@ func _physics_process(delta: float) -> void:
 		print("t=%.0f fps=%d gpu=%.1fms proc=%.1fms phys=%.1fms drops=%d runs=%d body_runs=%d pools=%d world_decals=%d body_decals=%d" % [
 			t, Engine.get_frames_per_second(), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, bl._drops.size(), bl._runs.size(), bl._body_runs.size(),
 			bl._pools.size(), bl._world.decals.size(), bl._body.decals.size()])
+		var talking := 0
+		var states := []
+		for b in Game.bots:
+			if b.ai:
+				states.append(b.ai.state)
+		print("   draws=%d objs=%d prims=%d high=%.2f states=%s paint=%s" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Game.high, states,
+			[bl._canvas._painters[0].items.size(), bl._canvas._painters[1].items.size(), bl._canvas._painters[2].items.size()]])
 	if t > 47.0:
+		for pl in Game.blood._pools:
+			if pl.vol > 20.0:
+				print("POOL at %s vol=%.0f r=%.2f shown=%.2f cap=%.2f" % [pl.pos, pl.vol, pl.r, pl.shown, pl.cap])
+		for b in _bots:
+			print("BOT %s head at %s alive=%s" % [b.name, b.head.global_position, b.alive])
 		get_tree().quit()
 
 

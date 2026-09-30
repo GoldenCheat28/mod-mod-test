@@ -40,7 +40,7 @@ static func get_pair(kind: String, variant: int) -> Array:
 			_smear(h, size, n)
 		"wound":
 			_wound(h, size, rng, n)
-	var pair := _bake(h, size, 2.2 if kind == "pool" else 3.0)
+	var pair := _bake(h, size, 2.2 if kind == "pool" else 3.0, kind == "pool")
 	_cache[key] = pair
 	return pair
 
@@ -101,24 +101,24 @@ static func _blob(h: PackedFloat32Array, size: int, n: FastNoiseLite, r0: float,
 
 static func _splat(h: PackedFloat32Array, size: int, rng: RandomNumberGenerator, n: FastNoiseLite) -> void:
 	var r0 := rng.randf_range(0.3, 0.42)
-	_blob(h, size, n, r0, 0.22, 1.6, 0.85)
-	# Radial spines ending in a bead, as thrown from the impact.
-	for s in rng.randi_range(6, 13):
-		var a := rng.randf() * TAU
+	_blob(h, size, n, r0, 0.18, 1.3, 0.85)
+	# A few short tails on the side the drop was travelling (+V): the blood
+	# keeps going a little after it hits, it does not burst out in a star.
+	for s in rng.randi_range(1, 4):
+		var a := PI * 0.5 + rng.randf_range(-0.55, 0.55)
 		var dir := Vector2(cos(a), sin(a))
-		var length := rng.randf_range(0.12, 0.5)
-		var w := rng.randf_range(0.03, 0.06)
+		var length := rng.randf_range(0.08, 0.3)
+		var w := rng.randf_range(0.04, 0.08)
 		var steps := int(length / 0.02) + 2
 		for k in steps:
 			var t := float(k) / steps
-			var c := dir * (r0 * 0.8 + length * t)
-			_bump(h, size, c, w * (1.0 - t * 0.75), 0.6)
-		_bump(h, size, dir * (r0 * 0.8 + length + 0.02), w * 0.8, 0.7)
-	# Loose satellite droplets.
-	for s in rng.randi_range(12, 30):
-		var a := rng.randf() * TAU
-		var d := rng.randf_range(r0 + 0.05, 0.93)
-		var r := rng.randf_range(0.008, 0.035) * (1.2 - d * 0.5)
+			_bump(h, size, dir * (r0 * 0.75 + length * t), w * (1.0 - t * 0.6), 0.6)
+		_bump(h, size, dir * (r0 * 0.75 + length + 0.02), w * 0.75, 0.65)
+	# Loose satellite droplets, mostly thrown ahead.
+	for s in rng.randi_range(4, 12):
+		var a := PI * 0.5 + rng.randf_range(-1.2, 1.2)
+		var d := rng.randf_range(r0 + 0.08, 0.93)
+		var r := rng.randf_range(0.008, 0.03) * (1.2 - d * 0.5)
 		_bump(h, size, Vector2(cos(a), sin(a)) * d, r, 0.7)
 
 
@@ -183,10 +183,8 @@ static func _pool(h: PackedFloat32Array, size: int, rng: RandomNumberGenerator, 
 		var a := rng.randf() * TAU
 		var d := rng.randf_range(0.3, 0.5)
 		_bump(h, size, Vector2(cos(a), sin(a)) * d, rng.randf_range(0.2, 0.36), 1.0)
-	for s in rng.randi_range(4, 10):
-		var a := rng.randf() * TAU
-		var d := rng.randf_range(0.78, 0.93)
-		_bump(h, size, Vector2(cos(a), sin(a)) * d, rng.randf_range(0.015, 0.04), 0.8)
+	# (no specks round its edge: a pool is repainted larger every frame as it
+	# spreads, and they were dragged outwards into spikes like a paint splat)
 
 
 ## Drag streaks along +V: many fibres, heavy at the start, running out.
@@ -217,7 +215,7 @@ static func _wound(h: PackedFloat32Array, size: int, rng: RandomNumberGenerator,
 
 # --- Baking ------------------------------------------------------------------------
 
-static func _bake(h: PackedFloat32Array, size: int, normal_strength: float) -> Array:
+static func _bake(h: PackedFloat32Array, size: int, normal_strength: float, flat := false) -> Array:
 	var alb := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var mask := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var nrm := Image.create(size, size, false, Image.FORMAT_RGB8)
@@ -234,7 +232,11 @@ static func _bake(h: PackedFloat32Array, size: int, normal_strength: float) -> A
 			c.a = a
 			alb.set_pixel(x, y, c)
 			# Paint mask: R = film thickness, A = coverage.
-			mask.set_pixel(x, y, Color(clampf(v / 1.2, 0.0, 1.0), 0.0, 0.0, smoothstep(0.01, 0.09, v)))
+			# (a pool is one even sheet: full depth a little in from its edge,
+			# not the domes it was drawn from - those showed as little pools
+			# drifting about inside it as it spread)
+			var th := smoothstep(0.02, 0.3, v) if flat else clampf(v / 1.2, 0.0, 1.0)
+			mask.set_pixel(x, y, Color(th, 0.0, 0.0, smoothstep(0.01, 0.09, v)))
 			var hl := minf(h[y * size + maxi(x - 1, 0)], 1.0)
 			var hr := minf(h[y * size + mini(x + 1, size - 1)], 1.0)
 			var hu := minf(h[maxi(y - 1, 0) * size + x], 1.0)

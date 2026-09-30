@@ -8,7 +8,9 @@ const RATE := 44100
 ## no files is intentionally silent (covered by another recording).
 const FILES := {
 	&"pistol_shot": ["pistol_shot"],
-	&"shotgun_shot": ["shotgun_shot"],
+	&"rifle_shot": ["rifle_shot"],
+	&"shotgun_shot": ["shotgun_shot2"],
+	&"akm_shot": [],
 	&"body_fall": ["body_fall"],
 	&"metal_hit": ["barrel_hit_1", "barrel_hit_2"],
 	&"casing": ["casing_1", "casing_2"],
@@ -25,6 +27,30 @@ const FILES := {
 			"steps/step_06", "steps/step_07", "steps/step_08", "steps/step_09", "steps/step_10"],
 	&"puddle_walk": ["puddle_walk"],
 	&"puddle_run": ["puddle_run"],
+	&"grenade_blast": ["grenade_blast"],
+	&"bomb_blast": ["bomb_blast"],       # the grenade's, lower, echoing, louder
+	&"door_creak": ["door_creak2"],       # (quieter recording, turned down on import)
+	&"stone": ["stone"],
+	&"mop_dunk": ["mop_dunk"],
+	&"mop_swish": ["mop_swish_1", "mop_swish_2", "mop_swish_3"],
+	&"window_vault": ["window_vault"],   # climbing over a sill
+	&"rev_round_in": ["rev_round_in"],   # one cartridge pushed into a chamber
+	&"rev_cyl_close": ["rev_cyl_close"], # the cylinder snapped shut
+	&"rev_dry": ["rev_dry"],             # the hammer on an empty chamber
+	&"rev_cock": ["rev_cock"],           # the hammer drawn back
+	&"rev_cyl_open": ["rev_cyl_open"],
+	&"rev_spin": ["rev_spin"],           # the cylinder spun
+	&"rev_shot": ["rev_shot"],
+	&"rev_dump": ["rev_dump"],           # the empties tipped out
+	&"item_pickup": ["item_pickup"],
+	&"shotgun_shell_in": ["shotgun_shell_in"],
+	&"weapon_draw": ["weapon_draw"],
+	&"weapon_holster": ["weapon_holster"],
+	&"flashlight_click": ["flashlight_click"],
+	&"bandage": ["bandage"],
+	&"cig_drag": ["cig_drag"],           # a drag on a cigarette
+	&"cig_exhale": ["cig_exhale"],
+	&"cig_light": ["cig_light"],         # the lighter struck and the cigarette lit
 }
 
 static var _cache := {}
@@ -32,11 +58,16 @@ static var _cache := {}
 
 ## Loads/synthesizes everything up front so the first shot does not hitch.
 static func prewarm() -> void:
-	for s in FILES.keys() + [&"dry_fire", &"shell_insert", &"land", &"impact"]:
+	for s in FILES.keys() + [&"dry_fire", &"shell_insert", &"land", &"impact", &"lighter", &"inhale", &"exhale", &"heartbeat",
+			&"explosion", &"beep", &"key_press", &"pin"]:
 		get_stream(s)
 
 
 static func get_stream(sound: StringName) -> AudioStream:
+	if sound == &"akm_shot":
+		if not _cache.has(sound):
+			_cache[sound] = load("res://assets/sounds/akm_shot.wav")
+		return _cache[sound]
 	if FILES.has(sound):
 		if not _cache.has(sound):
 			var list: Array[AudioStream] = []
@@ -101,8 +132,64 @@ static func _synth(sound: StringName) -> PackedFloat32Array:
 			return _flesh()
 		&"body_fall":
 			return _thud(0.25, 0.08, 0.7)
+		&"lighter":
+			# Flint wheel scrape and click, then the gas catching.
+			var s := _mech([[0.0, 0.8, 3400.0], [0.035, 0.5, 5200.0]], 0.0, 0.04, 0.6)
+			var flame := _breath(0.55, 0.25, 0.02, 0.4, 0.0)
+			for i in flame.size() - int(0.05 * RATE):
+				s[i + int(0.05 * RATE)] += flame[i] * 0.35
+			return s
+		&"heartbeat":
+			# Lub-dub: two low thumps.
+			var hb := PackedFloat32Array()
+			hb.resize(int(0.45 * RATE))
+			for i in hb.size():
+				var t := float(i) / RATE
+				hb[i] = sin(TAU * 48.0 * t) * exp(-t / 0.045)
+				var t2 := t - 0.17
+				if t2 > 0.0:
+					hb[i] += sin(TAU * 40.0 * t2) * exp(-t2 / 0.04) * 0.7
+			return hb
+		&"spray":
+			# An aerosol can: a bright, even hiss.
+			return _breath(0.4, 0.75, 0.02, 0.06, 0.0)
+		&"inhale":
+			# Soft draw through the filter, a faint crackle of burning paper.
+			return _breath(1.3, 0.025, 0.55, 0.45, 0.25)
+		&"exhale":
+			# Slow, breathy blow-out, darker than a sigh.
+			return _breath(1.7, 0.035, 0.18, 1.3, 0.0)
 		&"metal_hit":
 			return _ring([820.0, 1310.0, 2240.0, 3390.0], 0.35, 0.9)
+		&"explosion":
+			# A long, heavy blast: crack, deep boom, rumbling tail with echoes.
+			var e := _gunshot(4.5, 0.02, 0.35, 32.0, 0.6, 2.6, 2.6)
+			for i in e.size():
+				e[i] *= 0.7
+			return e
+		&"beep":
+			# Bomb timer: short piezo tone.
+			var b := PackedFloat32Array()
+			b.resize(int(0.09 * RATE))
+			for i in b.size():
+				var t := float(i) / RATE
+				b[i] = sin(TAU * 2900.0 * t) * smoothstep(0.0, 0.004, t) * (1.0 - smoothstep(0.07, 0.09, t)) * 0.5
+			return b
+		&"key_press":
+			return _clicks([[0.0, 0.5, 3800.0], [0.03, 0.3, 2600.0]], 0.08)
+		&"glass_break":
+			# The crack, then a shower of high tinkling bits falling after it.
+			var g := _ring([2400.0, 3900.0, 5600.0, 7700.0], 0.08, 0.9)
+			for k in 14:
+				var off := int(randf_range(0.02, 0.6) * RATE)
+				var bit := _ring([randf_range(3000.0, 9000.0), randf_range(5000.0, 11000.0)], randf_range(0.02, 0.06), 0.12)
+				for i in bit.size():
+					if off + i < g.size():
+						g[off + i] += bit[i] * randf_range(0.2, 0.55)
+			return g
+		&"pin":
+			# Grenade pin pulled and the spoon flying off.
+			return _mech([[0.0, 0.6, 4200.0], [0.18, 0.7, 2600.0], [0.2, 0.4, 5200.0]], 0.02, 0.1, 0.35)
 	return PackedFloat32Array([0.0])
 
 
@@ -183,6 +270,27 @@ static func _mech(events: Array, scrape_from: float, scrape_to: float, length: f
 			prev = noise
 			var k := float(i - a) / float(b - a)
 			s[i] += hp * sin(k * PI) * 0.25
+	return s
+
+
+## Breath / gas: low-passed noise with an attack-release envelope, and optional
+## crackle (tobacco burning on a drag).
+static func _breath(length: float, lp: float, attack: float, release: float, crackle: float) -> PackedFloat32Array:
+	var n := int(length * RATE)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var y := 0.0
+	var y2 := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var env := smoothstep(0.0, attack, t) * (1.0 - smoothstep(length - release, length, t))
+		y += ((randf() * 2.0 - 1.0) - y) * lp
+		y2 += (y - y2) * lp
+		var v := y2 * 3.0 * env
+		if crackle > 0.0 and randf() < 0.0009 * crackle:
+			for k in mini(200, n - i):
+				s[i + k] += sin(k * 0.9) * exp(-k / 25.0) * 0.6 * env
+		s[i] += v
 	return s
 
 

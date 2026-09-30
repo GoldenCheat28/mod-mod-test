@@ -1,0 +1,274 @@
+extends Node
+## Bot small talk. Calm bots now and then walk up to another calm bot and
+## start a conversation: a greeting ("Привет, как дела?" - "Нормально." or a
+## rude brush-off and "Ну и пошёл нахуй."), or picking on them ("Чё кислый
+## такой?" - an insult back - "Услышал тебя, связь." or "Ну и пошёл нахуй.").
+## The two stand facing each other and take turns; anything scary ends it.
+## Alone they sometimes mutter, react out loud to a gun or a body in the
+## distance, and tell off a player who comes and stands in their face.
+
+const VOICE_DIR := "res://assets/sounds/voice/%s.wav"
+const TALK_DIST := 1.25
+const PAUSE := 0.55            # gap between one line ending and the reply
+
+static var _streams := {}
+static var _last_react := -100.0     # one bot at a time reacts out loud
+
+var ai: Node
+var body: Node3D
+var partner: Node = null       # the other bot's chatter while in a conversation
+var starter := false
+var _lines: Array = []          # [[speaker is starter, line], ...]
+var _step := 0
+var _wait := 0.0
+var _approach_t := 0.0
+var _next_chat := 0.0
+var _next_mutter := 0.0
+var _gun_cd := 0.0
+var _face_cd := 0.0
+var _in_face := 0.0
+var _rude := false              # a surly one: tells a player in his face to get lost
+var _greeted := false           # has said hello to the player
+var _scan_t := 0.0
+var _seen_dead := {}
+var _voice: AudioStreamPlayer3D
+var _pitch := 1.0
+
+
+func setup(a: Node, rng: RandomNumberGenerator) -> void:
+	ai = a
+	body = a.body
+	_pitch = rng.randf_range(0.9, 1.1)
+	_rude = rng.randf() < 0.25
+	_next_chat = rng.randf_range(6.0, 30.0)
+	_next_mutter = rng.randf_range(20.0, 60.0)
+	_gun_cd = rng.randf_range(3.0, 12.0)
+	_voice = AudioStreamPlayer3D.new()
+	_voice.bus = &"World"
+	_voice.unit_size = 3.0
+	_voice.max_distance = 35.0
+	_voice.volume_db = -3.0
+	body.head.add_child(_voice)
+
+
+static func stream(line: String) -> AudioStream:
+	if not _streams.has(line):
+		_streams[line] = load(VOICE_DIR % line)
+	return _streams[line]
+
+
+func busy() -> bool:
+	return partner != null
+
+
+func speaking() -> bool:
+	return _voice.playing
+
+
+## Says a line; returns how long it lasts.
+func say(line: String) -> float:
+	var s := stream(line)
+	if s == null or not body.alive or not body.conscious:
+		return 0.0
+	_voice.stream = s
+	if line in ["reply_rude", "go_away", "tease_rude", "tease_rude2", "man_go_away", "tease"]:
+		body.angry_until = maxf(body.angry_until, Game.clock + s.get_length() + 2.5)
+	_voice.pitch_scale = _pitch * randf_range(0.97, 1.03)
+	_voice.play()
+	Net.bot_said(body, line, _voice.pitch_scale)
+	return s.get_length() / _voice.pitch_scale
+
+
+func stop_talking() -> void:
+	if _voice.playing:
+		_voice.stop()
+
+
+func tick(delta: float) -> void:
+	_gun_cd -= delta
+	_face_cd -= delta
+	_next_chat -= delta
+	_next_mutter -= delta
+	if not body.alive or not body.conscious:
+		stop_talking()
+		if partner:
+			end()
+		return
+	if partner:
+		_converse(delta)
+	else:
+		_alone(delta)
+
+
+# --- Conversations ---------------------------------------------------------------
+
+func _calm(c: Node) -> bool:
+	if c.ai.process_mode == Node.PROCESS_MODE_DISABLED:
+		return false          # a mannequin
+	return c.ai.fear < 0.1 and c.ai.state in [c.ai.S.WANDER, c.ai.S.IDLE] and not c.busy() \
+			and c.body.alive and c.body.conscious and not c.body.fallen and c.body.weapon == null
+
+
+func _find_partner() -> Node:
+	var me: Vector3 = body.position_ground()
+	var best: Node = null
+	var best_d := 16.0
+	for b in Game.bots:
+		if b == body or b.ai == null or not is_instance_valid(b):
+			continue
+		var c: Node = b.ai.talk
+		if c == null or not _calm(c):
+			continue
+		var d := me.distance_to(b.position_ground())
+		if d < best_d and absf(b.position_ground().y - me.y) < 1.5:
+			best = c
+			best_d = d
+	return best
+
+
+func _start(other: Node) -> void:
+	partner = other
+	starter = true
+	other.partner = self
+	other.starter = false
+	_step = 0
+	_wait = 0.0
+	_approach_t = 0.0
+	# Who says what, decided up front.
+	if randf() < 0.6:
+		_lines = [[true, "greet"]]
+		if randf() < 0.6:
+			_lines.append([false, "reply_fine"])
+		else:
+			_lines.append([false, "reply_rude"])
+			_lines.append([true, "go_away"])
+	else:
+		_lines = [[true, "tease"], [false, "tease_rude" if randf() < 0.6 else "tease_rude2"]]
+		_lines.append([true, "heard_you" if randf() < 0.5 else "go_away"])
+	ai._enter(ai.S.TALK)
+	other.ai._enter(ai.S.TALK)
+	other.ai.body.move_velocity = Vector3.ZERO
+
+
+func end() -> void:
+	var other := partner
+	partner = null
+	for c in [self, other]:
+		if c == null or not is_instance_valid(c):
+			continue
+		c.partner = null
+		c._next_chat = randf_range(25.0, 70.0)
+		if c.ai.state == c.ai.S.TALK:
+			c.ai._enter(c.ai.S.IDLE)
+
+
+func _converse(delta: float) -> void:
+	if not is_instance_valid(partner) or partner.partner != self or ai.state != ai.S.TALK \
+			or partner.ai.state != ai.S.TALK or ai.fear > 0.15 or partner.ai.fear > 0.15 \
+			or partner.body.fallen or body.fallen or not partner.body.alive:
+		end()
+		return
+	# Look at each other.
+	var other_eye: Vector3 = partner.body.eye_position()
+	body.look_target = other_eye
+	body.has_look_target = true
+	var to: Vector3 = partner.body.position_ground() - body.position_ground()
+	to.y = 0.0
+	var dist := to.length()
+	if dist > 0.05 and (dist < TALK_DIST + 0.6 or not starter):
+		body.facing = (body.facing as Vector3).slerp(to / dist, minf(delta * 4.0, 1.0)).normalized()
+	if not starter:
+		return
+	# The one who started it walks over, then runs the exchange.
+	if _step == 0:
+		_approach_t += delta
+		if dist > TALK_DIST:
+			if _approach_t > 14.0:
+				end()
+			elif ai._path.is_empty() or ai._path_i >= ai._path.size() or fmod(_approach_t, 1.0) < delta:
+				ai._goto(ai._closest_nav(partner.body.position_ground() - to / maxf(dist, 0.01) * 0.95))
+				ai._speed = 1.3
+			return
+		ai._path = PackedVector3Array()
+		_step = 1
+		_wait = 0.3
+		return
+	_wait -= delta
+	if _wait > 0.0:
+		return
+	var i := _step - 1
+	if i >= _lines.size():
+		end()
+		return
+	var who: Node = self if _lines[i][0] else partner
+	_wait = who.say(_lines[i][1]) + PAUSE + randf_range(0.0, 0.5)
+	_step += 1
+
+
+# --- On their own -------------------------------------------------------------------
+
+func _alone(delta: float) -> void:
+	var calm: bool = ai.fear < 0.1
+	# Start a conversation.
+	if _next_chat <= 0.0:
+		_next_chat = randf_range(8.0, 20.0)
+		if _calm(self) and randf() < 0.55:
+			var other := _find_partner()
+			if other:
+				_start(other)
+				return
+	# Muttering to themselves.
+	if _next_mutter <= 0.0:
+		_next_mutter = randf_range(35.0, 90.0)
+		if calm and ai.state == ai.S.IDLE and not speaking() and randf() < 0.5:
+			say("idle_high")
+	# A player walking up: most say hello; only a surly one, and only if he
+	# keeps standing right in his face, tells him where to go.
+	var p = Game.player
+	# (not across the table in a game of roulette: standing there is the point)
+	var busy_with_player: bool = p != null and p.roulette != null
+	if p and not busy_with_player and ai._sees and ai._player_dist < 2.2 and not p.is_armed() and ai.fear < 0.4:
+		_in_face += delta
+		if not _greeted and _in_face > 0.8 and not speaking() and _face_cd <= 0.0:
+			_greeted = true
+			_face_cd = 20.0
+			if randf() < 0.7:
+				say("greet")
+		elif _rude and _in_face > 6.0 and ai._player_dist < 1.5 and _face_cd <= 0.0 and not speaking():
+			say("man_go_away")
+			_face_cd = 60.0
+			_in_face = 0.0
+	else:
+		_in_face = maxf(_in_face - delta, 0.0)
+	# Something that should not be there, seen from a distance.
+	_scan_t -= delta
+	if _scan_t > 0.0 or _gun_cd > 0.0 or speaking() or ai.fear > 0.6:
+		return
+	_scan_t = 0.5
+	if Game.clock - _last_react < 15.0:
+		return
+	if p and ai._sees and p.is_armed() and ai._player_dist > 7.0 and ai._player_dist < 40.0:
+		_react()
+		return
+	var eye: Vector3 = body.eye_position()
+	for b in Game.bots:
+		if b == body or b.alive or _seen_dead.has(b) or not is_instance_valid(b):
+			continue
+		var at: Vector3 = b.pelvis.global_position
+		if eye.distance_to(at) < 25.0 and _facing(at) and ai._line_clear(eye, at + Vector3.UP * 0.2):
+			_seen_dead[b] = true
+			body.sad_until = Game.clock + 30.0     # the shock of it stays on the face
+			_react()
+			return
+
+
+func _facing(at: Vector3) -> bool:
+	var fwd: Vector3 = -body.head.global_basis.z
+	return fwd.dot((at - body.eye_position()).normalized()) > 0.5
+
+
+## "А ебать, это что там?"
+func _react() -> void:
+	_last_react = Game.clock
+	say("saw_gun")
+	_gun_cd = 35.0

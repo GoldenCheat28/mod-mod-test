@@ -72,6 +72,53 @@ static func smoke_puff() -> ImageTexture:
 	return tex
 
 
+## Grime for hiding where two meshes/materials meet. "seam": a ragged
+## vertical band of dirt with water marks running down from it (u across the
+## band, v down). "base": dirt splashed up from the bottom edge, thinning out
+## upwards (v = 1 is the bottom).
+static func grime(kind: String, seed_value: int) -> ImageTexture:
+	var key := "grime_%s_%d" % [kind, seed_value]
+	if _cache.has(key):
+		return _cache[key]
+	var w := 128
+	var h := 256
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var n := FastNoiseLite.new()
+	n.seed = seed_value
+	n.frequency = 0.03
+	n.fractal_octaves = 4
+	var drip := FastNoiseLite.new()
+	drip.seed = seed_value + 7
+	drip.frequency = 0.02
+	for y in h:
+		var v := float(y) / (h - 1)
+		for x in w:
+			var u := float(x) / (w - 1)
+			var coarse := n.get_noise_2d(x, y) * 0.5 + 0.5
+			var fine := n.get_noise_2d(x * 4.0 + 300.0, y * 4.0) * 0.5 + 0.5
+			var a := 0.0
+			if kind == "seam":
+				var d := absf(u - 0.5) * 2.0 + (coarse - 0.5) * 0.7
+				a = 1.0 - smoothstep(0.05, 0.95, d)
+				# Water marks: thin vertical runs, longer further down.
+				var run := drip.get_noise_2d(x * 3.0, y * 0.08) * 0.5 + 0.5
+				a = maxf(a, smoothstep(0.62, 0.8, run) * smoothstep(0.1, 0.6, v) * (1.0 - absf(u - 0.5)))
+				a *= smoothstep(0.0, 0.1, v) * (1.0 - smoothstep(0.85, 1.0, v))
+			else:
+				var up := 1.0 - v + (coarse - 0.5) * 0.45
+				a = 1.0 - smoothstep(0.0, 0.8, up)
+				var splash := smoothstep(0.66, 0.8, fine) * (1.0 - smoothstep(0.2, 0.7, 1.0 - v))
+				a = maxf(a, splash)
+				a *= smoothstep(0.0, 0.12, u) * (1.0 - smoothstep(0.88, 1.0, u))
+			a *= 0.55 + 0.45 * fine
+			var c := Color(0.2, 0.18, 0.14).lerp(Color(0.3, 0.27, 0.2), coarse)
+			img.set_pixel(x, y, Color(c.r, c.g, c.b, clampf(a, 0.0, 1.0)))
+	img.generate_mipmaps()
+	var tex := ImageTexture.create_from_image(img)
+	_cache[key] = tex
+	return tex
+
+
 static func bullet_hole() -> ImageTexture:
 	if _cache.has("hole"):
 		return _cache["hole"]

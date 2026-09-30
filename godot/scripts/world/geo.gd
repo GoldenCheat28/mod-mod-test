@@ -3,7 +3,7 @@ extends RefCounted
 ## material and one compound StaticBody3D, which keeps draw calls and
 ## physics broadphase cheap.
 
-var _tools := {}        # Material -> SurfaceTool
+var _tools := {}        # Material -> {v, n, t, uv, i}: the merged vertex arrays
 var _body: StaticBody3D
 var _root: Node3D
 
@@ -17,18 +17,92 @@ func _init(root: Node3D) -> void:
 	_root.add_child(_body)
 
 
-func _tool(mat: Material) -> SurfaceTool:
+func _tool(mat: Material) -> Dictionary:
 	if not _tools.has(mat):
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		_tools[mat] = st
+		_tools[mat] = {"v": PackedVector3Array(), "n": PackedVector3Array(), "t": PackedFloat32Array(),
+				"uv": PackedVector2Array(), "i": PackedInt32Array()}
 	return _tools[mat]
+
+
+## A mesh's vertex arrays, read on the CPU side: a primitive makes them
+## there; our own meshes keep theirs (meta "arrays"). (Asking the mesh itself
+## - surface_get_arrays, SurfaceTool.append_from - reads them back from the
+## graphics card, which with thousands of pieces made loading take minutes.)
+static func arrays_of(mesh: Mesh, surface := 0) -> Array:
+	if mesh is PrimitiveMesh:
+		return (mesh as PrimitiveMesh).get_mesh_arrays()
+	if mesh.has_meta("arrays"):
+		return mesh.get_meta("arrays")
+	return mesh.surface_get_arrays(surface)
 
 
 ## Adds a mesh (visual only) with a transform.
 func add_mesh(mesh: Mesh, xf: Transform3D, mat: Material) -> void:
-	for s in mesh.get_surface_count():
-		_tool(mat).append_from(mesh, s, xf)
+	var surfaces := 1 if mesh is PrimitiveMesh or mesh.has_meta("arrays") else mesh.get_surface_count()
+	for s in surfaces:
+		_append(_tool(mat), arrays_of(mesh, s), xf)
+
+
+func _append(acc: Dictionary, arr: Array, xf: Transform3D) -> void:
+	# (packed arrays in a dictionary are values: each is taken out, added to
+	# and put back)
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var n := verts.size()
+	var v_all: PackedVector3Array = acc["v"]
+	var base := v_all.size()
+	v_all.append_array(xf * verts)
+	acc["v"] = v_all
+	var nb := xf.basis.orthonormalized()
+	var n_all: PackedVector3Array = acc["n"]
+	var norms = arr[Mesh.ARRAY_NORMAL]
+	if norms is PackedVector3Array and (norms as PackedVector3Array).size() == n:
+		n_all.append_array(Transform3D(nb, Vector3.ZERO) * (norms as PackedVector3Array))
+	else:
+		var up := PackedVector3Array()
+		up.resize(n)
+		up.fill(Vector3.UP)
+		n_all.append_array(up)
+	acc["n"] = n_all
+	var tn := PackedFloat32Array()
+	tn.resize(n * 4)
+	var tans = arr[Mesh.ARRAY_TANGENT]
+	if tans is PackedFloat32Array and (tans as PackedFloat32Array).size() == n * 4:
+		var ta: PackedFloat32Array = tans
+		for k in n:
+			var tv := nb * Vector3(ta[k * 4], ta[k * 4 + 1], ta[k * 4 + 2])
+			tn[k * 4] = tv.x
+			tn[k * 4 + 1] = tv.y
+			tn[k * 4 + 2] = tv.z
+			tn[k * 4 + 3] = ta[k * 4 + 3]
+	else:
+		for k in n:
+			tn[k * 4] = 1.0
+			tn[k * 4 + 3] = 1.0
+	var t_all: PackedFloat32Array = acc["t"]
+	t_all.append_array(tn)
+	acc["t"] = t_all
+	var uv_all: PackedVector2Array = acc["uv"]
+	var uvs = arr[Mesh.ARRAY_TEX_UV]
+	if uvs is PackedVector2Array and (uvs as PackedVector2Array).size() == n:
+		uv_all.append_array(uvs)
+	else:
+		var z := PackedVector2Array()
+		z.resize(n)
+		uv_all.append_array(z)
+	acc["uv"] = uv_all
+	var idx = arr[Mesh.ARRAY_INDEX]
+	var out: PackedInt32Array = acc["i"]
+	var start := out.size()
+	if idx is PackedInt32Array and (idx as PackedInt32Array).size() > 0:
+		var ia: PackedInt32Array = idx
+		out.resize(start + ia.size())
+		for k in ia.size():
+			out[start + k] = ia[k] + base
+	else:
+		out.resize(start + n)
+		for k in n:
+			out[start + k] = base + k
+	acc["i"] = out
 
 
 func add_collision_box(xf: Transform3D, size: Vector3) -> void:
@@ -43,11 +117,80 @@ func add_collision_box(xf: Transform3D, size: Vector3) -> void:
 ## Solid box with collision. `pos` is the box centre.
 func box(pos: Vector3, size: Vector3, mat: Material, rot := Vector3.ZERO, collide := true) -> void:
 	var xf := Transform3D(Basis.from_euler(rot), pos)
-	var m := BoxMesh.new()
-	m.size = size
-	add_mesh(m, xf, mat)
+	if rot == Vector3.ZERO:
+		# Drawn at commit(), after faces lying on top of each other are sorted out.
+		_boxes.append([pos, size, mat])
+	else:
+		var m := BoxMesh.new()
+		m.size = size
+		add_mesh(m, xf, mat)
 	if collide:
 		add_collision_box(xf, size)
+
+
+var _boxes: Array = []          # [centre, size, material] of the axis-aligned boxes
+
+
+## Two boxes with a face in the same plane, turned the same way and
+## overlapping, flicker (neither is in front). Each such face of the smaller
+## box is pulled in a few millimetres, so the bigger one's face wins cleanly.
+func _unfight() -> void:
+	const INSET := 0.003
+	var planes := {}
+	for i in _boxes.size():
+		var b: Array = _boxes[i]
+		var c: Vector3 = b[0]
+		var h: Vector3 = (b[1] as Vector3) * 0.5
+		for axis in 3:
+			for sgn in [-1, 1]:
+				var coord: float = c[axis] + h[axis] * sgn
+				var key := "%d%d_%d" % [axis, sgn, roundi(coord * 400.0)]
+				if not planes.has(key):
+					planes[key] = []
+				planes[key].append(i)
+	var shrink := {}           # box -> [[axis, sign], ...]
+	for key in planes:
+		var list: Array = planes[key]
+		if list.size() < 2:
+			continue
+		var axis := int(key.substr(0, 1))
+		var sgn := -1 if key.substr(1, 2) == "-1" else 1
+		for a in list.size():
+			for b in range(a + 1, list.size()):
+				var ia: int = list[a]
+				var ib: int = list[b]
+				if _faces_overlap(_boxes[ia], _boxes[ib], axis):
+					var va: float = (_boxes[ia][1] as Vector3).x * (_boxes[ia][1] as Vector3).y * (_boxes[ia][1] as Vector3).z
+					var vb: float = (_boxes[ib][1] as Vector3).x * (_boxes[ib][1] as Vector3).y * (_boxes[ib][1] as Vector3).z
+					var small := ia if va <= vb else ib
+					if not shrink.has(small):
+						shrink[small] = []
+					shrink[small].append([axis, sgn])
+	for i in shrink:
+		var b: Array = _boxes[i]
+		var c: Vector3 = b[0]
+		var sz: Vector3 = b[1]
+		for f in shrink[i]:
+			var axis: int = f[0]
+			if sz[axis] <= INSET * 3.0:
+				continue
+			sz[axis] -= INSET
+			c[axis] -= float(f[1]) * INSET * 0.5
+		b[0] = c
+		b[1] = sz
+
+
+static func _faces_overlap(a: Array, b: Array, axis: int) -> bool:
+	for k in 3:
+		if k == axis:
+			continue
+		var ca: float = (a[0] as Vector3)[k]
+		var ha: float = (a[1] as Vector3)[k] * 0.5
+		var cb: float = (b[0] as Vector3)[k]
+		var hb: float = (b[1] as Vector3)[k] * 0.5
+		if ca + ha <= cb - hb + 0.001 or cb + hb <= ca - ha + 0.001:
+			return false
+	return true
 
 
 ## Box described by its min corner and max corner (axis aligned).
@@ -100,15 +243,26 @@ func stairs(base: Vector3, dir: Vector3, width: float, rise: float, steps: int, 
 		else:
 			size = Vector3(width, h, tread)
 		box(centre, size, mat)
+	# Walking collision: a ramp resting on the step noses, so feet (and the
+	# player capsule) go up smoothly instead of catching on every edge.
+	var p0 := base - dir * tread
+	var p1 := base + dir * tread * (steps - 1) + Vector3.UP * rise
+	var u := (p1 - p0).normalized()
+	var side := Vector3.UP.cross(dir).normalized()
+	var n := u.cross(side).normalized()
+	var t := 0.3
+	var length := p0.distance_to(p1)
+	var xf := Transform3D(Basis(side, n, u), (p0 + p1) * 0.5 + n * (0.01 - t * 0.5))
+	add_collision_box(xf, Vector3(width, t, length))
 
 
 ## Irregular rock/rubble mesh: a displaced low-poly sphere.
-static func rock_mesh(radius: float, seed_value: int, squash := 0.6) -> ArrayMesh:
+static func rock_mesh(radius: float, seed_value: int, squash := 0.6, segments := 8, rings := 5) -> ArrayMesh:
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
-	sphere.radial_segments = 8
-	sphere.rings = 5
+	sphere.radial_segments = segments
+	sphere.rings = rings
 	var arrays := sphere.get_mesh_arrays()
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var n := FastNoiseLite.new()
@@ -132,7 +286,19 @@ static func rock_mesh(radius: float, seed_value: int, squash := 0.6) -> ArrayMes
 	for i in idx:
 		st.add_vertex(verts[i])
 	st.generate_normals()
-	return st.commit()
+	var arr := st.commit_to_arrays()
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	m.set_meta("arrays", arr)
+	return m
+
+
+## A collision shape for a rock made by rock_mesh (from its own points,
+## without reading the mesh back from the graphics card).
+static func rock_shape(mesh: ArrayMesh) -> ConvexPolygonShape3D:
+	var s := ConvexPolygonShape3D.new()
+	s.points = (arrays_of(mesh)[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+	return s
 
 
 ## Horizontal slab from `lo` to `hi` (x/z) with rectangular holes.
@@ -164,10 +330,27 @@ func slab(lo: Vector2, hi: Vector2, y0: float, y1: float, mat: Material, holes: 
 
 
 func commit() -> void:
+	_unfight()
+	for b in _boxes:
+		var m := BoxMesh.new()
+		m.size = b[1]
+		add_mesh(m, Transform3D(Basis(), b[0]), b[2])
+	_boxes.clear()
 	for mat in _tools:
-		var st: SurfaceTool = _tools[mat]
+		var acc: Dictionary = _tools[mat]
+		if (acc["v"] as PackedVector3Array).is_empty():
+			continue
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = acc["v"]
+		arrays[Mesh.ARRAY_NORMAL] = acc["n"]
+		arrays[Mesh.ARRAY_TANGENT] = acc["t"]
+		arrays[Mesh.ARRAY_TEX_UV] = acc["uv"]
+		arrays[Mesh.ARRAY_INDEX] = acc["i"]
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		var mi := MeshInstance3D.new()
-		mi.mesh = st.commit()
+		mi.mesh = am
 		mi.material_override = mat
 		_root.add_child(mi)
 	_tools.clear()

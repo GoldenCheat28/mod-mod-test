@@ -4,9 +4,10 @@ extends Node3D
 
 const Tex = preload("res://scripts/world/textures.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
+const Smoke = preload("res://scripts/fx/smoke.gd")
 
 const MAX_DECALS := 96
-const MAX_CASINGS := 60
+const MAX_CASINGS := 40
 const MAX_DROPPED := 12
 
 var _smoke: Array[GPUParticles3D] = []
@@ -26,11 +27,11 @@ var _clink_cooldown := {}
 
 func _ready() -> void:
 	var smoke_pm := _smoke_process()
-	var smoke_mesh := _billboard_quad(0.35, Tex.smoke_puff(), Color(0.78, 0.78, 0.78), false)
+	var smoke_mesh := Smoke.quad("gun", 0.3, Color(0.8, 0.8, 0.82), 0.9)
 	for i in 10:
-		_smoke.append(_make_emitter(smoke_pm, smoke_mesh, 18, 3.5, 0.92))
+		_smoke.append(_make_emitter(smoke_pm, smoke_mesh, 12, 2.4, 0.9))
 	var dust_pm := _dust_process()
-	var dust_mesh := _billboard_quad(0.12, Tex.smoke_puff(), Color(0.6, 0.58, 0.55), false)
+	var dust_mesh := Smoke.quad("dust", 0.14, Color(0.62, 0.58, 0.52), 1.0)
 	for i in 12:
 		_dust.append(_make_emitter(dust_pm, dust_mesh, 14, 1.4, 1.0))
 	var spark_pm := _spark_process()
@@ -103,11 +104,12 @@ func _smoke_process() -> ParticleProcessMaterial:
 	var pm := ParticleProcessMaterial.new()
 	pm.direction = Vector3(0, 0, -1)
 	pm.spread = 14.0
-	pm.initial_velocity_min = 0.6
-	pm.initial_velocity_max = 3.2
-	pm.damping_min = 2.5
-	pm.damping_max = 4.0
-	pm.gravity = Vector3(0, 0.22, 0)
+	pm.initial_velocity_min = 0.4
+	pm.initial_velocity_max = 3.6
+	pm.damping_min = 2.8
+	pm.damping_max = 4.5
+	# Warm gas rises slowly and drifts with a light breeze.
+	pm.gravity = Vector3(0.12, 0.18, 0.05)
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	pm.emission_sphere_radius = 0.02
 	pm.angle_min = 0.0
@@ -116,14 +118,15 @@ func _smoke_process() -> ParticleProcessMaterial:
 	pm.angular_velocity_max = 25.0
 	pm.scale_min = 0.35
 	pm.scale_max = 0.8
-	pm.scale_curve = _curve([[0.0, 0.35], [0.25, 1.4], [1.0, 3.2]])
-	pm.color_ramp = _alpha_ramp([[0.0, 0.0], [0.04, 0.42], [0.35, 0.2], [1.0, 0.0]])
+	pm.scale_curve = _curve([[0.0, 0.3], [0.2, 1.2], [1.0, 2.4]])
+	pm.color_ramp = _alpha_ramp([[0.0, 0.0], [0.03, 0.7], [0.25, 0.3], [0.65, 0.08], [1.0, 0.0]])
 	pm.turbulence_enabled = true
-	pm.turbulence_noise_strength = 1.2
-	pm.turbulence_noise_scale = 2.5
-	pm.turbulence_noise_speed_random = 0.3
-	pm.turbulence_influence_min = 0.04
-	pm.turbulence_influence_max = 0.12
+	pm.turbulence_noise_strength = 1.6
+	pm.turbulence_noise_scale = 1.8
+	pm.turbulence_noise_speed = Vector3(0.1, 0.25, 0.0)
+	pm.turbulence_noise_speed_random = 0.4
+	pm.turbulence_influence_min = 0.05
+	pm.turbulence_influence_max = 0.16
 	return pm
 
 
@@ -196,21 +199,35 @@ func impact(pos: Vector3, normal: Vector3, collider: Object, surface: String) ->
 		bullet_hole(pos, normal, collider)
 
 
+## Holes by where they are (4 cm cells): shooting the same spot again does
+## not stack decal on decal (each one costs every pixel it covers).
+var _hole_grid := {}
+
+
 func bullet_hole(pos: Vector3, normal: Vector3, collider: Object) -> void:
-	var dcl: Decal
-	if _decals.size() < MAX_DECALS:
+	var cell := Vector3i((pos / 0.04).floor())
+	if not collider is RigidBody3D:
+		var old: Decal = _hole_grid.get(cell)
+		if old != null and is_instance_valid(old) and old.is_inside_tree() and old.global_position.distance_to(pos) < 0.035:
+			# Widened a little instead: the same hole, shot out bigger.
+			old.size = Vector3(minf(old.size.x * 1.08, 0.12), old.size.y, minf(old.size.z * 1.08, 0.12))
+			return
+	var dcl: Decal = null
+	while _decals.size() >= MAX_DECALS and dcl == null:
+		var reuse: Decal = _decals.pop_front()
+		if is_instance_valid(reuse):
+			dcl = reuse
+			if dcl.get_parent():
+				dcl.get_parent().remove_child(dcl)
+	if dcl == null:
 		dcl = Decal.new()
 		dcl.texture_albedo = Tex.bullet_hole()
 		dcl.cull_mask = 1
 		dcl.upper_fade = 0.0
 		dcl.lower_fade = 0.0
-	else:
-		dcl = _decals.pop_front()
-		if is_instance_valid(dcl) and dcl.get_parent():
-			dcl.get_parent().remove_child(dcl)
-		if not is_instance_valid(dcl):
-			return
 	_decals.append(dcl)
+	if not collider is RigidBody3D:
+		_hole_grid[cell] = dcl
 	var s := randf_range(0.045, 0.07)
 	dcl.size = Vector3(s, 0.08, s)
 	var parent: Node = self
@@ -242,6 +259,13 @@ func _build_casing_meshes() -> void:
 	pistol.radial_segments = 10
 	pistol.material = brass
 	_casing_meshes["pistol"] = [pistol, Vector3(0.0096, 0.019, 0.0096)]
+	var rifle := CylinderMesh.new()
+	rifle.top_radius = 0.0045
+	rifle.bottom_radius = 0.0056
+	rifle.height = 0.039
+	rifle.radial_segments = 10
+	rifle.material = brass
+	_casing_meshes["rifle"] = [rifle, Vector3(0.011, 0.039, 0.011)]
 
 	var hull := CylinderMesh.new()
 	hull.top_radius = 0.0105
@@ -274,7 +298,9 @@ func eject_casing(kind: String, xf: Transform3D, velocity: Vector3, spin: Vector
 	if _casings.size() < MAX_CASINGS:
 		rb = RigidBody3D.new()
 		rb.collision_layer = Game.LAYER_DEBRIS
-		rb.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_DEBRIS
+		# Not against each other: a heap of casings at one's feet would be a
+		# heap of contacts for the physics every step.
+		rb.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS
 		rb.continuous_cd = true
 		rb.contact_monitor = true
 		rb.max_contacts_reported = 1
@@ -302,14 +328,43 @@ func eject_casing(kind: String, xf: Transform3D, velocity: Vector3, spin: Vector
 	var shape := (rb.get_node("Shape") as CollisionShape3D).shape as CylinderShape3D
 	shape.radius = data[1].x * 0.5
 	shape.height = data[1].y
-	rb.mass = 0.008 if kind == "pistol" else 0.03
+	rb.mass = {"pistol": 0.008, "rifle": 0.012}.get(kind, 0.03)
 	rb.set_meta("kind", kind)
 	rb.set_meta("clinks", 0)
+	rb.set_meta("t", 0.0)
+	rb.freeze = false
 	rb.sleeping = false
 	rb.global_transform = xf
 	rb.reset_physics_interpolation()
 	rb.linear_velocity = velocity
 	rb.angular_velocity = spin
+
+
+## Casings that have come to rest are frozen: lying on the ground they cost
+## nothing (they wake when something is thrown out again in their slot).
+var _rest_i := 0
+
+
+func _physics_process(d: float) -> void: # @@PROF@@
+	var __t := Time.get_ticks_usec()
+	_physics_process_real(d)
+	var __d := Time.get_ticks_usec() - __t
+	Game.prof["fx._physics_process"] = Game.prof.get("fx._physics_process", 0) + __d
+	Game.prof["max fx._physics_process"] = maxi(Game.prof.get("max fx._physics_process", 0), __d)
+
+
+func _physics_process_real(delta: float) -> void:
+	var n := _casings.size()
+	for k in mini(n, 8):
+		_rest_i = (_rest_i + 1) % maxi(n, 1)
+		var rb := _casings[_rest_i]
+		if rb.freeze:
+			continue
+		var t: float = float(rb.get_meta("t", 0.0)) + delta * n / 8.0
+		rb.set_meta("t", t)
+		if t > 1.2 and (rb.sleeping or rb.linear_velocity.length() < 0.05):
+			rb.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+			rb.freeze = true
 
 
 func _on_casing_hit(_body: Node, rb: RigidBody3D) -> void:
@@ -321,7 +376,7 @@ func _on_casing_hit(_body: Node, rb: RigidBody3D) -> void:
 		return
 	_clink_cooldown[rb.get_instance_id()] = now
 	rb.set_meta("clinks", clinks + 1)
-	var sound := &"casing" if rb.get_meta("kind") == "pistol" else &"shell_drop"
+	var sound := &"shell_drop" if rb.get_meta("kind") == "shell" else &"casing"
 	Game.play_3d(Sfx.get_stream(sound), rb.global_position, -17.0 - clinks * 5.0, 0.1, 3.0)
 
 

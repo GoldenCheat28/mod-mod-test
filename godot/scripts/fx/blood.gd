@@ -19,16 +19,20 @@ const BT = preload("res://scripts/fx/blood_tex.gd")
 const BloodCanvas = preload("res://scripts/fx/blood_canvas.gd")
 const Tex = preload("res://scripts/world/textures.gd")
 
-const MAX_DROPS := 450
+const MAX_DROPS := 360
 const MAX_RUNS := 160
 const MAX_BODY_RUNS := 70
-const MAX_POOLS := 90
-const MAX_WORLD_DECALS := 1500
-const MAX_BODY_DECALS := 500
+const MAX_POOLS := 160
+const MAX_WORLD_DECALS := 800
+const MAX_BODY_DECALS := 320
 const GRAVITY := 9.81
-const FILM := 0.6e-3            # pool film thickness on hard ground, m
+const FILM := 1.4e-3            # pool film thickness on hard ground, m (blood is thick)
 const DEPOSIT_WALL := 3.0       # ml left behind per metre by a 12 mm run on hard surfaces
-const DEPOSIT_CLOTH := 7.0      # clothes soak more
+const DEPOSIT_CLOTH := 2.5      # ml the clothes take up per metre of a run (the rest runs on)
+## Share of the lost blood that actually comes out of the wound: a torso wound
+## bleeds mostly inside; an arterial one spurts out.
+const EXTERNAL := 0.3
+const EXTERNAL_ARTERIAL := 0.65
 const DRY_TIME := 140.0
 const DRY_COLOR := Color(0.42, 0.3, 0.27)
 const MASK_WORLD := 1
@@ -44,6 +48,7 @@ class Drop:
 	var drip := false          # slow drip (pools), as opposed to thrown spray (splats)
 	var ignore: Array[RID] = []
 	var ignore_t := 0.0
+	var streak := 0.003        # drawn stretched along its speed (a jet: into a line)
 
 
 ## A live streak: one decal that grows behind the moving front, plus a bead
@@ -64,6 +69,7 @@ class Run:
 	var age := 0.0
 	var hang := -1.0
 	var wobble := 5.0
+	var v := 0.0              # m/s along the surface (it keeps some of it round a bend)
 	var s := Streak.new()
 
 
@@ -77,6 +83,28 @@ class BodyRun:
 	var width: float
 	var age := 0.0
 	var s := Streak.new()
+	var push := Vector3.ZERO  # shape space: carried along by the bullet's sideways momentum
+	var last_paint := Vector3.INF
+	var push_k := 0.0         # how strongly (fades as it runs)
+
+
+## An open vessel bed: a severed limb's stump or a smashed head. While the
+## heart beats, blood leaves it as a stream under pressure, surging with
+## every beat; when the heart stops the pressure falls away over a few
+## seconds and what is left runs out by gravity.
+class Jet:
+	var bot
+	var part: RigidBody3D
+	var p: Vector3             # part space
+	var dir: Vector3           # part space, out of the wound
+	var flow: float            # ml/s at full pressure
+	var head := false
+	var beat := 0.0
+	var acc := 0.0
+	var drain := 0.0
+	var age := 0.0
+	var gush := 0.0            # ml that pours out at once (a body cut open)
+	var spread := 0.02         # how wide the opening is (m)
 
 
 class Pool:
@@ -91,6 +119,10 @@ class Pool:
 	var cap := 0.8          # radius it can spread to before reaching an edge
 	var edge_dir := Vector3.ZERO
 	var spill := 0.0
+	# Tongues of the spreading edge: [direction (world, in the surface), reach
+	# as a fraction of the pool radius, speed factor, wander phase].
+	var lobes: Array = []
+	var downhill := Vector3.ZERO
 
 
 class DecalSet:
@@ -112,6 +144,7 @@ var _pools: Array[Pool] = []
 var _world := DecalSet.new()
 var _body := DecalSet.new()
 var _bleeders: Array = []
+var _jets: Array[Jet] = []
 var _soak := {}          # part instance id -> ml soaked into clothes/skin
 var _soak_stamp := {}    # part instance id -> time of last underside stamp
 var _dead_since := {}    # bot -> time
@@ -132,6 +165,11 @@ var _mist_i := 0
 var _orm_wet: Texture2D
 var _orm_dry: Texture2D
 var _canvas: BloodCanvas
+
+
+## The clock the blood shaders age blood by (their `blood_time`).
+func clock() -> float:
+	return _canvas.time if _canvas else 0.0
 
 
 func _ready() -> void:
@@ -166,12 +204,25 @@ func _ready() -> void:
 ## rate is the bleed rate (ml/s) this wound added.
 func on_hit(bot, part: RigidBody3D, point: Vector3, dir: Vector3, weapon: String, kind: String,
 		rate: float, arterial: bool) -> void:
-	var pellet := weapon == "shotgun"
+	var pellet := weapon == "shotgun" or weapon == "frag"
 	var cs := _shape_of(part)
 	var sxf := part.global_transform * cs.transform
 	var entry_n: Vector3 = (sxf.basis * (_shape_project(cs.shape, sxf.affine_inverse() * point)[1] as Vector3)).normalized()
 	var ws := 0.07 if pellet else 0.1
-	_body_stamp(part, point, entry_n, dir, ws, ws, "wound", 0)
+	# A shot at an angle drags the blood sideways across the skin/cloth: the
+	# wound smears out along the bullet's path and the first gush runs that way.
+	var slide := dir - entry_n * dir.dot(entry_n)
+	var graze := clampf(slide.length(), 0.0, 1.0)
+	var slide_n := slide.normalized() if graze > 0.05 else Vector3.ZERO
+	_body_stamp(part, point, entry_n, dir, ws, ws * (1.0 + graze * 1.2), "wound", 0)
+	# Then the stain spreads out from it through the clothes over the next
+	# seconds (the more it bleeds, the wider).
+	if bot.has_method("bloom_blood"):
+		var spread := clampf(0.07 + rate * 0.004, 0.07, 0.16) * (0.7 if pellet else 1.0)
+		bot.bloom_blood(part, point, spread, 2.2 + rate * 0.03, 0.8)
+	if graze > 0.3:
+		var l := (0.06 + 0.16 * graze) * (0.6 if pellet else 1.0)
+		_body_stamp(part, point + slide_n * l * 0.5, entry_n, slide_n, ws * 0.45, l, "streak", 0)
 
 	# Where the bullet leaves the part (through-and-through).
 	var exit := _exit_point(bot, part, point, dir)
@@ -180,6 +231,8 @@ func on_hit(bot, part: RigidBody3D, point: Vector3, dir: Vector3, weapon: String
 		var ex_n: Vector3 = (sxf.basis * (_shape_project(cs.shape, sxf.affine_inverse() * exit)[1] as Vector3)).normalized()
 		var es := 0.09 if pellet else 0.14
 		_body_stamp(part, exit, ex_n, dir, es, es, "splat", randi() % SPARE)
+		if bot.has_method("bloom_blood"):
+			bot.bloom_blood(part, exit, es * 1.3, 3.0, 0.8)
 
 	var count := 14
 	var total := 5.0
@@ -204,13 +257,32 @@ func on_hit(bot, part: RigidBody3D, point: Vector3, dir: Vector3, weapon: String
 	var back: Vector3 = (-dir * 0.6 + entry_n * 0.8).normalized()
 	_spray(point + entry_n * 0.02, back, 45.0, 0.8, 3.5, int(count * 0.35), total * 0.2, ignore)
 	_mist_burst(origin, dir, 1.0 if kind == "head" and not pellet else 0.55)
+	# Through the head: it is blown out of the far side, onto whatever is behind.
+	if kind == "head" and not pellet:
+		exit_splatter(origin + dir * 0.03, dir, 1.0, ignore)
 
 	# Register the wound for bleeding.
 	if not bot.has_meta("wounds"):
 		bot.set_meta("wounds", [])
 	var wounds: Array = bot.get_meta("wounds")
+	var push_s := sxf.basis.inverse() * slide_n
+	# A wrecked head pours: scalp, face and the vessels at the base of the
+	# skull empty out, far more than a body wound shows on the outside.
+	var gush := 0.0
+	if kind == "head":
+		gush = 220.0 if pellet else 480.0
+	elif kind == "neck":
+		gush = 120.0
 	wounds.append({"part": part, "cs": cs, "p": sxf.affine_inverse() * point, "w": maxf(rate, 2.0),
-			"arterial": arterial, "acc": 0.0, "pulse": randf()})
+			"arterial": arterial, "acc": 0.0, "pulse": randf(), "push": push_s, "graze": graze,
+			"kind": kind, "gush": gush})
+	if graze > 0.3:
+		# The first gush, thrown along the direction the bullet was going.
+		var br := _start_body_run(bot, part, point, (1.5 + 3.5 * graze) * (0.5 if pellet else 1.0))
+		if br:
+			br.push = push_s
+			br.push_k = graze * 1.4
+			br.dir = push_s
 	if has_exit:
 		wounds.append({"part": part, "cs": cs, "p": sxf.affine_inverse() * exit, "w": maxf(rate, 2.0) * 0.8,
 				"arterial": false, "acc": 0.0, "pulse": 0.0})
@@ -218,9 +290,108 @@ func on_hit(bot, part: RigidBody3D, point: Vector3, dir: Vector3, weapon: String
 		_bleeders.append(bot)
 
 
+## A stump or a smashed head: a stream of blood out of `at` along `out`.
+## `flow` is how much comes out a second at full pressure (ml/s).
+func open_jet(bot, part: RigidBody3D, at: Vector3, out: Vector3, flow: float, head := false, gush := 0.0, spread := 0.02) -> void:
+	if not is_instance_valid(part):
+		return
+	var n := 0
+	for j in _jets:
+		if j.part == part:
+			n += 1
+	if n >= 3:
+		return
+	var jet := Jet.new()
+	jet.bot = bot
+	jet.part = part
+	jet.p = part.to_local(at)
+	jet.dir = (part.global_basis.inverse() * out).normalized()
+	jet.flow = flow
+	jet.head = head
+	jet.beat = randf()
+	jet.gush = gush
+	jet.spread = spread
+	_jets.append(jet)
+
+
+## Heart still going (a shot to the head kills the brain, not the heart: it
+## keeps pumping a while), its rate, and how full the vessels still are.
+func _pressure(jet: Jet) -> float:
+	var bot = jet.bot
+	var p := 1.0
+	if not bot.alive:
+		var since: float = _time - float(_dead_since.get(bot, _time))
+		# After a headshot the heart runs on for a while; otherwise it stops.
+		p = exp(-since / (7.0 if jet.head else 2.2))
+	# Emptying out: a man bleeds out in under a minute from this.
+	p *= exp(-jet.age / (45.0 if jet.head else 35.0))
+	return p
+
+
+func _update_jets(dt: float) -> void:
+	var i := 0
+	while i < _jets.size():
+		var jet := _jets[i]
+		if not is_instance_valid(jet.part) or jet.age > 90.0:
+			_jets.remove_at(i)
+			continue
+		jet.age += dt
+		if not jet.bot.alive and not _dead_since.has(jet.bot):
+			_dead_since[jet.bot] = _time
+		var pr := _pressure(jet)
+		var xf := jet.part.global_transform
+		var at := xf * jet.p
+		var out := (xf.basis * jet.dir).normalized()
+		var ignore: Array[RID] = jet.bot._ray_exclude
+		if pr > 0.08:
+			# The heartbeat: a sharp surge, then the stream sags until the next.
+			var rate := 1.25 + 0.4 * (1.0 - pr)
+			jet.beat += dt * rate
+			var ph := fmod(jet.beat, 1.0)
+			var surge := exp(-ph * 6.0)
+			var push := pr * (0.45 + 0.55 * surge)
+			var speed := lerpf(0.8, 5.2, push)
+			var vol := jet.flow * push * dt
+			# A few drops a step, spread along this step's length of stream,
+			# drawn stretched so they join into one line.
+			var n := 2
+			var v0: Vector3 = jet.part.linear_velocity
+			for k in n:
+				var d := _cone(out, deg_to_rad(3.0 + 5.0 * (1.0 - push)))
+				var sp := speed * randf_range(0.92, 1.05)
+				var pos := at + d * (0.01 + sp * dt * float(k) / n)
+				spawn_drop(pos, v0 + d * sp, vol / n, ignore, 0.15, false, 0.014)
+		# A body opened right across: what the trunk holds (a lot) pours out
+		# of the whole cut face in the first seconds, a sheet of it.
+		if jet.gush > 0.0:
+			var g := minf(jet.gush, dt * (60.0 + jet.gush * 0.45))
+			jet.gush -= g
+			var side := out.cross(Vector3.UP)
+			side = side.normalized() if side.length() > 0.05 else Vector3.RIGHT
+			var side2 := out.cross(side).normalized()
+			var v1: Vector3 = jet.part.linear_velocity
+			for k in 2:
+				var off := (side * randf_range(-1.0, 1.0) + side2 * randf_range(-1.0, 1.0)) * jet.spread
+				spawn_drop(at + off + out * 0.02, v1 + out * randf_range(0.3, 1.2) + Vector3.DOWN * 0.3, g / 2.0, ignore, 0.2, true, 0.008)
+		# Whatever the pressure, some runs out by gravity from the lowest
+		# edge of the wound.
+		jet.drain += jet.flow * dt * (0.12 + 0.25 * (1.0 - pr)) * exp(-jet.age / 60.0)
+		if jet.drain >= 1.2:
+			var low := at + Vector3(randf_range(-0.02, 0.02), -0.02, randf_range(-0.02, 0.02))
+			_drip(low, jet.part.linear_velocity, jet.drain, ignore)
+			jet.drain = 0.0
+		if jet.gush <= 0.0 and pr <= 0.08 and jet.age > 30.0 and jet.flow * exp(-jet.age / 60.0) < 0.5:
+			_jets.remove_at(i)
+			continue
+		i += 1
+
+
 # --- Droplets ----------------------------------------------------------------------
 
 func _spray(origin: Vector3, dir: Vector3, cone_deg: float, v_min: float, v_max: float, count: int, total: float, ignore: Array[RID]) -> void:
+	# Fewer, somewhat bigger drops carry the same blood (flat sprites, see
+	# _build_drop_mesh): as much on the walls for a fraction of the cost.
+	count = int(ceil(count * 0.45))
 	if count <= 0:
 		return
 	var weights := PackedFloat32Array()
@@ -237,7 +408,7 @@ func _spray(origin: Vector3, dir: Vector3, cone_deg: float, v_min: float, v_max:
 		spawn_drop(origin + _jitter(0.015), d * sp, vol, ignore, 0.12)
 
 
-func spawn_drop(pos: Vector3, vel: Vector3, vol: float, ignore: Array[RID] = [], ignore_t := 0.0, drip := false) -> void:
+func spawn_drop(pos: Vector3, vel: Vector3, vol: float, ignore: Array[RID] = [], ignore_t := 0.0, drip := false, streak := 0.003) -> void:
 	if vol < 0.005:
 		return
 	var d: Drop
@@ -253,6 +424,7 @@ func spawn_drop(pos: Vector3, vel: Vector3, vol: float, ignore: Array[RID] = [],
 	d.drip = drip
 	d.ignore = ignore
 	d.ignore_t = ignore_t
+	d.streak = streak
 
 
 ## Blood leaving a body. If the ground is right there (a body lying on it) it
@@ -408,19 +580,28 @@ func _step_run(r: Run, dt: float) -> bool:
 		return true
 	var g := Vector3.DOWN - r.n * r.n.dot(Vector3.DOWN)
 	var slope := g.length()
-	if slope < 0.3:
-		_add_pool(r.pos, r.n, r.vol)
-		return false
-	g /= slope
 	if r.vol < 0.06:
 		return false
-	# Film flow: faster when steep and when there is more blood behind it;
-	# stick-slip makes it creep and surge instead of sliding at constant speed.
+	# Film flow: the steeper, the faster (and the more blood behind it, the
+	# faster); stick-slip makes it creep and surge instead of sliding at a
+	# constant speed. It gathers speed and loses it gradually: coming down a
+	# wall onto the floor it runs on out across it before it stops.
 	var surge := 0.35 + 0.65 * pow(sin(r.age * r.wobble) * 0.5 + 0.5, 2.0)
-	var speed := (0.03 + 0.26 * slope * clampf(r.vol / 1.5, 0.15, 2.0)) * surge
-	var wander := r.n.cross(g) * randf_range(-0.6, 0.6)
-	r.dir = (r.dir + (g + wander) * dt * 5.0).normalized()
-	r.dir = (r.dir - r.n * r.n.dot(r.dir)).normalized()
+	var target := (0.01 + 0.34 * pow(slope, 1.5) * clampf(r.vol / 1.5, 0.15, 2.0)) * surge
+	r.v = move_toward(r.v, target, dt * (0.6 if target > r.v else 0.9))
+	if slope < 0.3 and r.v < 0.012:
+		_add_pool(r.pos, r.n, r.vol)
+		return false
+	if slope > 0.05:
+		g /= slope
+		var wander := r.n.cross(g) * randf_range(-0.6, 0.6)
+		# (on the flat it goes on the way it was going; on a slope it turns downhill)
+		r.dir = (r.dir + (g + wander) * dt * 5.0 * clampf(slope * 1.5, 0.0, 1.0)).normalized()
+	else:
+		g = r.dir
+	r.dir = r.dir - r.n * r.n.dot(r.dir)
+	r.dir = r.dir.normalized() if r.dir.length() > 1e-3 else g
+	var speed := r.v
 	var step := r.dir * speed * dt
 	var space := get_world_3d().direct_space_state
 	var lift := r.n * 0.004
@@ -442,7 +623,25 @@ func _step_run(r: Run, dt: float) -> bool:
 	_q.to = np - r.n * 0.05
 	hit = space.intersect_ray(_q)
 	if hit.is_empty():
-		# Ran over an edge: it drips off.
+		# Ran over an edge. A thin, slow film clings and goes on round it
+		# onto the face below (the nose of a step, the edge of a table);
+		# a fast or heavy one leaves the edge and falls.
+		var clings := speed < 0.25 and r.vol < 3.0 and randf() > speed * 2.5
+		if clings:
+			_q.from = np - r.n * 0.012 + r.dir * 0.01
+			_q.to = np - r.n * 0.012 - r.dir * 0.05
+			var round := space.intersect_ray(_q)
+			if not round.is_empty() and (round.normal as Vector3).dot(r.n) < 0.5:
+				_world_stamp(self, r.pos, r.n, r.dir, r.width, r.width * 1.4, "drop", 0, 1.0, 0.5)
+				var nn2: Vector3 = round.normal
+				r.pos = round.position
+				# (down the new face: what was forward is now downwards)
+				var d2 := r.dir - nn2 * nn2.dot(r.dir)
+				var g2 := Vector3.DOWN - nn2 * nn2.dot(Vector3.DOWN)
+				r.dir = (d2 * 0.3 + g2).normalized() if (d2 * 0.3 + g2).length() > 1e-3 else r.dir
+				r.n = nn2
+				r.v *= 0.5
+				return true
 		spawn_drop(np + r.dir * 0.004, r.dir * speed + g * 0.1, r.vol, _no_ex, 0.0, true)
 		return false
 	var nn: Vector3 = hit.normal
@@ -507,6 +706,18 @@ func _pool_radius(vol: float) -> float:
 	return clampf(sqrt(vol * 1e-6 / (PI * FILM)), 0.015, 0.8)
 
 
+## The pool this point is in or just beside (within its current size).
+func _pool_near(p: Vector3) -> Pool:
+	var best: Pool = null
+	var best_d := INF
+	for q in _pools:
+		var d := Vector2(q.pos.x - p.x, q.pos.z - p.z).length()
+		if absf(q.pos.y - p.y) < 0.1 and d < maxf(q.shown, q.r) * 1.05 + 0.06 and d < best_d:
+			best = q
+			best_d = d
+	return best
+
+
 func _pool_at(p: Vector3, reach: float) -> Pool:
 	for pool in _pools:
 		if absf(pool.pos.y - p.y) < 0.06 and Vector2(pool.pos.x - p.x, pool.pos.z - p.z).length() < pool.r * reach + 0.04:
@@ -515,7 +726,9 @@ func _pool_at(p: Vector3, reach: float) -> Pool:
 
 
 func _add_pool(p: Vector3, n: Vector3, vol: float) -> void:
-	var pool := _pool_at(p, 1.0)
+	# Joins a pool only if it lands in (or right at the edge of) it; blood
+	# dripping somewhere else starts its own pool there.
+	var pool := _pool_near(p)
 	if pool:
 		if pool.r >= 0.79:
 			# Full: the overflow spreads out at the edge as a new lobe.
@@ -620,9 +833,11 @@ func _new_pool(p: Vector3, n: Vector3, vol: float) -> void:
 				nearest = q
 			if q.vol < smallest.vol:
 				smallest = q
-		if nearest.pos.distance_to(p) < 1.0 or smallest.vol > vol:
+		if nearest.pos.distance_to(p) < maxf(nearest.r, 0.05):
 			_feed_pool(nearest, vol)
 			return
+		# Recycle the smallest pool's slot: its stain stays painted on the
+		# ground, only the bookkeeping is reused.
 		pool = smallest
 	else:
 		pool = Pool.new()
@@ -635,24 +850,68 @@ func _new_pool(p: Vector3, n: Vector3, vol: float) -> void:
 	pool.spill = 0.0
 	pool.vol = 0.0
 	_feed_pool(pool, vol)
-	pool.shown = pool.r * 0.4
+	pool.shown = pool.r * 0.15
 	pool.birth = _time
 	pool.along = _any_tangent(n)
 	pool.variant = randi() % SPARE
+	# Blood does not grow as one circle: a few tongues creep out at their own
+	# pace (faster downhill) and the body fills in behind them.
+	var g := Vector3.DOWN - n * n.dot(Vector3.DOWN)
+	# (only a real slope: the ground's own little unevenness is not one)
+	pool.downhill = g.normalized() * clampf((g.length() - 0.04) * 8.0, 0.0, 1.0) if g.length() > 1e-4 else Vector3.ZERO
+	pool.lobes.clear()
+	var count := randi_range(5, 8)
+	var t := pool.along
+	var b := n.cross(t)
+	for i in count:
+		var a := (float(i) + randf_range(-0.35, 0.35)) / count * TAU
+		var dir := (t * cos(a) + b * sin(a)).normalized()
+		var sp := randf_range(0.55, 1.25) * (1.0 + 1.4 * maxf(dir.dot(pool.downhill), 0.0))
+		pool.lobes.append([dir, 0.1, sp, randf() * TAU])
 
 
 func _update_pools(delta: float) -> void:
 	for pool in _pools:
+		# Nothing more coming into it (the body moved away, the bleeding
+		# stopped): it stays the size it has spread to - thick blood does not
+		# keep creeping once it is no longer being fed.
+		if _time - pool.birth > 1.5 and pool.shown < pool.r:
+			pool.r = maxf(pool.shown, 0.015)
+			pool.vol = PI * pool.r * pool.r * FILM * 1e6
 		var growing := pool.shown < pool.r
 		if growing:
-			# Spreads out quickly at first, creeping at the end.
-			pool.shown = minf(pool.r, pool.shown + (pool.r - pool.shown) * delta * 1.2 + delta * 0.004)
+			# Spreads out over several seconds, creeping at the end (thick
+			# blood slows down as the film thins).
+			pool.shown = minf(pool.r, pool.shown + (pool.r - pool.shown) * delta * 0.4 + delta * 0.002)
 		# Repaint while it spreads or is being fed (keeps it wet); the shader
 		# dries it from the last time it was painted.
 		if growing or _time - pool.birth < 0.3:
-			var s := pool.shown * 2.3
+			var s := pool.shown * 2.7
 			_canvas.dab(pool.pos, pool.n, pool.along, s, s, "pool", pool.variant, 1.0, 1.0)
 			_splat_grid[_cell(pool.pos)] = 1
+			_grow_lobes(pool, delta)
+
+
+## Moves the tongues of a spreading pool outwards and paints them: soft round
+## dabs along each tongue, so the outline grows unevenly and smoothly, with
+## longer runs downhill.
+func _grow_lobes(pool: Pool, delta: float) -> void:
+	var r := maxf(pool.shown, 0.02)
+	for lb in pool.lobes:
+		var dir: Vector3 = lb[0]
+		lb[3] = float(lb[3]) + delta * 0.7
+		# Tongues wander a little sideways as they go.
+		dir = dir.rotated(pool.n, sin(float(lb[3])) * delta * 0.25).normalized()
+		lb[0] = dir
+		var down := maxf(dir.dot(pool.downhill), 0.0)
+		var max_reach := 0.7 + 0.25 * float(lb[2]) + 0.6 * down
+		lb[1] = minf(float(lb[1]) + delta * 0.3 * float(lb[2]) * (1.0 - float(lb[1]) / max_reach), max_reach)
+		var reach: float = lb[1] * r
+		# A tongue is a broad lobe of the pool, not a thin line running
+		# out of it (a narrow dab repainted as it moved drew one).
+		var size := r * (0.85 - 0.2 * float(lb[1]) / max_reach)
+		var tip := pool.pos + dir * reach * 0.55
+		_canvas.dab(tip, pool.n, dir, size, size * (1.0 + down * 0.35), "pool", (pool.variant + 1) % SPARE, 0.8, 1.0)
 
 
 # --- Bodies ------------------------------------------------------------------------------
@@ -673,7 +932,22 @@ func _shape_project(shape: Shape3D, p: Vector3) -> Array:
 		var d := p - c
 		var n := d.normalized() if d.length() > 1e-5 else Vector3.BACK
 		return [c + n * cap.radius, n]
-	var e: Vector3 = (shape as BoxShape3D).size * 0.5
+	if shape is ConvexPolygonShape3D:
+		# A cut piece: treated as the box round it.
+		var pts := (shape as ConvexPolygonShape3D).points
+		if pts.is_empty():
+			return [p, Vector3.UP]
+		var box := AABB(pts[0], Vector3.ZERO)
+		for v in pts:
+			box = box.expand(v)
+		var ctr := box.get_center()
+		var r := _box_project(box.size * 0.5, p - ctr)
+		return [(r[0] as Vector3) + ctr, r[1]]
+	return _box_project((shape as BoxShape3D).size * 0.5, p)
+
+
+func _box_project(e: Vector3, p: Vector3) -> Array:
+	e = e.max(Vector3.ONE * 0.001)
 	var q := p.clamp(-e, e)
 	var rel := Vector3(absf(q.x) / e.x, absf(q.y) / e.y, absf(q.z) / e.z)
 	var axis := 0
@@ -771,27 +1045,42 @@ func _step_body_run(br: BodyRun, dt: float) -> bool:
 	var g_s := (xf.basis.inverse() * Vector3.DOWN)
 	var g_t := g_s - n * n.dot(g_s)
 	var slope := g_t.length()
-	if slope < 0.2:
+	br.push_k = maxf(br.push_k - dt * 0.6, 0.0)
+	var p_t := br.push - n * n.dot(br.push)
+	var pushing := br.push_k > 0.05 and p_t.length() > 0.1
+	if slope < 0.2 and not pushing:
 		# On top of a lying body: it just soaks in.
 		br.vol -= dt * 1.5
 		_add_soak(br.part, dt * 1.5)
 		return br.vol > 0.0
-	g_t /= slope
-	var speed := 0.02 + 0.1 * slope * clampf(br.vol / 2.0, 0.2, 2.0)
+	g_t = g_t / slope if slope > 1e-4 else Vector3.ZERO
+	var want := g_t
+	if pushing:
+		var pk := clampf(br.push_k, 0.0, 0.9)
+		want = (g_t * slope * (1.0 - pk) + p_t.normalized() * pk).normalized()
+		slope = maxf(slope, br.push_k * 0.8)
+	var speed := 0.02 + 0.1 * slope * clampf(br.vol / 2.0, 0.2, 2.0) + br.push_k * 0.12
 	var old_dir := br.dir
-	br.dir = (br.dir * 0.7 + g_t * 0.3 + n.cross(g_t) * randf_range(-0.08, 0.08)).normalized()
+	br.dir = (br.dir * 0.7 + want * 0.3 + n.cross(want) * randf_range(-0.08, 0.08)).normalized()
 	br.p = surf + br.dir * speed * dt
 	var used := speed * dt * DEPOSIT_CLOTH * (br.width / 0.012)
 	br.vol -= used
 	_add_soak(br.part, used)
 	if br.vol < 0.05:
 		return false
-	# Segments are straight, so start a new one where the surface curves away.
-	var start_n: Vector3 = _shape_project(br.cs.shape, br.s.start)[1]
-	if start_n.dot(n) < 0.93 or old_dir.dot(br.dir) < 0.9 or br.p.distance_to(br.s.start) > 0.25:
-		_new_segment(_body, br.s, surf, br.dir)
-	var start_w := xf * (_shape_project(br.cs.shape, br.s.start)[0] as Vector3)
-	_draw_streak(_body, br.part, br.s, pos_w, n_w, br.width, start_w)
+	# Painted into the body's own blood as it goes (a dab each centimetre).
+	# (kept in part space, so a whole step's way is filled in unbroken)
+	var here := br.part.to_local(pos_w)
+	if br.bot and br.bot.has_method("paint_blood"):
+		var from: Vector3 = here if br.last_paint == Vector3.INF else br.last_paint
+		var gap := from.distance_to(here)
+		if br.last_paint == Vector3.INF or gap > 0.008:
+			var amount := clampf(0.4 + br.vol * 0.12, 0.4, 0.9)
+			var steps := clampi(int(gap / 0.008), 1, 12)
+			for k in steps:
+				var q := from.lerp(here, float(k + 1) / steps)
+				br.bot.paint_blood(br.part, br.part.to_global(q), br.width * 0.5, amount)
+			br.last_paint = here
 	return true
 
 
@@ -804,9 +1093,14 @@ func _update_bleeding(dt: float) -> void:
 		if not bot.alive:
 			if not _dead_since.has(bot):
 				_dead_since[bot] = _time
-			# The heart has stopped: what is left drains out by gravity.
-			rate = maxf(rate, 14.0) * exp(-(_time - float(_dead_since[bot])) / 30.0)
-		if rate < 0.05 or wounds.is_empty():
+			# The heart has stopped: what is left drains out by gravity, and only
+			# from the body and head: a limb wound stops soon after death.
+			var core := false
+			for w in wounds:
+				if w.get("kind", "") in ["torso", "neck", "head"]:
+					core = true
+			rate = (maxf(rate, 14.0) if core else rate) * exp(-(_time - float(_dead_since[bot])) / (20.0 if core else 6.0))
+		if rate < 0.3 or wounds.is_empty():
 			_bleeders.remove_at(i)
 			continue
 		var total_w := 0.0
@@ -815,7 +1109,16 @@ func _update_bleeding(dt: float) -> void:
 		for w in wounds:
 			var part: RigidBody3D = w["part"]
 			var cs: CollisionShape3D = w["cs"]
-			var r: float = rate * w["w"] / total_w
+			var ext: float = EXTERNAL_ARTERIAL if w["arterial"] else EXTERNAL
+			if w.get("kind", "") in ["head", "neck"]:
+				ext = 1.0
+			var r: float = rate * w["w"] / total_w * ext
+			var gush: float = w.get("gush", 0.0)
+			if gush > 0.0:
+				# Pours out over the first several seconds, tapering off.
+				var g := minf(gush, dt * (8.0 + gush * 0.35))
+				w["gush"] = gush - g
+				r += g / dt
 			var xf := part.global_transform * cs.transform
 			var proj := _shape_project(cs.shape, w["p"])
 			var pos_w := xf * (proj[0] as Vector3)
@@ -828,6 +1131,14 @@ func _update_bleeding(dt: float) -> void:
 					var jet := (n_w + Vector3.UP * 0.25).normalized()
 					_spray(pos_w + n_w * 0.01, jet, 10.0, 1.2, 3.2, 6, r / 1.7 * 0.7, bot._ray_exclude)
 				r *= 0.3
+			if w.get("kind", "") in ["head", "neck"] and (not bot.alive or float(w.get("gush", 0.0)) > 0.0):
+				# Pours straight off the head onto the ground below it.
+				w["pour"] = float(w.get("pour", 0.0)) + r * dt
+				if w["pour"] >= 1.5:
+					var low := part.global_position + Vector3.DOWN * 0.1 + Vector3(randf_range(-0.03, 0.03), 0, randf_range(-0.03, 0.03))
+					_drip(low, part.linear_velocity, w["pour"], bot._ray_exclude)
+					w["pour"] = 0.0
+				continue
 			w["acc"] = float(w["acc"]) + r * dt
 			var threshold := clampf(r * 0.3, 0.4, 3.0)
 			if w["acc"] >= threshold:
@@ -898,11 +1209,13 @@ func _update_smears() -> void:
 			var seg_len := seg.length()
 			if seg_len < 0.005:
 				continue
-			var alpha := clampf(soak / 8.0, 0.12, 0.4)
-			var dabs := int(seg_len / (w * 0.35)) + 1
+			# A thin film: it wipes on streaky and see-through, heavier where the
+			# clothes are soaked.
+			var alpha := clampf(soak / 14.0, 0.06, 0.22)
+			var dabs := int(seg_len / (w * 0.5)) + 1
 			for s in dabs:
 				var q := prev.lerp(here, (s + 1.0) / dabs)
-				_world_stamp(self, q, hit.normal, seg / seg_len, w, w * 1.3, "brush", randi() % SPARE, 0.6, alpha)
+				_world_stamp(self, q, hit.normal, seg / seg_len, w, w * 1.3, "brush", randi() % SPARE, clampf(soak / 600.0, 0.004, 0.025), alpha)
 			_soak[id] = soak - minf(0.08 * dabs, soak)
 
 
@@ -1052,6 +1365,21 @@ func _world_stamp(parent: Node, p: Vector3, n: Vector3, along: Vector3, w: float
 
 
 func _body_stamp(part: RigidBody3D, p: Vector3, n: Vector3, along: Vector3, w: float, l: float, kind: String, variant: int) -> void:
+	var h = part.get_meta("humanoid", null)
+	if h != null and h.has_method("paint_blood"):
+		var amount := {"wound": 0.9, "splat": 0.75, "streak": 0.6, "drop": 0.5, "smear": 0.45}.get(kind, 0.6) as float
+		if kind == "streak" or l > w * 1.4:
+			# Long: a line of dabs along it.
+			var a := along - n * n.dot(along)
+			a = a.normalized() if a.length() > 1e-3 else Vector3.DOWN
+			var steps := maxi(int(l / 0.02), 2)
+			for k in steps:
+				h.paint_blood(part, p + a * (float(k) / (steps - 1) - 0.5) * l, w * 0.5, amount)
+		else:
+			h.paint_blood(part, p, maxf(w, l) * 0.5, amount)
+		# (the wound itself: the hole is flesh_wounds.gd's, the stain round it
+		# the body's own blood - no flat printed ring on top)
+		return
 	_stamp(_body, part, p, n, along, w, l, kind, variant, 0.06)
 
 
@@ -1153,6 +1481,89 @@ func _build_mist() -> void:
 		_mist.append(p)
 
 
+## What a bullet blows out of the far side of a head (a shot to the head,
+## a gun put to one's own): not a few drops but a fan of blood and matter
+## thrown hard enough to reach the wall behind. Where it lands it lands in
+## the shape of the burst - a heavy splash where the middle of it hit, with
+## spikes of it thrown out round that, fine spatter in a cone about it, drops
+## elongated the way they were going - and the heavy middle runs down the
+## wall. It arrives as it would: the far bits a moment after the near ones.
+func exit_splatter(origin: Vector3, dir: Vector3, strength := 1.0, ignore: Array[RID] = []) -> void:
+	# (a head blown through is a lot: twice what it was, and harder)
+	strength *= 2.2
+	var space := get_world_3d().direct_space_state
+	var d := dir.normalized()
+	var helper := Vector3.UP if absf(d.y) < 0.95 else Vector3.RIGHT
+	var fwd := Basis.looking_at(d, helper)
+	var mask := Game.LAYER_WORLD | Game.LAYER_PROPS
+	var speed := 20.0
+	# The flying part of it, seen going.
+	_spray(origin, d, 30.0, 8.0, 22.0, int(70 * strength), 55.0 * strength, ignore)
+	_spray(origin, d, 55.0, 2.0, 7.0, int(20 * strength), 10.0 * strength, ignore)
+	_mist_burst(origin, d, clampf(strength * 1.2, 0.3, 1.0))
+	if Game.gibs:
+		Game.gibs.burst(origin, d, int(5 * strength), 7.5, 0.6)
+	# The middle of it.
+	var q := PhysicsRayQueryParameters3D.create(origin, origin + d * 6.0, mask)
+	q.exclude = ignore
+	var hit := space.intersect_ray(q)
+	if not hit.is_empty():
+		var p: Vector3 = hit.position
+		var n: Vector3 = hit.normal
+		var dist := origin.distance_to(p)
+		var spread := clampf(0.18 + dist * 0.12, 0.2, 0.6) * sqrt(strength) * 0.85
+		get_tree().create_timer(dist / speed).timeout.connect(func():
+			_splash_at(p, n, d, spread, strength))
+	# The spatter round it: many rays in a cone, each a drop where it hits.
+	var n_rays := int(60 * strength)
+	for i in n_rays:
+		var a := randf() * TAU
+		var r := pow(randf(), 0.7) * deg_to_rad(32.0)
+		var rd := (fwd * Vector3(cos(a) * sin(r), sin(a) * sin(r), -cos(r))).normalized()
+		var rq := PhysicsRayQueryParameters3D.create(origin, origin + rd * 7.0, mask)
+		rq.exclude = ignore
+		var h := space.intersect_ray(rq)
+		if h.is_empty():
+			continue
+		var hp: Vector3 = h.position
+		var hn: Vector3 = h.normal
+		var dist2 := origin.distance_to(hp)
+		# Size: bigger near the middle and close; elongated as it came in slant.
+		var w := randf_range(0.006, 0.02) * (1.3 - r / deg_to_rad(32.0) * 0.6) * (1.0 + 0.5 / maxf(dist2, 0.5))
+		var slant := 1.0 + clampf(1.0 - absf(rd.dot(hn)), 0.0, 1.0) * 3.0
+		var along := rd - hn * rd.dot(hn)
+		along = along.normalized() if along.length() > 1e-3 else _any_tangent(hn)
+		var kind := "drop" if w < 0.013 else "splat"
+		get_tree().create_timer(dist2 / (speed * randf_range(0.7, 1.1))).timeout.connect(func():
+			_world_stamp(self, hp + hn * 0.002, hn, along, w, w * slant, kind, randi() % SPARE, 1.0, 1.0))
+
+
+## The heavy middle of a burst on the wall: a splash, spikes of it thrown out
+## round it, and blood starting to run down from it.
+func _splash_at(p: Vector3, n: Vector3, d: Vector3, size: float, strength: float) -> void:
+	var t1 := d - n * d.dot(n)
+	t1 = t1.normalized() if t1.length() > 1e-3 else _any_tangent(n)
+	var t2 := n.cross(t1).normalized()
+	_world_stamp(self, p + n * 0.002, n, t1, size * 0.8, size * 0.8, "splat", randi() % SPARE, 1.0, 1.0)
+	_world_stamp(self, p + n * 0.002 + t1 * size * 0.15, n, t1, size * 0.5, size * 0.7, "splat", randi() % SPARE, 1.0, 1.0)
+	# Spikes: thrown outwards from the middle, longest the way it was going.
+	for k in int(12 * strength) + 4:
+		var a := randf() * TAU
+		var dirk := (t1 * cos(a) + t2 * sin(a)).normalized()
+		var bias := 1.0 + maxf(dirk.dot(t1), 0.0) * 1.5
+		var l := randf_range(0.08, 0.22) * bias * size / 0.3
+		var at := p + dirk * (size * 0.3 + l * 0.5) + n * 0.002
+		_world_stamp(self, at, n, dirk, randf_range(0.01, 0.025), l, "streak", randi() % SPARE, 0.8, 1.0)
+		# (a bead at the end of the spike)
+		_world_stamp(self, p + dirk * (size * 0.3 + l) + n * 0.002, n, dirk, 0.012, 0.018, "drop", randi() % SPARE, 1.0, 1.0)
+	# It runs down (on a wall; on the floor it just lies).
+	if absf(n.y) < 0.7:
+		for k in randi_range(5, 9):
+			_start_run(p + t2 * randf_range(-size, size) * 0.4 + Vector3.DOWN * size * randf_range(0.0, 0.3), n, randf_range(1.5, 4.5) * strength)
+	elif n.y > 0.7:
+		_add_pool(p, n, 25.0 * strength)
+
+
 func _mist_burst(pos: Vector3, dir: Vector3, strength: float) -> void:
 	var p := _mist[_mist_i]
 	_mist_i = (_mist_i + 1) % _mist.size()
@@ -1165,16 +1576,51 @@ func _mist_burst(pos: Vector3, dir: Vector3, strength: float) -> void:
 
 # --- Droplet rendering ------------------------------------------------------------------------
 
+## Drops are flat: a quad per drop turned to face the eye about its line of
+## flight and stretched along it (a short exposure), a round dark bead with a
+## wet highlight drawn in it. Two triangles instead of a sphere.
+const DROP_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, shadows_disabled, depth_draw_opaque, skip_vertex_transform, specular_schlick_ggx;
+
+void vertex() {
+	vec3 centre = MODEL_MATRIX[3].xyz;
+	vec3 axis_v = MODEL_MATRIX[1].xyz;
+	float len = length(axis_v);
+	float r = length(MODEL_MATRIX[0].xyz);
+	vec3 axis = axis_v / max(len, 1e-5);
+	vec3 cam = INV_VIEW_MATRIX[3].xyz;
+	vec3 to_eye = normalize(cam - centre);
+	vec3 side = cross(axis, to_eye);
+	side = length(side) > 1e-3 ? normalize(side) : normalize(INV_VIEW_MATRIX[0].xyz);
+	vec3 w = centre + side * VERTEX.x * 2.0 * r + axis * VERTEX.y * 2.0 * max(len, r);
+	VERTEX = (VIEW_MATRIX * vec4(w, 1.0)).xyz;
+}
+
+void fragment() {
+	vec2 d = UV * 2.0 - 1.0;
+	float q = dot(d, d);
+	if (q > 1.0) {
+		discard;
+	}
+	// Lit like anything else (in the dark it is dark): a round wet bead -
+	// the normal bulges towards the eye - glossy, so the light that is
+	// there glints off it.
+	ALBEDO = vec3(0.14, 0.006, 0.005) * (1.0 - 0.4 * q);
+	NORMAL = normalize(vec3(d.x, -d.y, sqrt(max(1.0 - q, 0.0)) + 0.3));
+	ROUGHNESS = 0.12;
+	SPECULAR = 0.6;
+}
+"""
+
+
 func _build_drop_mesh() -> void:
-	var s := SphereMesh.new()
-	s.radius = 1.0
-	s.height = 2.0
-	s.radial_segments = 8
-	s.rings = 4
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.3, 0.01, 0.01)
-	m.roughness = 0.08
-	m.metallic_specular = 0.7
+	var s := QuadMesh.new()
+	s.size = Vector2(1.0, 1.0)
+	var m := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = DROP_SHADER
+	m.shader = sh
 	s.material = m
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -1201,7 +1647,7 @@ func _draw_drops(extra: float) -> void:
 		var x := y.cross(Vector3.UP if absf(y.y) < 0.95 else Vector3.RIGHT).normalized()
 		var z := x.cross(y)
 		# Stretch along the velocity like a short camera exposure.
-		var stretch := r + sp * 0.006
+		var stretch := r + sp * d.streak
 		x *= r
 		z *= r
 		y *= stretch
@@ -1225,7 +1671,15 @@ func _draw_drops(extra: float) -> void:
 
 # --- Main loop ---------------------------------------------------------------------------------
 
-func _physics_process(delta: float) -> void:
+func _physics_process(d: float) -> void: # @@PROF@@
+	var __t := Time.get_ticks_usec()
+	_physics_process_real(d)
+	var __d := Time.get_ticks_usec() - __t
+	Game.prof["blood._physics_process"] = Game.prof.get("blood._physics_process", 0) + __d
+	Game.prof["max blood._physics_process"] = maxi(Game.prof.get("max blood._physics_process", 0), __d)
+
+
+func _physics_process_real(delta: float) -> void:
 	_time += delta
 	_canvas.time = _time
 	# Everything runs at 60 Hz, split across physics ticks.
@@ -1238,15 +1692,54 @@ func _physics_process(delta: float) -> void:
 		_update_runs(dt)
 		_update_body_runs(dt)
 		_update_bleeding(dt)
+		_update_jets(dt)
 	_smear_t += delta
 	if _smear_t > 0.1:
 		_smear_t = 0.0
 		_update_smears()
 
 
-func _process(delta: float) -> void:
+func _process(d: float) -> void: # @@PROF@@
+	var __t := Time.get_ticks_usec()
+	_process_real(d)
+	var __d := Time.get_ticks_usec() - __t
+	Game.prof["blood._process"] = Game.prof.get("blood._process", 0) + __d
+	Game.prof["max blood._process"] = maxi(Game.prof.get("max blood._process", 0), __d)
+
+
+func _process_real(delta: float) -> void:
 	_since_sim += delta
 	_draw_drops(_since_sim)
 	_update_pools(delta)
 	_update_drying(_world, 40)
 	_update_drying(_body, 24)
+
+
+# --- Mopping (mop.gd) ----------------------------------------------------------------
+
+## A wet mop wiping at p (on a floor, normal n): the blood there fades by
+## `amount`; returns how much blood (ml) it took up.
+func wipe(p: Vector3, n: Vector3, r: float, amount: float) -> float:
+	_canvas.erase(p, n, r, amount)
+	var took := 0.0
+	for pool in _pools:
+		if pool.pos.distance_to(p) < pool.r + r:
+			var t: float = pool.vol * amount * 0.5
+			pool.vol -= t
+			took += t
+			# It stops growing back: what is shown is what is left.
+			pool.r = minf(pool.r, pool.shown)
+	return took
+
+
+## A dry or dirty mop drags blood along: thin streaks behind it.
+func smear(p: Vector3, n: Vector3, along: Vector3, w: float, l: float, thick := 0.15, alpha := 0.35) -> void:
+	_canvas.dab(p, n, along, w, l, "smear", randi() % SPARE, thick, alpha)
+
+
+## Whether there is (known) blood lying near p.
+func blood_near(p: Vector3, r: float) -> bool:
+	for pool in _pools:
+		if pool.vol > 1.0 and pool.pos.distance_to(p) < pool.r + r:
+			return true
+	return false

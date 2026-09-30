@@ -5,6 +5,7 @@ render_mode diffuse_burley, specular_schlick_ggx;
 
 #include "res://shaders/triplanar.gdshaderinc"
 #include "res://shaders/blood.gdshaderinc"
+#include "res://shaders/hallu.gdshaderinc"
 
 uniform vec3 base_color : source_color = vec3(0.56, 0.55, 0.52);
 uniform vec3 dirt_color : source_color = vec3(0.30, 0.27, 0.22);
@@ -25,12 +26,13 @@ varying vec3 v_wnrm;
 void vertex() {
 	v_wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	VERTEX += hallu_bend(v_wpos, v_wnrm, TIME);
 }
 
 void fragment() {
 	vec3 n = normalize(v_wnrm);
 	vec3 w = tp_weights(n, 4.0);
-	vec3 p = v_wpos * tex_scale;
+	vec3 p = v_wpos * tex_scale + hallu_flow(v_wpos, TIME);
 	float detail = tp_sample(tex_detail, p * 1.7, w).r;
 	float large = tp_sample(tex_large, p * 0.23, w).r;
 	float pores = tp_sample(tex_detail, p * 7.0, w).r;

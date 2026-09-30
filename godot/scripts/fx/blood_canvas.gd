@@ -62,6 +62,22 @@ class Painter extends Node2D:
 
 var _vps: Array[SubViewport] = []
 var _painters: Array[Painter] = []
+var _erasers: Array[Painter] = []     # wiping blood off (the mop): multiplies what is there down
+var _erase_mat: ShaderMaterial
+var _soft: Texture2D
+
+const ERASE_SHADER := """
+shader_type canvas_item;
+render_mode blend_mul, unshaded;
+varying float k;
+void vertex() {
+	k = COLOR.a;
+}
+void fragment() {
+	float m = texture(TEXTURE, UV).a * k;
+	COLOR = vec4(vec3(1.0 - m), 1.0 - m);
+}
+"""
 var _mat: ShaderMaterial
 var time := 0.0
 
@@ -72,6 +88,21 @@ func _ready() -> void:
 	sh.code = PAINT_SHADER
 	_mat.shader = sh
 	_mat.set_shader_parameter("srgb_input", _srgb_input())
+	_erase_mat = ShaderMaterial.new()
+	var esh := Shader.new()
+	esh.code = ERASE_SHADER
+	_erase_mat.shader = esh
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	gt.width = 64
+	gt.height = 64
+	_soft = gt
 	_add_map(Vector2i(FLOOR_RES, FLOOR_RES))
 	_add_map(WALL_RES)
 	_add_map(WALL_RES)
@@ -104,13 +135,26 @@ func _add_map(res: Vector2i) -> void:
 	vp.add_child(p)
 	_vps.append(vp)
 	_painters.append(p)
+	var e := Painter.new()
+	e.material = _erase_mat
+	vp.add_child(e)
+	_erasers.append(e)
 
 
-func _process(_delta: float) -> void:
+func _process(d: float) -> void: # @@PROF@@
+	var __t := Time.get_ticks_usec()
+	_process_real(d)
+	var __d := Time.get_ticks_usec() - __t
+	Game.prof["blood_canvas._process"] = Game.prof.get("blood_canvas._process", 0) + __d
+	Game.prof["max blood_canvas._process"] = maxi(Game.prof.get("max blood_canvas._process", 0), __d)
+
+
+func _process_real(_delta: float) -> void:
 	RenderingServer.global_shader_parameter_set(&"blood_time", fmod(time, TIME_SPAN))
 	for i in _painters.size():
-		if not _painters[i].items.is_empty():
+		if not _painters[i].items.is_empty() or not _erasers[i].items.is_empty():
 			_painters[i].queue_redraw()
+			_erasers[i].queue_redraw()
 			_vps[i].render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
@@ -128,6 +172,17 @@ static func map_for(n: Vector3) -> int:
 
 func covers(p: Vector3) -> bool:
 	return p.x > AREA_MIN and p.z > AREA_MIN and p.x < AREA_MIN + AREA_SIZE and p.z < AREA_MIN + AREA_SIZE
+
+
+## Wipes blood off round p (radius r): what is there is scaled down by
+## `amount` (0..1) at the middle, less towards the edge.
+func erase(p: Vector3, n: Vector3, r: float, amount: float) -> void:
+	var m := map_for(n)
+	if m < 0 or not covers(p):
+		return
+	var uv := Vector2(p.x, p.z) if m == FLOOR else (Vector2(p.z, p.y) if m == WALL_X else Vector2(p.x, p.y))
+	var px := Vector2(uv.x - AREA_MIN, uv.y - (AREA_MIN if m == FLOOR else WALL_Y0)) * PPM
+	_erasers[m].items.append([_soft, px, Vector2(r, r) * 2.0 * PPM, 0.0, Color(1, 1, 1, clampf(amount, 0.0, 1.0))])
 
 
 ## Paints one dab of blood on the surface at p (normal n). `along` orients the
