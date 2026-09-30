@@ -226,6 +226,9 @@ func _physics_process(delta: float) -> void:
 		# (slipping on his chair is not leaving the game: he is sat back on it)
 		if not is_instance_valid(b) or not b.alive or not b.conscious or (b.fallen and not p["sat"]) or b.cuffed:
 			if state == "gather":
+				if OS.is_debug_build() and OS.get_environment("DBG_GATHER") == "1":
+					print("gather drop %s: alive=%s conscious=%s fallen=%s cuffed=%s" % [p["name"], b.alive if is_instance_valid(b) else false,
+							b.conscious if is_instance_valid(b) else false, b.fallen if is_instance_valid(b) else false, b.cuffed if is_instance_valid(b) else false])
 				seats_taken.erase(p)
 				if is_instance_valid(b):
 					_release_bot(b)
@@ -449,8 +452,16 @@ func stance_for(b: Node3D, delta: float) -> void:
 			var nav: RID = b.get_world_3d().navigation_map
 			path = NavigationServer3D.map_get_path(nav, NavigationServer3D.map_get_closest_point(nav, me),
 					NavigationServer3D.map_get_closest_point(nav, stand), true)
-			if path.is_empty():
-				path = PackedVector3Array([stand])
+			if path.is_empty() or path[path.size() - 1].distance_to(stand) > 2.5:
+				# (no way from where he is - on a roof, behind a fence): someone else
+				if OS.get_environment("DBG_GATHER") == "1":
+					print("gather drop %s: no way (end %s, stand %s)" % [p["name"], path[path.size() - 1] if not path.is_empty() else Vector3.INF, stand])
+				b.set_meta("late_until", Game.clock + 60.0)
+				seats_taken.erase(p)
+				_release_bot(b)
+				if _manager and _manager.has_method("refill") and _is_event():
+					_manager.refill.call_deferred(self)
+				return
 			p["path"] = path
 			p["pi"] = 0
 		# Far off and nobody watching: he is simply nearer (somewhere on his
@@ -479,7 +490,9 @@ func stance_for(b: Node3D, delta: float) -> void:
 				_judge_say(["%s сел за стол." % p["name"], "%s на месте." % p["name"], "%s занял стул." % p["name"]].pick_random(), 2.0)
 		else:
 			# (stuck somewhere on the way for a while: a new path from where he is)
-			var last: Vector3 = p.get("last_pos", me)
+			if not p.has("last_pos"):
+				p["last_pos"] = me
+			var last: Vector3 = p["last_pos"]
 			if me.distance_to(last) > 0.5:
 				p["last_pos"] = me
 				p["stuck_t"] = 0.0
@@ -491,6 +504,8 @@ func stance_for(b: Node3D, delta: float) -> void:
 					p["stuck_n"] = int(p.get("stuck_n", 0)) + 1
 					if int(p["stuck_n"]) >= 3:
 						# Can't get here: someone else instead (and not him again for a while).
+						if OS.get_environment("DBG_GATHER") == "1":
+							print("gather drop %s: stuck at %s" % [p["name"], me])
 						b.set_meta("late_until", Game.clock + 60.0)
 						seats_taken.erase(p)
 						_release_bot(b)
@@ -575,8 +590,11 @@ func _judge_stance(b: Node3D, delta: float) -> void:
 	b.seat = Vector3.INF
 	b.posture = b.Posture.STAND
 	if to.length() > 0.35:
-		b.move_velocity = to.normalized() * 1.2
-		b.facing = (b.facing as Vector3).slerp(to.normalized(), minf(delta * 6.0, 1.0)).normalized()
+		if _manager and _manager.has_method("nav_walk"):
+			_manager.nav_walk(b, spot, delta)
+		else:
+			b.move_velocity = to.normalized() * 1.2
+			b.facing = (b.facing as Vector3).slerp(to.normalized(), minf(delta * 6.0, 1.0)).normalized()
 	else:
 		b.move_velocity = Vector3.ZERO
 		b.facing = Vector3(c.x - me.x, 0.0, c.z - me.z).normalized()

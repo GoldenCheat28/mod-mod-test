@@ -92,8 +92,23 @@ func _show(page: String) -> void:
 	_hover = -1
 	var p = _persona()
 	_opts = []
+	var jobs: Node = Game.main.get_node_or_null("Jobs") if Game.main else null
+	# The foreman: work, nothing else.
+	if page == "main" and bot and bot.has_meta("foreman") and jobs:
+		for o in jobs.foreman_options():
+			var cb: Callable = o[1]
+			_opts.append([o[0], func():
+				_say = cb.call()
+				_show("main")])
+		_opts.append(["Пока", func(): _bye()])
+		queue_redraw()
+		return
 	match page:
 		"main":
+			if jobs and jobs.is_recipient(bot) and inv.has("package"):
+				_opts.append(["Вот посылка", func():
+					_say = jobs.deliver(bot)
+					_show("main")])
 			_opts.append(["Поговорить", func(): _talk()])
 			_opts.append(["Спросить...", func(): _show("ask")])
 			_opts.append(["Предложить вещь (продать)", func(): _show("sell_pick")])
@@ -230,6 +245,11 @@ func _offer() -> void:
 	var p = _persona()
 	var want: int = p.wants_price(_pick)
 	var worth: int = want if want > 0 else (int(_base_price(_pick) * 0.35) if p.trust > 0.5 else 0)
+	# (the foreman's goods: anyone takes them at his price)
+	var jobs: Node = Game.main.get_node_or_null("Jobs") if Game.main else null
+	if jobs and jobs.trade_price(_pick) > 0:
+		worth = jobs.trade_price(_pick)
+		p.money = maxi(p.money, worth)
 	var limit := int(worth * lerpf(0.9, 1.15, p.trust))
 	var cash: int = p.money
 	if worth <= 0:
@@ -265,6 +285,9 @@ func _sell(price: int) -> void:
 			break
 	_mood(0.08)
 	_say = "Держи %d. Приятно иметь дело." % price
+	var jobs: Node = Game.main.get_node_or_null("Jobs") if Game.main else null
+	if jobs:
+		jobs.on_sold(_pick)
 	Game.play_3d(Sfx.get_stream(&"item_pickup"), bot.chest.global_position, -8.0)
 	player._after_losing(_pick)
 	_show("main")

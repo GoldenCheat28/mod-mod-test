@@ -52,6 +52,7 @@ const DEFS := {
 	"flaregun": {"name": "Ракетница", "size": Vector2i(2, 1), "weight": 0.6, "stack": 1, "kind": "weapon"},
 	"rifle": {"name": "Винтовка с оптикой", "short": "Винтовка", "size": Vector2i(6, 1), "weight": 2.8, "stack": 1, "kind": "weapon"},
 	"molotov": {"name": "Коктейль Молотова", "short": "Молотов", "size": Vector2i(1, 2), "weight": 0.8, "stack": 1, "kind": "throwable"},
+	"package": {"name": "Посылка", "size": Vector2i(2, 2), "weight": 1.2, "stack": 1, "kind": "misc"},
 	"money": {"name": "Деньги", "short": "₽", "size": Vector2i(1, 1), "weight": 0.00002, "stack": 100000, "kind": "money"},
 }
 

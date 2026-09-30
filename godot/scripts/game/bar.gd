@@ -11,6 +11,7 @@ const Sfx = preload("res://scripts/audio/sfx.gd")
 const STAY := Vector2(35.0, 60.0)
 
 var at_table := false            # (bot_ai: they sit by the seat they are given)
+var lod_ok := true               # (the staff may be put to sleep far off: crowd_lod.gd)
 var info := {}
 var bartender: Node3D = null
 var patrons: Array = []          # {who, stool, sat, served, glass, t, stay, sip_t, sip}

@@ -467,9 +467,16 @@ func _mesh(parent: Node3D, mesh: Mesh, mat: Material, pos := Vector3.ZERO, rot :
 	mi.layers = 2
 	# Small bits (eyes, brows, ears, nose, fingers) add nothing to the shadow
 	# but cost a draw in every shadow pass.
+	# Details (buttons, fingers, eyes, hair tufts, a tie) are not drawn at all
+	# once too far off to make out.
 	var ext := mesh.get_aabb().size * scl
-	if maxf(ext.x, maxf(ext.y, ext.z)) < 0.07:
+	var big := maxf(ext.x, maxf(ext.y, ext.z))
+	if big < 0.12:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if big < 0.1:
+		mi.visibility_range_end = 18.0
+		mi.visibility_range_end_margin = 2.0
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	parent.add_child(mi)
 	_set_rest(mi, parent)
 	return mi

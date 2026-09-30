@@ -24,6 +24,7 @@ const SMALL_STAKE := 300         # a head, at the small tables
 const MAX_BOTS := 22             # never more people than that about, for the event
 
 var at_table := false            # (bot_ai: the judge stands)
+var lod_ok := true               # (the staff may be put to sleep far off: crowd_lod.gd)
 var judge: Node3D = null
 var event_in := EVENT_EVERY      # seconds to the next event
 var _games := {}                 # table index -> roulette_game
@@ -33,6 +34,110 @@ var crew: Node = null
 var guards: Node = null
 var _crew_in := -1.0             # seconds to the cleaners coming up (after the event)
 var _drink_in := 30.0            # to someone off the street dropping in for a drink
+
+
+var _loading := false            # (made under the loading screen: straight at their places)
+var _cleaners: Array = []       # the cleaners, made at the start and kept down in the cellar
+
+
+## Everyone who works here is made now, under the loading screen: no one
+## appears out of thin air in front of the player later, and there is no
+## hitch while six people are put together at once.
+func _ready() -> void:
+	if Net.active and not Net.is_host:
+		return
+	var hall: Dictionary = Game.main.map.event_hall if Game.main and Game.main.map else {}
+	if hall.is_empty():
+		return
+	_loading = true
+	if hall.has("bar"):
+		bar = Bar.new()
+		bar.name = "Bar"
+		add_child(bar)
+		bar.setup(hall["bar"])
+		bar.ensure_bartender()
+	if hall.has("bounds"):
+		guards = Guards.new()
+		guards.name = "Guards"
+		add_child(guards)
+		guards.setup(hall)
+		guards.ensure()
+	var ti := _event_table()
+	if ti >= 0:
+		_ensure_judge(_tables()[ti])
+	_loading = false
+	if hall.has("cellar"):
+		for i in 6:
+			var b: Node3D = Game.main.spawn_bot((hall["cellar"] as Dictionary)["in"] + Vector3(0, 0.05, 0), 0.0, -1, "cleaner")
+			_park(b)
+			_cleaners.append(b)
+
+
+## Down in the cellar: out of the world (not drawn, not worked out).
+func _park(b: Node3D) -> void:
+	b.visible = false
+	b.process_mode = Node.PROCESS_MODE_DISABLED
+	Game.bots.erase(b)
+	if b.ai:
+		b.ai.roulette = null
+
+
+## A cleaner up from the cellar, standing at `at` (a new one if the ones
+## kept are gone - killed, say).
+func take_cleaner(at: Vector3) -> Node3D:
+	var b: Node3D = null
+	while not _cleaners.is_empty() and b == null:
+		var c: Node3D = _cleaners.pop_back()
+		if is_instance_valid(c) and c.alive:
+			b = c
+	if b == null:
+		return Game.main.spawn_bot(at, -PI * 0.5, -1, "cleaner")
+	var off: Vector3 = at + Vector3.UP * 0.02 - b.position_ground()
+	for part in b.parts:
+		part.global_position += off
+		part.linear_velocity = Vector3.ZERO
+		part.angular_velocity = Vector3.ZERO
+		part.reset_physics_interpolation()
+	b.process_mode = Node.PROCESS_MODE_INHERIT
+	b.visible = true
+	b.move_velocity = Vector3.ZERO
+	if not Game.bots.has(b):
+		Game.bots.append(b)
+	return b
+
+
+func park_cleaner(b: Node3D) -> void:
+	if is_instance_valid(b) and b.alive:
+		b.hand_goal["r"] = Vector3.INF
+		b.hand_goal["l"] = Vector3.INF
+		_park(b)
+		_cleaners.append(b)
+	elif is_instance_valid(b):
+		Game.bots.erase(b)
+		b.queue_free()
+
+
+## Somewhere for a new man to come from: out of the player's sight and not
+## close by (the far side of a building, round a corner), toward `near`.
+func hidden_spawn(near: Vector3) -> Vector3:
+	var p = Game.player
+	var nav: RID = get_viewport().world_3d.navigation_map
+	var cam := get_viewport().get_camera_3d()
+	var space := get_viewport().world_3d.direct_space_state
+	for i in 40:
+		var a := randf() * TAU
+		var r := randf_range(18.0, 40.0)
+		var q := NavigationServer3D.map_get_closest_point(nav, near + Vector3(cos(a) * r, 0.0, sin(a) * r))
+		if q.y > near.y + 1.0 or q.y < near.y - 1.0:
+			continue
+		if p and q.distance_to(p.global_position) < 15.0:
+			continue
+		if cam and cam.is_position_in_frustum(q + Vector3.UP * 1.0):
+			var rq := PhysicsRayQueryParameters3D.create(cam.global_position, q + Vector3.UP * 1.0, Game.LAYER_WORLD)
+			if space.intersect_ray(rq).is_empty():
+				continue                      # (he would be seen appearing)
+		return q
+	return Vector3.INF
 
 
 func _tables() -> Array:
@@ -51,18 +156,11 @@ func _physics_process(delta: float) -> void:
 	if Game.player == null or (Net.active and not Net.is_host):
 		return
 	var hall: Dictionary = Game.main.map.event_hall if Game.main and Game.main.map else {}
-	if bar == null and hall.has("bar"):
-		bar = Bar.new()
-		bar.name = "Bar"
-		add_child(bar)
-		bar.setup(hall["bar"])
-	if guards == null and hall.has("bounds"):
-		guards = Guards.new()
-		guards.name = "Guards"
-		add_child(guards)
-		guards.setup(hall)
+	if bar and (bar.bartender == null or not is_instance_valid(bar.bartender) or not bar.bartender.alive):
+		# (a new one only while the player is away: he is not seen appearing)
+		if Game.player.global_position.distance_to((hall["bar"] as Dictionary)["bartender"]) > 25.0:
+			bar.ensure_bartender()
 	if bar:
-		bar.ensure_bartender()
 		_drink_in -= delta
 		if _drink_in <= 0.0:
 			_drink_in = randf_range(40.0, 75.0)
@@ -123,6 +221,11 @@ func _ensure_judge(t: Dictionary) -> void:
 		return
 	var nav: RID = get_viewport().world_3d.navigation_map
 	var at := NavigationServer3D.map_get_closest_point(nav, spot)
+	# (the player about: he comes in from somewhere out of sight)
+	if not _loading and Game.player and Game.player.global_position.distance_to(spot) < 25.0 and is_inside_tree() and get_viewport().get_camera_3d():
+		var h := hidden_spawn(spot)
+		if h != Vector3.INF:
+			at = h
 	var c: Vector3 = t["center"]
 	judge = Game.main.spawn_bot(at, atan2(-(c.x - at.x), -(c.z - at.z)), -1, "judge")
 	if judge.ai:
@@ -130,6 +233,38 @@ func _ensure_judge(t: Dictionary) -> void:
 		if judge.ai.talk:
 			judge.ai.talk.set("_rude", false)
 		judge.ai._persona().name = "Судья"
+
+
+## Walks `b` along the navigation to `goal` (the path kept on him); true
+## once there.
+func nav_walk(b: Node3D, goal: Vector3, delta: float, speed := 1.2) -> bool:
+	var me: Vector3 = b.position_ground()
+	if Vector2(goal.x - me.x, goal.z - me.z).length() < 0.35:
+		b.move_velocity = Vector3.ZERO
+		return true
+	var path: PackedVector3Array = b.get_meta("nav_path", PackedVector3Array())
+	var pg: Vector3 = b.get_meta("nav_goal", Vector3.INF)
+	var i: int = b.get_meta("nav_i", 0)
+	if pg.distance_to(goal) > 0.3 or path.is_empty():
+		var nav: RID = b.get_world_3d().navigation_map
+		path = NavigationServer3D.map_get_path(nav, NavigationServer3D.map_get_closest_point(nav, me),
+				NavigationServer3D.map_get_closest_point(nav, goal), true)
+		if path.is_empty():
+			path = PackedVector3Array([goal])
+		i = 0
+		b.set_meta("nav_path", path)
+		b.set_meta("nav_goal", goal)
+	while i < path.size() and Vector2(path[i].x - me.x, path[i].z - me.z).length() < 0.35:
+		i += 1
+	b.set_meta("nav_i", i)
+	var to: Vector3 = (path[i] if i < path.size() else goal) - me
+	to.y = 0.0
+	if to.length() < 0.05:
+		b.move_velocity = Vector3.ZERO
+		return true
+	b.move_velocity = to.normalized() * speed
+	b.facing = (b.facing as Vector3).slerp(to.normalized(), minf(delta * 6.0, 1.0)).normalized()
+	return false
 
 
 ## Between games the judge keeps his place, turned to the table (and to the
@@ -150,8 +285,7 @@ func stance_for(b: Node3D, delta: float) -> void:
 	b.hand_goal["r"] = Vector3.INF
 	b.hand_goal["l"] = Vector3.INF
 	if to.length() > 0.35:
-		b.move_velocity = to.normalized() * 1.2
-		b.facing = (b.facing as Vector3).slerp(to.normalized(), minf(delta * 6.0, 1.0)).normalized()
+		nav_walk(b, spot, delta)
 		return
 	b.move_velocity = Vector3.ZERO
 	var p = Game.player
@@ -252,8 +386,9 @@ func refill(g: Node) -> void:
 		if b == null:
 			if _alive_bots() >= MAX_BOTS or hall.is_empty():
 				return
-			var door: Vector3 = hall["door"]
-			var at := NavigationServer3D.map_get_closest_point(nav, door + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-2.5, -0.5)))
+			var at := hidden_spawn(t["center"])
+			if at == Vector3.INF:
+				return                        # (nowhere unseen just now: tried again in a moment)
 			b = Game.main.spawn_bot(at, randf() * TAU)
 		g.add_bot(b, seat)
 

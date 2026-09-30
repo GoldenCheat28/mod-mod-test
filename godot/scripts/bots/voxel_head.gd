@@ -184,7 +184,7 @@ func _physics_process_real(delta: float) -> void:
 		_need_build = false
 		var hits := _queue
 		_queue = []
-		WorkerThreadPool.add_task(_job.bind(_dens, _mtl, _skin, hits, randi()), false, "head damage")
+		_task_id = WorkerThreadPool.add_task(_job.bind(_dens, _mtl, _skin, hits, randi()), false, "head damage")
 	_update_chunks(delta)
 	if _jelly:
 		_update_jelly(delta)
@@ -228,7 +228,20 @@ func _shape(u: Vector3) -> Vector3:
 	return p * s
 
 
+var _task_id := -1
+
+
+## Taken out of the world (the body carried off and gone): the damage being
+## worked out on another thread is let finish first - it uses this head.
+func _exit_tree() -> void:
+	if _task_id >= 0 and not WorkerThreadPool.is_task_completed(_task_id):
+		WorkerThreadPool.wait_for_task_completion(_task_id)
+	_task_id = -1
+
+
 func _surface_colour(u: Vector3) -> Color:
+	if not is_instance_valid(bot):
+		return Color.BLACK
 	var skin: Color = bot.skin_color
 	var hair: Color = bot._hair.albedo_color
 	var c := skin
@@ -248,6 +261,8 @@ func _build_volume() -> Array:
 	dens.resize(count)
 	mtl.resize(count)
 	skin.resize(count)
+	if not is_instance_valid(bot):
+		return [dens, mtl, skin]           # (the body was taken away meanwhile)
 	var s: float = bot.scale_factor
 	var i := 0
 	for z in _n.z:
@@ -282,6 +297,8 @@ func _job(dens: PackedFloat32Array, mtl: PackedByteArray, skin: PackedColorArray
 	var noise := FastNoiseLite.new()
 	noise.seed = seed_value
 	noise.frequency = 60.0
+	if not is_instance_valid(bot):
+		return                             # (the body was taken away meanwhile)
 	var first := dens.is_empty()
 	if first:
 		var vol := _build_volume()

@@ -119,6 +119,12 @@ func _ready() -> void:
 	var tg: Node = preload("res://scripts/game/table_games.gd").new()
 	tg.name = "TableGames"
 	add_child(tg)
+	var jobs: Node = preload("res://scripts/game/jobs.gd").new()
+	jobs.name = "Jobs"
+	add_child(jobs)
+	var lod: Node = preload("res://scripts/core/crowd_lod.gd").new()
+	lod.name = "CrowdLOD"
+	add_child(lod)
 	var pm: CanvasLayer = preload("res://scripts/ui/pause_menu.gd").new()
 	pm.name = "PauseMenu"
 	add_child(pm)

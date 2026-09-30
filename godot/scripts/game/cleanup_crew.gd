@@ -66,7 +66,9 @@ func _physics_process(delta: float) -> void:
 func _spawn(role: String) -> void:
 	var cellar: Dictionary = hall["cellar"]
 	var at: Vector3 = cellar["out"]
-	var b: Node3D = Game.main.spawn_bot(at + Vector3(randf_range(-0.2, 0.2), 0.02, randf_range(-0.3, 0.3)), -PI * 0.5, -1, "cleaner")
+	var mgr := get_parent()
+	var spot := at + Vector3(randf_range(-0.2, 0.2), 0.0, randf_range(-0.3, 0.3))
+	var b: Node3D = mgr.take_cleaner(spot) if mgr.has_method("take_cleaner") else Game.main.spawn_bot(spot, -PI * 0.5, -1, "cleaner")
 	if b.ai == null:
 		return
 	b.ai.roulette = self
@@ -138,9 +140,13 @@ func stance_for(b: Node3D, delta: float) -> void:
 			# Down the stairs and out of the world.
 			if is_instance_valid(w.get("prop")):
 				(w["prop"] as Node3D).queue_free()
-			Game.bots.erase(b)
 			workers.erase(w)
-			b.queue_free()
+			var mgr := get_parent()
+			if mgr.has_method("park_cleaner"):
+				mgr.park_cleaner(b)
+			else:
+				Game.bots.erase(b)
+				b.queue_free()
 		return
 	match w["role"]:
 		"drag":

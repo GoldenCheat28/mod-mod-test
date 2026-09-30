@@ -102,6 +102,9 @@ func _process(delta: float) -> void:
 			sat += int(p["sat"])
 		print("t=%.1f state=%s sat=%d/%d alive=%d" % [t, _g.state, sat, _g.seats_taken.size(), _g._alive_in().size()])
 	if _g.state == "gather" and int(t * 0.2) != int((t - delta) * 0.2):
+		var jd = _g.judge
+		print("  seats=%d judge_ready=%s judge=%s spot=%s t_game=%.1f" % [_g.seats_taken.size(), _g._judge_ready(),
+				jd.position_ground() if jd and is_instance_valid(jd) else "none", _g.table["judge"], _g._t])
 		for p in _g.seats_taken:
 			if not p["player"]:
 				var b: Node3D = p["who"]
@@ -127,7 +130,7 @@ func _process(delta: float) -> void:
 			if is_instance_valid(s):
 				money += 1
 		print("t=%.1f OVER winner=%s stacks_left=%d" % [t, _g._winner.get("name", "-"), money])
-	if t > (750.0 if OS.get_environment("CREW") == "1" else 400.0):
+	if t > (750.0 if OS.get_environment("CREW") == "1" else (100.0 if OS.get_environment("DBG_GATHER") == "1" else 400.0)):
 		print("timeout")
 		get_tree().quit()
 

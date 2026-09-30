@@ -6,6 +6,7 @@ extends Node
 ## to his place. To them (bot_ai.roulette) this is what they do.
 
 var at_table := false
+var lod_ok := true               # (the staff may be put to sleep far off: crowd_lod.gd)
 var hall := {}
 var guards: Array = []           # {who, post, corpse, stage, t, path, pi, goal}
 var _queue: Array = []           # the dead waiting to be moved
@@ -41,6 +42,12 @@ func ensure() -> void:
 			i = 1 - i
 		var nav: RID = Game.main.get_world_3d().navigation_map
 		var at := NavigationServer3D.map_get_closest_point(nav, posts[i])
+		var mgr := get_parent()
+		if Game.player and Game.player.global_position.distance_to(at) < 25.0 and mgr.has_method("hidden_spawn") and not mgr.get("_loading") \
+				and get_viewport().get_camera_3d():
+			var h: Vector3 = mgr.hidden_spawn(at)
+			if h != Vector3.INF:
+				at = h
 		var b: Node3D = Game.main.spawn_bot(at + Vector3.UP * 0.02, 0.0, -1, "guard")
 		if b.ai == null:
 			return

@@ -140,6 +140,8 @@ func _model(id: String) -> Node3D:
 			var m = load("res://scripts/player/mop.gd").new()
 			m.rotation = Vector3(PI * 0.5, 0, 0)
 			return m
+		"package":
+			return load("res://scripts/game/jobs.gd").package_model()
 		"pipe", "powder", "clock", "wires", "tape", "boards", "screws", "scrap", "water":
 			return _part_model(id)
 		"syringe", "empty_syringe", "pills", "cloth", "alcohol", "ampoule", "chalk", "sugar", "dye", "herb",				"rolling_paper", "nails", "tin_can", "fuse_cord", "money":

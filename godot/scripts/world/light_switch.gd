@@ -115,9 +115,11 @@ func _make_bulb(parent: Node3D, top: Vector3, flickers: bool) -> void:
 	light.omni_range = 6.0
 	light.omni_attenuation = 1.3
 	# Shadows: only the nearest couple of bulbs cast them (see _shadow_pick),
-	# as a cube (the two-pass paraboloid one bends and tears shadows close up).
+	# in two passes (the paraboloid) rather than six. People (visual layer 2:
+	# dozens of pieces each) cast none from a bulb - the rooms do.
 	light.shadow_enabled = false
-	light.omni_shadow_mode = OmniLight3D.SHADOW_CUBE
+	light.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	light.shadow_caster_mask = 0xFFFFFFFF & ~2
 	light.distance_fade_enabled = true
 	light.distance_fade_begin = 24.0
 	light.distance_fade_length = 6.0
