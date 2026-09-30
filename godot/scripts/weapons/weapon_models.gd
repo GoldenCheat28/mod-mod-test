@@ -64,12 +64,20 @@ static func _mat(key: String) -> StandardMaterial3D:
 			m.albedo_color = Color(0.03, 0.03, 0.03)
 			m.roughness = 0.95
 		"bakelite":
-			m.albedo_color = Color(0.36, 0.12, 0.05)
-			m.roughness = 0.45
+			# The plum-brown moulded magazine and grip, with a fine grain.
+			m.albedo_color = Color(0.3, 0.1, 0.05)
+			m.roughness = 0.5
+			m.normal_enabled = true
+			m.normal_texture = Tex.noise("stipple", 0.25, 2, 128, true, 3.0)
+			m.normal_scale = 0.15
+			m.uv1_triplanar = true
+			m.uv1_scale = Vector3.ONE * 20.0
 		"akm_wood":
 			var g2 := Gradient.new()
-			g2.set_color(0, Color(0.26, 0.1, 0.04))
-			g2.set_color(1, Color(0.45, 0.2, 0.08))
+			# Laminated birch stained red-brown and varnished: dark layers
+			# and lighter ones, the grain long along the gun.
+			g2.set_color(0, Color(0.16, 0.055, 0.025))
+			g2.set_color(1, Color(0.36, 0.14, 0.06))
 			var n2 := FastNoiseLite.new()
 			n2.frequency = 0.02
 			var t2 := NoiseTexture2D.new()
@@ -79,7 +87,10 @@ static func _mat(key: String) -> StandardMaterial3D:
 			m.albedo_texture = t2
 			m.uv1_triplanar = true
 			m.uv1_scale = Vector3(2.0, 2.0, 40.0)
-			m.roughness = 0.4
+			m.roughness = 0.35
+			m.normal_enabled = true
+			m.normal_texture = Tex.noise("woodgrain", 0.05, 3, 256, true, 1.2)
+			m.normal_scale = 0.35
 		"sight":
 			m.albedo_color = Color(0.9, 0.9, 0.85)
 			m.emission_enabled = true
@@ -274,60 +285,121 @@ static func shotgun() -> Node3D:
 ## AKM: stamped receiver, wooden stock and handguards, curved magazine, the
 ## charging handle on the right (moves as "Slide"), front post in its ears and
 ## the notched rear sight on the trunnion.
+## An AKM: the stamped receiver with its rounded dust cover, the laminated
+## stock dropping from the line of the bore, the pistol grip, the lower and
+## upper handguards round the barrel and gas tube, the gas block, front
+## sight and the slant muzzle brake; the curved magazine. Every part is a
+## smooth lofted solid and each one runs a few mm into the next, so there is
+## no light between them.
 static func akm() -> Node3D:
 	var root := Node3D.new()
 	root.name = "AKM"
-	# Receiver and dust cover.
-	_box(root, Vector3(0.036, 0.05, 0.3), Vector3(0, 0.018, -0.08), "steel")
-	# The dust cover, rounded over the top, with the rear bump of its catch.
-	_ext(root, [Vector2(-0.19, 0.042), Vector2(0.07, 0.042), Vector2(0.078, 0.047), Vector2(0.071, 0.056),
-			Vector2(-0.186, 0.057), Vector2(-0.19, 0.052)], 0.017, "steel")
-	_box(root, Vector3(0.037, 0.006, 0.06), Vector3(0, 0.013, -0.07), "bore")                   # ejection port / selector slot
-	_box(root, Vector3(0.004, 0.02, 0.07), Vector3(0.0195, 0.02, -0.02), "steel_worn")           # selector lever
-	# Grip, trigger guard, trigger.
-	_ext(root, [Vector2(0.018, -0.007), Vector2(0.05, -0.007), Vector2(0.075, -0.09), Vector2(0.078, -0.11),
-			Vector2(0.058, -0.115), Vector2(0.04, -0.1), Vector2(0.022, -0.03)], 0.0145, "bakelite")
-	_box(root, Vector3(0.012, 0.005, 0.06), Vector3(0, -0.032, -0.02), "steel")
-	_box(root, Vector3(0.006, 0.022, 0.006), Vector3(0, -0.018, -0.01), "steel", Vector3(0.25, 0, 0), "Trigger")
-	# Stock with butt plate.
-	# The stock drops from the line of the bore to the butt, narrow at the
-	# wrist behind the grip; the steel butt plate on its end.
-	_ext(root, [Vector2(0.07, 0.036), Vector2(0.36, 0.004), Vector2(0.365, -0.11), Vector2(0.34, -0.118),
-			Vector2(0.15, -0.06), Vector2(0.1, -0.04), Vector2(0.07, -0.012)], 0.0165, "akm_wood")
-	_ext(root, [Vector2(0.36, 0.006), Vector2(0.372, 0.006), Vector2(0.377, -0.112), Vector2(0.365, -0.12)], 0.018, "steel_worn")
-	# Handguards, gas tube, barrel, muzzle brake.
-	# Lower handguard with its finger swells, the upper over the gas tube.
-	_ext(root, [Vector2(-0.23, -0.017), Vector2(-0.3, -0.022), Vector2(-0.36, -0.018), Vector2(-0.43, -0.012),
-			Vector2(-0.435, 0.02), Vector2(-0.23, 0.022)], 0.023, "akm_wood")
-	_ext(root, [Vector2(-0.24, 0.031), Vector2(-0.4, 0.033), Vector2(-0.405, 0.05), Vector2(-0.25, 0.055)], 0.018, "akm_wood")
-	_cyl(root, 0.009, 0.24, Vector3(0, 0.022, -0.52), "steel", 14)
-	_cyl(root, 0.0062, 0.242, Vector3(0, 0.022, -0.52), "bore", 10)
-	_cyl(root, 0.013, 0.045, Vector3(0, 0.022, -0.655), "steel_worn", 14)
-	_box(root, Vector3(0.012, 0.016, 0.03), Vector3(0, 0.035, -0.435), "steel")               # gas block
-	# Front sight: post between two ears.
-	_ext(root, [Vector2(-0.59, 0.03), Vector2(-0.612, 0.03), Vector2(-0.612, 0.058), Vector2(-0.606, 0.064),
-			Vector2(-0.594, 0.064), Vector2(-0.59, 0.045)], 0.007, "steel")
-	_box(root, Vector3(0.003, 0.014, 0.003), Vector3(0, 0.063, -0.6), "steel")
+	var AM = load("res://scripts/weapons/arms_models.gd")
+	var steel: Material = AM.mat("blued")
+	var worn: Material = AM.mat("steel_bright")
+	var wood := _mat("akm_wood")
+	var bake := _mat("bakelite")
+	var bore := _mat("bore")
+	var R := Shape.rrect
+	# Receiver: flat stamped sides, the dust cover rounded over the top; the
+	# front trunnion narrows it where the barrel goes in.
+	var rec: PackedVector2Array = R.call(0.026, 0.06, 0.002, 4, 0.0, 0.017, 0.012)
+	_lz(root, [[0.074, rec], [-0.2, rec], [-0.228, R.call(0.023, 0.046, 0.003, 4, 0.0, 0.021, 0.009)]], steel)
+	# The dust cover's seam, the ejection port, rivets, the selector lever.
+	_box(root, Vector3(0.0268, 0.0012, 0.268), Vector3(0, 0.031, -0.063), "bore")
+	_box(root, Vector3(0.0272, 0.013, 0.062), Vector3(0, 0.035, -0.07), "bore")
+	for z in [-0.17, -0.12, 0.02, 0.055]:
+		_box(root, Vector3(0.0272, 0.004, 0.004), Vector3(0, -0.004, z), "steel_worn")      # rivet heads, both sides
+	AM.ext(root, [Vector2(-0.125, 0.012), Vector2(-0.01, 0.014), Vector2(0.004, 0.006), Vector2(0.0, -0.004),
+			Vector2(-0.012, 0.004), Vector2(-0.125, 0.004)], 0.0011, "blued", 0.0142)
+	# Trigger guard (one loop from behind the magazine to the grip) and trigger.
+	var guard_ring: PackedVector2Array = R.call(0.011, 0.004, 0.0015, 3)
+	var guard := Shape.sweep([Vector3(0, -0.01, -0.082), Vector3(0, -0.028, -0.074), Vector3(0, -0.04, -0.052),
+			Vector3(0, -0.041, -0.02), Vector3(0, -0.035, 0.006), Vector3(0, -0.012, 0.018)], guard_ring, steel)
+	root.add_child(guard)
+	AM.ext(root, [Vector2(-0.018, -0.012), Vector2(-0.024, -0.02), Vector2(-0.028, -0.033), Vector2(-0.024, -0.035),
+			Vector2(-0.018, -0.026), Vector2(-0.012, -0.013)], 0.003, "steel_bright", 0.0, "Trigger")
+	# Pistol grip: rakes back, fuller at the palm swell.
+	var grip := Shape.sweep([Vector3(0, -0.006, 0.02), Vector3(0, -0.035, 0.03), Vector3(0, -0.07, 0.044),
+			Vector3(0, -0.1, 0.056), Vector3(0, -0.108, 0.059)],
+			[R.call(0.026, 0.032, 0.008, 4), R.call(0.028, 0.035, 0.01, 4), R.call(0.029, 0.036, 0.011, 4),
+			R.call(0.028, 0.036, 0.01, 4), R.call(0.024, 0.03, 0.009, 4)], bake)
+	root.add_child(grip)
+	# Stock: from inside the back of the receiver, narrow at the wrist,
+	# dropping and deepening to the butt; the steel butt plate on the end.
+	_lz(root, [[0.062, R.call(0.025, 0.044, 0.008, 4, 0.0, 0.017)], [0.09, R.call(0.027, 0.048, 0.009, 4, 0.0, 0.012)],
+			[0.14, R.call(0.03, 0.058, 0.01, 4, 0.0, 0.0)], [0.22, R.call(0.033, 0.085, 0.011, 4, 0.0, -0.018)],
+			[0.3, R.call(0.035, 0.11, 0.012, 4, 0.0, -0.032)], [0.358, R.call(0.036, 0.124, 0.012, 4, 0.0, -0.04)]], wood)
+	_lz(root, [[0.356, R.call(0.037, 0.126, 0.012, 4, 0.0, -0.04)], [0.366, R.call(0.036, 0.124, 0.011, 4, 0.0, -0.04)]], steel)
+	# Lower handguard: round under the barrel, with the two finger swells.
+	var lower := []
+	for sec in [[-0.212, 0.036, 0.042, 0.009], [-0.26, 0.042, 0.05, 0.006], [-0.3, 0.039, 0.046, 0.007],
+			[-0.35, 0.042, 0.05, 0.006], [-0.4, 0.039, 0.046, 0.008], [-0.438, 0.035, 0.04, 0.011]]:
+		lower.append([sec[0], R.call(sec[1], sec[2], 0.014, 5, 0.0, sec[3])])
+	_lz(root, lower, wood)
+	# Its steel retainer band at the back and ferrule at the front.
+	_lz(root, [[-0.207, R.call(0.038, 0.046, 0.013, 5, 0.0, 0.01)], [-0.219, R.call(0.038, 0.046, 0.013, 5, 0.0, 0.01)]], steel)
+	_lz(root, [[-0.434, R.call(0.037, 0.043, 0.013, 5, 0.0, 0.011)], [-0.448, R.call(0.034, 0.04, 0.012, 5, 0.0, 0.012)]], steel)
+	# Upper handguard over the gas tube (sits down on the lower one).
+	var up_ring: PackedVector2Array = R.call(0.029, 0.023, 0.003, 4, 0.0, 0.0395, 0.011)
+	_lz(root, [[-0.236, R.call(0.026, 0.02, 0.003, 4, 0.0, 0.038, 0.01)], [-0.25, up_ring], [-0.41, up_ring],
+			[-0.426, R.call(0.026, 0.02, 0.003, 4, 0.0, 0.038, 0.01)]], wood)
+	_cyl(root, 0.0078, 0.03, Vector3(0, 0.041, -0.437), "steel")                              # gas tube's front
+	# Gas block, joining the tube to the barrel.
+	_lz(root, [[-0.444, R.call(0.022, 0.038, 0.007, 4, 0.0, 0.031)], [-0.474, R.call(0.022, 0.038, 0.007, 4, 0.0, 0.031)]], steel)
+	# Barrel, the cleaning rod under it, the front sight base and ears.
+	_cyl(root, 0.0095, 0.45, Vector3(0, 0.022, -0.43), "steel")
+	var rod: MeshInstance3D = AM.cyl(root, 0.0028, 0.2, Vector3(0, 0.006, -0.545), "steel_bright")
+	rod.name = "CleaningRod"
+	_lz(root, [[-0.574, R.call(0.022, 0.03, 0.007, 4, 0.0, 0.026)], [-0.612, R.call(0.022, 0.03, 0.007, 4, 0.0, 0.026)]], steel)
+	AM.ext(root, [Vector2(-0.588, 0.035), Vector2(-0.61, 0.035), Vector2(-0.61, 0.06), Vector2(-0.604, 0.066),
+			Vector2(-0.594, 0.066), Vector2(-0.588, 0.05)], 0.0065, "blued")
 	for sx in [-1.0, 1.0]:
-		_box(root, Vector3(0.003, 0.018, 0.012), Vector3(sx * 0.0075, 0.062, -0.6), "steel")
-	# Rear sight block with the notch.
-	_box(root, Vector3(0.024, 0.012, 0.03), Vector3(0, 0.054, -0.215), "steel")
+		_box(root, Vector3(0.003, 0.02, 0.014), Vector3(sx * 0.0075, 0.063, -0.6), "steel")
+	_box(root, Vector3(0.003, 0.016, 0.003), Vector3(0, 0.063, -0.6), "steel")
+	# Slant muzzle brake: longer underneath than on top.
+	_cyl(root, 0.0118, 0.05, Vector3(0, 0.022, -0.636), "steel")
+	_box(root, Vector3(0.024, 0.008, 0.012), Vector3(0, 0.012, -0.659), "steel", Vector3(-0.35, 0, 0))
+	_cyl(root, 0.0056, 0.052, Vector3(0, 0.022, -0.637), "bore", 12)
+	# Rear sight: its block on the trunnion, the leaf and the notch.
+	_lz(root, [[-0.198, R.call(0.024, 0.018, 0.004, 3, 0.0, 0.05)], [-0.236, R.call(0.022, 0.014, 0.004, 3, 0.0, 0.048)]], steel)
+	_box(root, Vector3(0.018, 0.003, 0.05), Vector3(0, 0.059, -0.19), "steel", Vector3(0.05, 0, 0))
 	for sx in [-1.0, 1.0]:
-		_box(root, Vector3(0.008, 0.009, 0.006), Vector3(sx * 0.0065, 0.064, -0.205), "steel")
-	# Magazine: curves forward, travels along its seat.
+		_box(root, Vector3(0.006, 0.006, 0.005), Vector3(sx * 0.005, 0.063, -0.168), "steel")
+	# Magazine: the curved box, a lip at the top with a round showing, the
+	# floor plate - rides along its seat when changed.
 	var mag := _node(root, "Mag", Vector3(0, -0.012, -0.13))
 	mag.rotation = Vector3(0.12, 0, 0)
-	# The curved "banana" magazine, one piece.
-	_ext(mag, [Vector2(0.028, 0.005), Vector2(0.026, -0.06), Vector2(0.012, -0.12), Vector2(-0.012, -0.176),
-			Vector2(-0.08, -0.16), Vector2(-0.052, -0.11), Vector2(-0.034, -0.055), Vector2(-0.028, 0.005)], 0.0125, "bakelite")
-	_box(mag, Vector3(0.008, 0.004, 0.02), Vector3(0, 0.006, 0.0), "brass")
-	# Charging handle.
+	var mag_path := [Vector3(0, 0.006, 0.0), Vector3(0, -0.03, -0.004), Vector3(0, -0.07, -0.013), Vector3(0, -0.11, -0.026),
+			Vector3(0, -0.15, -0.042), Vector3(0, -0.17, -0.051), Vector3(0, -0.178, -0.054)]
+	var mag_rings := []
+	for i in mag_path.size():
+		var k := float(i) / (mag_path.size() - 1)
+		var w := 0.025 + (0.004 if i == mag_path.size() - 1 else 0.0)
+		mag_rings.append(R.call(w, lerpf(0.056, 0.07, k) + (0.006 if i == mag_path.size() - 1 else 0.0), 0.004, 3))
+	mag.add_child(Shape.sweep(mag_path, mag_rings, bake))
+	_box(mag, Vector3(0.009, 0.005, 0.022), Vector3(0, 0.008, 0.0), "brass")
+	# Charging handle on the bolt carrier.
 	var slide := _node(root, "Slide")
-	_box(slide, Vector3(0.008, 0.01, 0.1), Vector3(0.019, 0.03, -0.06), "steel_worn")
-	_cyl(slide, 0.006, 0.02, Vector3(0.028, 0.03, -0.1), "steel_worn", 10)
-	_node(root, "Muzzle", Vector3(0, 0.022, -0.68))
-	_node(root, "Eject", Vector3(0.022, 0.03, -0.07))
+	_box(slide, Vector3(0.008, 0.01, 0.1), Vector3(0.017, 0.03, -0.06), "steel_worn")
+	var knob: MeshInstance3D = AM.cyl(slide, 0.0062, 0.02, Vector3(0.026, 0.03, -0.1), "steel_bright", -1.0, 12)
+	knob.rotation = Vector3(0, 0, PI * 0.5)
+	_node(root, "Muzzle", Vector3(0, 0.022, -0.664))
+	_node(root, "Eject", Vector3(0.022, 0.035, -0.07))
+	for c in root.get_children():
+		if c is GeometryInstance3D:
+			(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return root
+
+
+## A loft straight along the gun: `secs` is [[z, ring], ...].
+static func _lz(parent: Node3D, secs: Array, mat: Material) -> MeshInstance3D:
+	var sections := []
+	for sec in secs:
+		sections.append([Transform3D(Basis.IDENTITY, Vector3(0, 0, sec[0])), sec[1]])
+	var mi := Shape.loft(sections, mat)
+	parent.add_child(mi)
+	return mi
 
 
 static func _colmat(key: String, c: Color, rough: float, metal := 0.0) -> StandardMaterial3D:

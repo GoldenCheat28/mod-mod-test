@@ -438,56 +438,114 @@ static func _cock_vane() -> StandardMaterial3D:
 
 # --- Light rifle -------------------------------------------------------------------------------
 
-## A light single-shot rifle: a slim walnut sporter stock, a round receiver
-## with the bolt and its knob, a thin barrel, and a scope on two rings -
-## the scope a real one (weapon.gd draws what it sees into its eyepiece).
+## A bolt-action sniper rifle: a walnut stock with a raised cheek comb and
+## a full pistol grip, the round receiver with a rail on top, a heavy barrel
+## tapering to a muzzle brake, a detachable box magazine, the bolt with its
+## bent handle and knob, and a scope turned in one piece (ocular, tube,
+## turrets, objective bell) on two rings - the scope a real one (weapon.gd
+## draws what it sees into its eyepiece). Smooth lofted parts, each running
+## into the next.
 static func rifle() -> Node3D:
 	var root := Node3D.new()
 	root.name = "Rifle"
-	# Stock: butt with a pad, the wrist, the forend running under the barrel.
-	ext(root, [Vector2(0.36, 0.02), Vector2(0.36, -0.1), Vector2(0.3, -0.085), Vector2(0.14, -0.035), Vector2(0.08, -0.055),
-			Vector2(0.055, -0.07), Vector2(0.035, -0.06), Vector2(0.045, -0.03), Vector2(0.03, -0.012), Vector2(-0.3, -0.008),
-			Vector2(-0.32, 0.004), Vector2(-0.3, 0.012), Vector2(0.05, 0.012), Vector2(0.14, 0.015), Vector2(0.3, 0.03)], 0.019, "walnut")
-	ext(root, [Vector2(0.36, 0.024), Vector2(0.375, 0.024), Vector2(0.375, -0.104), Vector2(0.36, -0.104)], 0.02, "rubber")   # butt pad
-	# Receiver and barrel.
-	cyl(root, 0.0145, 0.16, Vector3(0, 0.02, -0.05), "blued", -1.0, 20)
-	cyl(root, 0.0095, 0.5, Vector3(0, 0.02, -0.38), "blued", 0.011, 18)
-	cyl(root, 0.0048, 0.502, Vector3(0, 0.02, -0.38), "bore", -1.0, 10)
-	# Trigger and guard.
-	ext(root, [Vector2(0.06, -0.01), Vector2(0.062, -0.03), Vector2(0.05, -0.04), Vector2(0.01, -0.04), Vector2(0.002, -0.028),
-			Vector2(0.004, -0.01), Vector2(0.01, -0.01), Vector2(0.01, -0.03), Vector2(0.046, -0.033), Vector2(0.054, -0.01)], 0.005, "blued")
-	ext(root, [Vector2(0.03, -0.01), Vector2(0.034, -0.03), Vector2(0.038, -0.03), Vector2(0.036, -0.01)], 0.003, "steel_bright", 0.0, "Trigger")
-	# The bolt: its handle out to the right with a round knob; it lifts and
-	# draws back to load (weapon.gd).
+	var R := Shape.rrect
+	# Stock: butt, comb, wrist, the action's bed and the long forend.
+	var stock := []
+	for sec in [[0.372, 0.042, 0.135, -0.034], [0.3, 0.04, 0.125, -0.03], [0.22, 0.037, 0.1, -0.02],
+			[0.15, 0.034, 0.072, -0.012], [0.1, 0.032, 0.05, -0.01], [0.06, 0.036, 0.046, -0.006],
+			[-0.18, 0.04, 0.046, -0.006], [-0.26, 0.042, 0.04, -0.004], [-0.4, 0.038, 0.032, -0.001], [-0.422, 0.03, 0.026, 0.0]]:
+		stock.append([Transform3D(Basis.IDENTITY, Vector3(0, 0, sec[0])), R.call(sec[1], sec[2], 0.013, 5, 0.0, sec[3])])
+	var st := Shape.loft(stock, mat("walnut"))
+	root.add_child(st)
+	# Pistol grip, raked back under the wrist.
+	root.add_child(Shape.sweep([Vector3(0, -0.018, 0.068), Vector3(0, -0.045, 0.078), Vector3(0, -0.075, 0.09), Vector3(0, -0.098, 0.1)],
+			[R.call(0.03, 0.036, 0.01, 4), R.call(0.031, 0.038, 0.011, 4), R.call(0.031, 0.038, 0.011, 4), R.call(0.028, 0.034, 0.01, 4)],
+			mat("walnut")))
+	# Rubber recoil pad on the butt.
+	root.add_child(Shape.loft([[Transform3D(Basis.IDENTITY, Vector3(0, 0, 0.37)), R.call(0.043, 0.137, 0.014, 5, 0.0, -0.034)],
+			[Transform3D(Basis.IDENTITY, Vector3(0, 0, 0.388)), R.call(0.041, 0.133, 0.014, 5, 0.0, -0.034)]], mat("rubber")))
+	# Receiver with its rail, the bolt shroud at the back, the ejection port.
+	cyl(root, 0.0145, 0.235, Vector3(0, 0.02, -0.055), "blued", -1.0, 24)
+	cyl(root, 0.009, 0.03, Vector3(0, 0.02, 0.075), "blued", 0.0125, 20)
+	box(root, Vector3(0.021, 0.006, 0.2), Vector3(0, 0.0355, -0.055), "blued")
+	for i in 9:
+		box(root, Vector3(0.022, 0.0025, 0.004), Vector3(0, 0.0385, -0.145 + i * 0.022), "blued")
+	box(root, Vector3(0.004, 0.012, 0.05), Vector3(0.0132, 0.024, -0.03), "bore")
+	# Heavy barrel, tapering; the muzzle brake with its side ports.
+	cyl(root, 0.0125, 0.47, Vector3(0, 0.02, -0.405), "blued", 0.0095, 24)
+	cyl(root, 0.0135, 0.05, Vector3(0, 0.02, -0.665), "blued", -1.0, 20)
+	for i in 3:
+		box(root, Vector3(0.0275, 0.006, 0.007), Vector3(0, 0.02, -0.648 - i * 0.012), "bore")
+	cyl(root, 0.0048, 0.052, Vector3(0, 0.02, -0.665), "bore", -1.0, 10)
+	# Detachable box magazine in front of the guard.
+	root.add_child(Shape.loft([[Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.028)), R.call(0.026, 0.05, 0.004, 3, 0.0, -0.03)],
+			[Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.105)), R.call(0.026, 0.05, 0.004, 3, 0.0, -0.03)]], mat("polymer_black")))
+	# Trigger guard and trigger.
+	root.add_child(Shape.sweep([Vector3(0, -0.01, -0.016), Vector3(0, -0.03, -0.01), Vector3(0, -0.042, 0.01),
+			Vector3(0, -0.042, 0.038), Vector3(0, -0.03, 0.055), Vector3(0, -0.016, 0.062)], R.call(0.011, 0.004, 0.0015, 3), mat("blued")))
+	ext(root, [Vector2(0.026, -0.01), Vector2(0.03, -0.022), Vector2(0.036, -0.032), Vector2(0.04, -0.03),
+			Vector2(0.035, -0.02), Vector2(0.032, -0.01)], 0.003, "steel_bright", 0.0, "Trigger")
+	# The bolt: lifts and draws back to load (weapon.gd); its handle bent down
+	# to the right with a round knob.
 	var bolt := node(root, "BoltHandle", Vector3(0, 0.02, 0.01))
-	cyl(bolt, 0.0085, 0.07, Vector3(0, 0, 0.005), "steel_bright", -1.0, 14)
-	var arm := box(bolt, Vector3(0.05, 0.007, 0.008), Vector3(0.027, -0.004, 0.02), "steel_bright", Vector3(0, 0, -0.25))
-	arm.name = "Arm"
+	cyl(bolt, 0.0088, 0.075, Vector3(0, 0, 0.005), "steel_bright", -1.0, 16)
+	# (square to its own line, which runs out to the right and down)
+	var across := Basis(Vector3.UP, PI * 0.5).rotated(Vector3.FORWARD, 0.35)
+	var arm_mesh := MeshInstance3D.new()
+	arm_mesh.name = "Arm"
+	arm_mesh.mesh = Shape.loft_mesh([[Transform3D(across, Vector3(0.002, 0.0, 0.022)), R.call(0.007, 0.007, 0.0034, 3)],
+			[Transform3D(across, Vector3(0.042, -0.015, 0.024)), R.call(0.006, 0.006, 0.003, 3)]])
+	arm_mesh.material_override = mat("steel_bright")
+	bolt.add_child(arm_mesh)
 	var knob := MeshInstance3D.new()
 	var km := SphereMesh.new()
-	km.radius = 0.009
-	km.height = 0.018
+	km.radius = 0.0095
+	km.height = 0.019
 	knob.mesh = km
 	knob.material_override = mat("blued")
-	knob.position = Vector3(0.052, -0.012, 0.02)
+	knob.position = Vector3(0.048, -0.019, 0.025)
 	bolt.add_child(knob)
-	# The scope: tube, the objective and ocular bells, turrets, two rings.
+	# The scope, turned in one piece from the eyepiece forward.
 	var sc := node(root, "Scope", Vector3(0, 0.058, 0))
-	cyl(sc, 0.0125, 0.2, Vector3(0, 0, -0.06), "blued", -1.0, 24)
-	cyl(sc, 0.021, 0.05, Vector3(0, 0, -0.185), "blued", 0.0125, 24)       # objective bell
-	cyl(sc, 0.021, 0.02, Vector3(0, 0, -0.22), "blued", -1.0, 24)
-	cyl(sc, 0.0125, 0.03, Vector3(0, 0, 0.05), "blued", 0.017, 24)          # ocular
-	cyl(sc, 0.018, 0.035, Vector3(0, 0, 0.08), "blued", -1.0, 24)
-	var tur := cyl(sc, 0.009, 0.018, Vector3(0, 0.017, -0.06), "blued", -1.0, 16)
+	var tube := MeshInstance3D.new()
+	tube.mesh = lathe([Vector2(0.0165, 0.006), Vector2(0.0195, 0.0), Vector2(0.0195, 0.045), Vector2(0.0175, 0.056),
+			Vector2(0.0127, 0.076), Vector2(0.0127, 0.212), Vector2(0.016, 0.232), Vector2(0.0235, 0.284),
+			Vector2(0.0235, 0.326), Vector2(0.0215, 0.33)], 32, false)
+	tube.material_override = mat("blued")
+	tube.rotation = Vector3(-PI * 0.5, 0, 0)
+	tube.position = Vector3(0, 0, 0.098)
+	tube.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sc.add_child(tube)
+	cyl(sc, 0.0212, 0.002, Vector3(0, 0, -0.231), "bore", -1.0, 28)               # the objective's glass
+	# Turrets: elevation on top, windage at the side, each with its cap.
+	var tur := cyl(sc, 0.0095, 0.02, Vector3(0, 0.018, -0.06), "blued", -1.0, 18)
 	tur.rotation = Vector3.ZERO
-	var tur2 := cyl(sc, 0.009, 0.018, Vector3(0.017, 0, -0.06), "blued", -1.0, 16)
+	var tur2 := cyl(sc, 0.0095, 0.02, Vector3(0.018, 0, -0.06), "blued", -1.0, 18)
 	tur2.rotation = Vector3(0, 0, PI * 0.5)
-	for z in [-0.12, 0.0]:
-		ext(root, [Vector2(z - 0.008, 0.034), Vector2(z + 0.008, 0.034), Vector2(z + 0.008, 0.06), Vector2(z - 0.008, 0.06)], 0.014, "blued")
+	var cap := cyl(sc, 0.0105, 0.006, Vector3(0, 0.03, -0.06), "steel_bright", -1.0, 18)
+	cap.rotation = Vector3.ZERO
+	# Two rings round the tube, clamped to the rail.
+	for z in [-0.125, 0.012]:
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.0125
+		tm.outer_radius = 0.0172
+		tm.rings = 24
+		tm.ring_segments = 8
+		ring.mesh = tm
+		ring.material_override = mat("blued")
+		ring.rotation = Vector3(PI * 0.5, 0, 0)
+		ring.scale = Vector3(1.0, 2.2, 1.0)
+		ring.position = Vector3(0, 0, z)
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		sc.add_child(ring)
+		box(root, Vector3(0.022, 0.012, 0.016), Vector3(0, 0.043, z), "blued")
 	node(sc, "ScopeFront", Vector3(0, 0, -0.232))
 	node(sc, "ScopeEye", Vector3(0, 0, 0.098))
-	node(root, "Muzzle", Vector3(0, 0.02, -0.632))
+	node(root, "Muzzle", Vector3(0, 0.02, -0.69))
 	node(root, "Eject", Vector3(0.016, 0.03, -0.03))
+	for c in root.find_children("*", "GeometryInstance3D", true, false):
+		(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return root
 
 
