@@ -33,7 +33,7 @@ func _ready() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.36, 0.05, 0.05)
 	mat.roughness = 0.3
-	mat.specular = 0.7
+	mat.metallic_specular = 0.7
 	mat.vertex_color_use_as_albedo = true
 	mmi.material_override = mat
 	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
