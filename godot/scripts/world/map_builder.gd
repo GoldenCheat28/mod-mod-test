@@ -21,6 +21,10 @@ var nav_region: NavigationRegion3D
 ## The table in the abandoned building where roulette can be played sitting
 ## down (roulette.gd): its centre, and each side's chair.
 var roulette_table := {}
+## Tables for a game of roulette for three or five (tall_building.gd,
+## roulette_game.gd), and the hall where the evening game is held.
+var game_tables: Array = []
+var event_hall := {}
 var bucket_pos := Vector3.INF     # the mop's bucket (player.gd rinses the mop in it)
 var bucket_water: StandardMaterial3D
 var bucket_dirt := 0.0            # blood rinsed into it (0..1)
@@ -50,6 +54,11 @@ func steps() -> Array:
 			_perimeter()],
 		["Мусор и обломки", _rubble],
 		["Склад, гаражи, машины", _extras],
+		["Трёхэтажки", func():
+			game_tables.clear()
+			var TB = load("res://scripts/world/tall_building.gd")
+			TB.build(self, {"x0": -4.0, "x1": 10.0, "z0": 17.0, "z1": 28.0, "kind": "event", "stair": "east", "seed": 71})
+			TB.build(self, {"x0": -21.0, "x1": -9.0, "z0": 26.0, "z1": 35.0, "kind": "flats", "stair": "west", "seed": 72, "brick": true})],
 		["Расставляем мебель", func():
 			_table_and_chairs(Vector3(7.0, F1, -11.0))
 			_bucket(Vector3(9.0, F1, -9.2))

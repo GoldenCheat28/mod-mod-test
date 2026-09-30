@@ -2411,6 +2411,10 @@ func _pick_up() -> void:
 	if n.has_meta("tv"):
 		n.get_meta("tv").toggle()
 		return
+	if n.has_meta("game_seat") and roulette == null and Game.main and Game.main.has_node("TableGames"):
+		var gs: Dictionary = n.get_meta("game_seat")
+		Game.main.get_node("TableGames").join(self, int(gs["table"]), int(gs["seat"]))
+		return
 	if n.has_meta("seat") and roulette == null:
 		_sit_on(n, hit.position)
 		return

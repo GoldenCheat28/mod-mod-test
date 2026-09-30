@@ -514,14 +514,48 @@ static func slump_on_table(b: Node3D, dir: Vector3, centre: Vector3, muzzle: Vec
 	toward.y = 0.0
 	toward = toward.normalized()
 	var tip := Vector3.UP.cross(toward)          # the axis he goes over about
-	for pn in ["head", "chest", "abdomen", "upper_arm_r", "upper_arm_l", "forearm_r", "forearm_l", "hand_r", "hand_l"]:
+	for pn in ["head", "chest", "abdomen"]:
 		if b.part_index.has(pn):
 			var part: RigidBody3D = b.parts[b.part_index[pn]]
-			var up_k := 1.0 if pn in ["head", "chest"] else 0.7
-			part.linear_velocity = toward * 1.9 * up_k + Vector3.DOWN * 0.5
-			part.angular_velocity = tip * (2.2 if pn in ["head", "chest", "abdomen"] else 0.8)
+			part.linear_velocity = toward * 0.5
+			part.angular_velocity = tip * 1.6
 	b.pelvis.linear_velocity = Vector3.ZERO
 	b.pelvis.angular_velocity = Vector3.ZERO
+	# The dead weight goes where it's pulled: a short, fading tug keeps the
+	# fall on course (forward, face onto the tabletop) and the hips on the
+	# seat, instead of him sliding off backwards or under the table.
+	var g := SlumpGuide.new()
+	g.bot = b
+	g.seat = b.pelvis.global_position
+	g.target = Vector3(centre.x, centre.y + 0.84, centre.z) - toward * 0.28
+	b.add_child(g)
+
+
+class SlumpGuide extends Node:
+	var bot: Node3D
+	var seat: Vector3
+	var target: Vector3
+	var t := 0.0
+
+	func _physics_process(delta: float) -> void:
+		t += delta
+		if t > 1.6 or not is_instance_valid(bot):
+			queue_free()
+			return
+		var k := 1.0 - smoothstep(0.9, 1.6, t)
+		var head: RigidBody3D = bot.head
+		var chest: RigidBody3D = bot.parts[bot.part_index["chest"]] if bot.part_index.has("chest") else null
+		var pel: RigidBody3D = bot.pelvis
+		# Head drawn onto the table (a spring with damping; firmer once close).
+		var to_t := target - head.global_position
+		head.apply_central_force((to_t * 70.0 - head.linear_velocity * 9.0) * head.mass * k)
+		if chest:
+			var ct := target - (target - seat) * 0.45 + Vector3(0, 0.02, 0)
+			chest.apply_central_force(((ct - chest.global_position) * 40.0 - chest.linear_velocity * 7.0) * chest.mass * k)
+		# Hips stay on the chair.
+		var to_s := seat - pel.global_position
+		to_s.y = minf(to_s.y, 0.0)
+		pel.apply_central_force((to_s * 90.0 - pel.linear_velocity * 10.0) * pel.mass * k)
 
 
 ## Out of the hand: it falls where it is and stays, a thing on the ground.

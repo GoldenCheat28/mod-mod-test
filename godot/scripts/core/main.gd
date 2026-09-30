@@ -115,6 +115,10 @@ func _ready() -> void:
 	else:
 		_spawn_bots()
 	preload("res://scripts/game/trader.gd").spawn(self)
+	# The games of roulette at the tables, and the event in building B.
+	var tg: Node = preload("res://scripts/game/table_games.gd").new()
+	tg.name = "TableGames"
+	add_child(tg)
 	# Now the world is drawn once, still under the loading screen: the
 	# shaders are all compiled here and not in the first seconds of play.
 	get_viewport().disable_3d = false
@@ -142,8 +146,10 @@ func _spawn_bots() -> void:
 var _bot_counter := 0
 
 
-func spawn_bot(p: Vector3, yaw: float, seed_v := -1) -> Node3D:
+func spawn_bot(p: Vector3, yaw: float, seed_v := -1, outfit := "") -> Node3D:
 	var bot := Humanoid.new()
+	if outfit != "":
+		bot.set_meta("outfit", outfit)
 	bot.name = "Bot%d" % _bot_counter
 	bot.bot_seed = seed_v if seed_v >= 0 else _bot_counter * 97 + 13 + randi() % 7 * 1000 * int(_bot_counter >= BOT_COUNT)
 	_bot_counter += 1

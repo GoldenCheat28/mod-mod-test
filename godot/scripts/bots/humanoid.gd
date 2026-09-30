@@ -192,6 +192,8 @@ func _make_materials() -> void:
 	var r := rng.randf()
 	if OS.get_environment("OUTFIT") != "":           # (dev: everyone in one outfit)
 		r = {"casual": 0.1, "suit": 0.4, "hoodie": 0.6, "tracksuit": 0.8, "jacket": 0.9}.get(OS.get_environment("OUTFIT"), r)
+	if has_meta("outfit"):                              # (dressed for the part: the judge)
+		r = {"casual": 0.1, "suit": 0.4, "hoodie": 0.6, "tracksuit": 0.8, "jacket": 0.9}.get(get_meta("outfit"), r)
 	outfit = "casual" if r < 0.34 else "suit" if r < 0.52 else "hoodie" if r < 0.7 else "tracksuit" if r < 0.85 else "jacket"
 	var shirts := [Color(0.72, 0.72, 0.7), Color(0.16, 0.2, 0.3), Color(0.35, 0.12, 0.1), Color(0.22, 0.3, 0.2),
 			Color(0.1, 0.1, 0.1), Color(0.55, 0.5, 0.38), Color(0.4, 0.42, 0.46)]

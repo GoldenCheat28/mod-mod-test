@@ -146,7 +146,10 @@ func _physics_process_real(delta: float) -> void:
 		body.look_target = player_talk.cam.global_position
 		body.has_look_target = true
 	if roulette != null:
-		roulette._bot_stance()
+		if roulette.has_method("stance_for"):
+			roulette.stance_for(body, delta)       # (a game round a table: roulette_game.gd)
+		else:
+			roulette._bot_stance()
 	if spectate != null:
 		spectate._spectator_tick(self, delta)
 	talk.tick(delta)

@@ -100,9 +100,8 @@ func _physics_process(delta: float) -> void:
 			var hd: Vector3 = _b.head.global_position
 			var along := (c - seat).normalized()
 			var off := hd - seat
-			print("slump: head forward=%.2f side=%.2f height=%.2f pelvis_on_seat=%.2f" % [off.dot(along),
-					absf(off.cross(Vector3.UP).normalized().dot(along.cross(Vector3.UP))) * 0.0 + absf((off - along * off.dot(along)).x * along.z - (off - along * off.dot(along)).z * along.x),
-					hd.y, (_b.pelvis.global_position - seat).length()])
+			var pel: Vector3 = _b.pelvis.global_position - seat
+			print("slump: head forward=%.2f height=%.2f pelvis_forward=%.2f pelvis_height=%.2f" % [off.dot(along), hd.y, Vector3(pel.x, 0, pel.z).dot(along), pel.y])
 
 
 func _once(key: String, at: float) -> bool:
