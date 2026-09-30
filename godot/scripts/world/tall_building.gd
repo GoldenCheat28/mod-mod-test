@@ -564,8 +564,10 @@ static func _cellar(c: Dictionary, at: Vector3) -> void:
 	geo.block(Vector3(bx0, top - 0.15, bz0), Vector3(bx1, top, bz1), conc)                    # roof
 	geo.block(Vector3(bx0, at.y + 2.05, bz0), Vector3(bx0 + 0.15, top, bz1), conc)            # over the door
 	geo.block(Vector3(bx0, at.y, bz1 - 0.15), Vector3(bx0 + 0.15, top, bz1), conc)            # jamb
-	# Inside: black, steps going down out of sight.
+	# Inside: black, steps going down out of sight (and the outer wall's
+	# window, if there is one there, shut off from inside).
 	var black := Mat.standard("cellar_dark", Color(0.01, 0.01, 0.012), 1.0)
+	geo.block(Vector3(bx0, at.y, bz0 - 0.02), Vector3(bx1, top, bz0 + 0.04), black)
 	geo.box(Vector3(at.x + 0.05, at.y + 0.004, (bz0 + bz1) * 0.5), Vector3(1.3, 0.008, 1.45), black, Vector3.ZERO, false)
 	for k in 4:
 		geo.box(Vector3(at.x + 0.3 - k * 0.0, at.y - 0.09 - k * 0.18, bz0 + 0.3 + k * 0.28), Vector3(0.9, 0.04, 0.28), dark, Vector3.ZERO, false)
