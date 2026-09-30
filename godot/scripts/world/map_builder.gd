@@ -1250,7 +1250,7 @@ func _garages(corner: Vector3, count: int) -> void:
 ## An abandoned car, stripped and rusting: the body (sills, wings, bonnet,
 ## boot, the cabin on its pillars), glass set in its frames (some panes
 ## smashed out), bumpers, lamps, plates, seats seen inside, wheels on rims.
-## Variant 0 has lost a wheel and sits down on that corner, on its hub.
+## Variant 0 has a flat front tyre and sits a touch low on that corner.
 func _car(p: Vector3, yaw: float, variant: int) -> void:
 	var paint := Mat.standard("car_%d" % variant, [Color(0.35, 0.12, 0.08), Color(0.2, 0.24, 0.26), Color(0.3, 0.28, 0.2)][variant % 3], 0.7, 0.35, 1.2)
 	var dark := Mat.standard("car_dark", Color(0.05, 0.05, 0.05), 0.9)
@@ -1267,8 +1267,9 @@ func _car(p: Vector3, yaw: float, variant: int) -> void:
 	var sag := Basis()
 	var ride := 0.0
 	if variant == 0:
-		sag = Basis(Vector3.BACK, -0.12) * Basis(Vector3.RIGHT, 0.08)
-		ride = -0.02
+		# (just a little down on the flat front-left tyre: all four still on the ground)
+		sag = Basis(Vector3.BACK, -0.025) * Basis(Vector3.RIGHT, 0.012)
+		ride = -0.015
 	var b := Basis(Vector3.UP, yaw) * sag
 	var base := Vector3(p.x, y0 + ride, p.z)
 	var put := func(pos: Vector3, size: Vector3, mat: Material, rot := Vector3.ZERO, collide := false) -> void:
@@ -1335,13 +1336,11 @@ func _car(p: Vector3, yaw: float, variant: int) -> void:
 			var wl := Vector3(wx, 0.32, wz)
 			var turn := Basis(Vector3.BACK, PI * 0.5)
 			if variant == 0 and wz > 0 and wx < 0:
-				# The hub and the brake disc down on the asphalt.
-				var hub := CylinderMesh.new()
-				hub.top_radius = 0.13
-				hub.bottom_radius = 0.13
-				hub.height = 0.06
-				hub.radial_segments = 12
-				geo.add_mesh(hub, Transform3D(b * turn, base + b * Vector3(wx * 0.95, 0.15, wz)), rust)
+				# The flat one: the tyre squashed out under the rim, the rim low.
+				var flat_at := base + b * Vector3(wx, 0.27, wz)
+				flat_at.y = maxf(flat_at.y, y0 + 0.27)
+				geo.add_mesh(tyre, Transform3D(b * turn * Basis.from_scale(Vector3(0.84, 1.08, 1.0)), flat_at), dark)
+				geo.add_mesh(rim, Transform3D(b * turn, flat_at + b * Vector3(0.004 * signf(wx), 0.02, 0)), chrome)
 				continue
 			geo.add_mesh(tyre, Transform3D(b * turn, base + b * wl), dark)
 			geo.add_mesh(rim, Transform3D(b * turn, base + b * (wl + Vector3(0.004 * signf(wx), 0, 0))), chrome)

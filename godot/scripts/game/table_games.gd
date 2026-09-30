@@ -68,17 +68,7 @@ func start_event() -> void:
 	add_child(g)
 	g.setup(self, ti, EVENT_PRIZE, judge)
 	_games[ti] = g
-	var n: int = (t["seats"] as Array).size()
-	var got := _free_bots(t["center"], n, 200.0)
-	# Short of people: more of them come in off the street.
-	var hall: Dictionary = Game.main.map.event_hall
-	var nav: RID = get_viewport().world_3d.navigation_map
-	while got.size() < n and _alive_bots() < MAX_BOTS and not hall.is_empty():
-		var door: Vector3 = hall["door"]
-		var at := NavigationServer3D.map_get_closest_point(nav, door + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-2.5, -0.5)))
-		got.append(Game.main.spawn_bot(at, randf() * TAU))
-	for i in mini(got.size(), n):
-		g.add_bot(got[i], i)
+	refill(g)
 	if Game.player:
 		Game.player._notify("Событие: в трёхэтажке собирают игру в рулетку. Приз %d ₽" % EVENT_PRIZE)
 
@@ -96,8 +86,7 @@ func _ensure_judge(t: Dictionary) -> void:
 	var nav: RID = get_viewport().world_3d.navigation_map
 	var at := NavigationServer3D.map_get_closest_point(nav, spot)
 	var c: Vector3 = t["center"]
-	judge = Game.main.spawn_bot(at, atan2(-(c.x - at.x), -(c.z - at.z)), -1, "suit")
-	judge.set_meta("judge", true)
+	judge = Game.main.spawn_bot(at, atan2(-(c.x - at.x), -(c.z - at.z)), -1, "judge")
 	if judge.ai:
 		judge.ai.roulette = self
 		if judge.ai.talk:
@@ -159,7 +148,7 @@ func _bots_play() -> void:
 	var ti: int = free.pick_random()
 	var t: Dictionary = arr[ti]
 	var n := mini((t["seats"] as Array).size(), randi_range(2, 3))
-	var got := _free_bots(t["center"], n, 45.0)
+	var got := _free_bots(t["center"], n, 30.0)
 	if got.size() < 2:
 		return
 	_clear_table(t)
@@ -208,6 +197,27 @@ func join(p: Node3D, ti: int, seat: int) -> void:
 		g.add_bot(b, i)
 		i += 1
 	g.add_player(p, seat)
+
+
+## The empty chairs at the event filled: whoever is free about the place,
+## and if there is nobody, people come in off the street.
+func refill(g: Node) -> void:
+	var t: Dictionary = g.table
+	var hall: Dictionary = Game.main.map.event_hall
+	var nav: RID = get_viewport().world_3d.navigation_map
+	while not g.over:
+		var seat: int = g.free_seat()
+		if seat < 0:
+			return
+		var got := _free_bots(t["center"], 1, 200.0)
+		var b: Node3D = got[0] if not got.is_empty() else null
+		if b == null:
+			if _alive_bots() >= MAX_BOTS or hall.is_empty():
+				return
+			var door: Vector3 = hall["door"]
+			var at := NavigationServer3D.map_get_closest_point(nav, door + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-2.5, -0.5)))
+			b = Game.main.spawn_bot(at, randf() * TAU)
+		g.add_bot(b, seat)
 
 
 func game_over(g: Node) -> void:

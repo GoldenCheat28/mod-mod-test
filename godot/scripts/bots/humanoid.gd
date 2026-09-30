@@ -826,6 +826,9 @@ func _outfit_wear() -> void:
 ## hood, glasses or shades, an earring (some of each, none on most).
 func _head_wear() -> void:
 	var r := rng.randf()
+	var judge := has_meta("judge")
+	if judge:
+		r = 1.0                     # (the judge: bare-headed, in dark glasses)
 	var wool := StandardMaterial3D.new()
 	wool.albedo_color = [Color(0.1, 0.1, 0.1), Color(0.5, 0.1, 0.08), Color(0.15, 0.22, 0.35), Color(0.3, 0.3, 0.28), Color(0.2, 0.3, 0.15)][rng.randi() % 5]
 	wool.roughness = 0.97
@@ -845,6 +848,8 @@ func _head_wear() -> void:
 		peak.size = Vector3(0.15, 0.012, 0.09) * scale_factor
 		_mesh(head, peak, wool, Vector3(0, 0.07, 0.13 if back else -0.13), Vector3(0.12 if back else -0.12, 0, 0))
 	var g := rng.randf()
+	if judge:
+		g = 0.05
 	if g < 0.22:
 		# Glasses: two lenses and the bridge; some are dark.
 		var frame := StandardMaterial3D.new()
@@ -879,6 +884,9 @@ func _head_wear() -> void:
 
 ## On the body: a chain round the neck, a scarf, a watch, a backpack.
 func _body_wear() -> void:
+	if has_meta("judge"):
+		_briefcase()
+		return
 	var gold := StandardMaterial3D.new()
 	gold.albedo_color = Color(0.85, 0.65, 0.2) if rng.randf() < 0.6 else Color(0.75, 0.76, 0.78)
 	gold.metallic = 1.0
@@ -943,6 +951,38 @@ func _body_wear() -> void:
 					Vector3(0.1 * sx, 0.14, -0.075), Vector3(0.105 * sx, 0.06, _front_z(0.06, 0.105) - 0.008),
 					Vector3(0.115 * sx, -0.04, _front_z(-0.04, 0.115) - 0.008), Vector3(0.14 * sx, -0.12, -0.075)]
 			_band(chest, s_pts, 0.036, 0.008, bag, Vector3(0.06 * sx, 0.04, 0.0))
+
+
+## The judge's case, in his right hand: black leather, a handle, the metal
+## corners and locks.
+func _briefcase() -> void:
+	var hand := parts[part_index["hand_r"]]
+	var leather := StandardMaterial3D.new()
+	leather.albedo_color = Color(0.035, 0.03, 0.03)
+	leather.roughness = 0.45
+	var metal := StandardMaterial3D.new()
+	metal.albedo_color = Color(0.75, 0.72, 0.62)
+	metal.metallic = 1.0
+	metal.roughness = 0.3
+	var body := BoxMesh.new()
+	body.size = Vector3(0.09, 0.32, 0.44) * scale_factor
+	_mesh(hand, body, leather, Vector3(0, -0.27, 0))
+	var seam := BoxMesh.new()
+	seam.size = Vector3(0.094, 0.012, 0.446) * scale_factor
+	_mesh(hand, seam, metal, Vector3(0, -0.14, 0))
+	var grip := TorusMesh.new()
+	grip.inner_radius = 0.016 * scale_factor
+	grip.outer_radius = 0.026 * scale_factor
+	grip.rings = 12
+	_mesh(hand, grip, leather, Vector3(0, -0.095, 0), Vector3(0, 0, PI * 0.5), Vector3(1.0, 1.0, 3.2))
+	for sz in [-1.0, 1.0]:
+		var lock := BoxMesh.new()
+		lock.size = Vector3(0.096, 0.025, 0.035) * scale_factor
+		_mesh(hand, lock, metal, Vector3(0, -0.15, 0.12 * sz))
+		for sy in [-1.0, 1.0]:
+			var corner := BoxMesh.new()
+			corner.size = Vector3(0.096, 0.03, 0.03) * scale_factor
+			_mesh(hand, corner, metal, Vector3(0, -0.27 + 0.15 * sy, 0.21 * sz))
 
 
 # --- Simulation ----------------------------------------------------------------------
@@ -1125,8 +1165,8 @@ func _update_state(delta: float) -> void:
 	if not fallen:
 		if tipped or (h > 0.0 and h < stand_height * 0.42 and posture != Posture.CROUCH and posture != Posture.KNEEL and posture != Posture.SQUAT and posture != Posture.SIT) or mobility() < 0.2:
 			_fall()
-		elif _out_of_balance(delta):
-			_fall()
+		elif not (posture == Posture.SIT and seat != Vector3.INF) and _out_of_balance(delta):
+			_fall()                 # (sat on a chair he is not balancing on his feet)
 	else:
 		_fallen_time += delta
 		var slow := pelvis.linear_velocity.length() < 0.6

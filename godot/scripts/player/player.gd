@@ -1254,7 +1254,7 @@ func _update_body() -> void:
 			hands[1] = m.global_transform * Vector3(-0.03, -0.07, 0.025)
 		elif current.kind == "akm":
 			hands[0] = m.global_transform * Vector3(0.0, -0.06, 0.04)
-			hands[1] = m.global_transform * Vector3(0.0, -0.02, -0.32)
+			hands[1] = m.global_transform * Vector3(0.0, -0.02, -0.3)
 		else:
 			hands[0] = m.global_transform * Vector3(0.0, -0.035, 0.07)
 			var pump := m.get_node_or_null("Pump") as Node3D
@@ -1783,10 +1783,6 @@ func _seated(delta: float) -> bool:
 ## headroom.
 func _update_crouch(delta: float) -> void:
 	var want := 1.0 if (Input.is_action_pressed("crouch") and Game.is_mouse_captured()) or _bandaging_leg() else 0.0
-	# Down to pick something off the floor, and back up with it.
-	if not _pickup.is_empty() and float((_pickup["at"] as Vector3).y) < global_position.y + 0.8:
-		var pt: float = _pickup["t"]
-		want = maxf(want, 1.0 - smoothstep(0.55, 0.85, pt))
 	if want < _crouch:
 		var up := Vector3.UP * (STAND_H - _cap.height + 0.02)
 		if test_move(global_transform, up):
@@ -2495,7 +2491,7 @@ func _pickup_hand() -> Vector3:
 	var t: float = _pickup["t"]
 	var cx := cam.global_transform
 	var rest := cx * Vector3(-0.2, -0.45, -0.2)
-	var at: Vector3 = _pickup["at"]
+	var at: Vector3 = _pickup_reach()
 	var chest := cx * Vector3(-0.1, -0.3, -0.32)
 	var bag := get_global_transform_interpolated() * Vector3.ZERO + Basis(Vector3.UP, yaw) * Vector3(-0.22, 0.92, 0.06)
 	if t < 0.4:
@@ -2507,6 +2503,16 @@ func _pickup_hand() -> Vector3:
 	var a := at.lerp(chest, k)
 	var b := chest.lerp(bag, k)
 	return a.lerp(b, k)
+
+
+## Where the hand gets to, going for the thing: the thing itself if the arm
+## reaches it, else as far toward it as the arm goes (no bending over for
+## it - the thing comes up to the hand instead).
+func _pickup_reach() -> Vector3:
+	var at: Vector3 = _pickup["at"]
+	var sh := get_global_transform_interpolated() * Vector3.ZERO + Basis(Vector3.UP, yaw) * Vector3(-0.19, 1.4 - 0.5 * _crouch, 0.0)
+	var d := at - sh
+	return sh + d.limit_length(0.62)
 
 
 func _pickup_tick(delta: float) -> void:
@@ -2521,13 +2527,16 @@ func _pickup_tick(delta: float) -> void:
 		return
 	var hand := _pickup_hand()
 	var from: Transform3D = _pickup["from"]
-	if t < 0.46:
+	# (out of reach, it rises to meet the hand as the hand comes)
+	var far := from.origin.distance_to(_pickup_reach()) > 0.05
+	var k0 := 0.2 if far else 0.46
+	if t < k0:
 		# Lying where it is until the hand is on it.
 		m.global_transform = from
 	else:
 		# In the hand, turned with it, and at the end into the bag.
 		var held := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -0.4)
-		var k := smoothstep(0.46, 0.6, t)
+		var k := smoothstep(k0, 0.52 if far else 0.6, t)
 		var q := from.basis.get_rotation_quaternion().slerp(held.get_rotation_quaternion(), k)
 		var sc: Vector3 = _pickup["scale"]
 		var shrink := 1.0 - smoothstep(PICKUP_TIME - 0.22, PICKUP_TIME, t) * 0.85

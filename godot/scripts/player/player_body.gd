@@ -32,7 +32,6 @@ var _hip_yaw := 0.0
 var _hip_init := false
 var _turning := false
 var _blade := 0.0            # rad the chest is turned right to hold a long gun
-var _bend := 0.0             # 0..1 bent over to reach down
 
 ## Filled every update, for the weapon reach limits.
 var shoulder_r := Vector3.ZERO
@@ -205,17 +204,6 @@ func update(root: Transform3D, phase: float, stride: float, move_dir: Vector3, h
 	var pitch := view.basis.get_euler().x
 	var lean := clampf(-pitch - 0.25, 0.0, 1.0) * 0.18 - clampf(pitch - 0.3, 0.0, 1.0) * 0.08
 	lean += crouch * 0.35
-	# Reaching down for something out of reach (off the floor, a leg): the
-	# back bends over toward it.
-	var bend_want := 0.0
-	var waist_y: float = (hips * Vector3(0, 0.95 - 0.5 * crouch, 0.0)).y
-	for i in 2:
-		var tg: Vector3 = hands[i]
-		if tg != Vector3.INF and tg.y < waist_y:
-			var sh_est := hips * Vector3(0.19 * (1.0 if i == 0 else -1.0), 1.4 - 0.5 * crouch, 0.1 + 0.12 * crouch)
-			bend_want = maxf(bend_want, clampf((sh_est.distance_to(tg) - REACH * 0.85) / 0.4, 0.0, 1.0))
-	_bend = move_toward(_bend, bend_want, delta * 5.0)
-	lean += _bend * 1.15
 	# A long gun held in both hands is held bladed: the chest turns a little to
 	# the right so the left shoulder comes forward to the forend.
 	var blade_want := 0.0

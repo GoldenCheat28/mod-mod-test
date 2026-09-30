@@ -17,7 +17,7 @@ const Roulette = preload("res://scripts/game/roulette.gd")
 const ItemDrop = preload("res://scripts/game/item_drop.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
 
-const GATHER_TIME := 40.0        # to get to the chairs; whoever is not there by then is left out
+const GATHER_TIME := 70.0        # to get to the chairs; whoever is not there by then is left out
 const HEAR_DIST := 16.0          # the judge's words (and the bars) reach the player this near
 const STACK := 100               # roubles in a stack
 
@@ -115,6 +115,10 @@ func add_bot(b: Node3D, seat: int) -> void:
 	b.hand_goal["r"] = Vector3.INF
 	b.hand_goal["l"] = Vector3.INF
 	var nm: String = ai._persona().name
+	# (two of the same name at one table: the second is told apart)
+	for p in seats_taken:
+		if p["name"] == nm:
+			nm += " " + ["Второй", "Мелкий", "Длинный", "Лысый"][seats_taken.size() % 4]
 	seats_taken.append({"who": b, "player": false, "seat": seat, "sat": false, "out": false,
 			"path": PackedVector3Array(), "pi": 0, "name": nm})
 
@@ -216,15 +220,22 @@ func _physics_process(delta: float) -> void:
 		_player_seat(delta)
 	# Anyone of them hurt (not by the game), gone down or off: it is off.
 	for p in seats_taken:
-		if p["out"] or p["player"]:
+		if p["out"] or p["player"] or state == "collect":
 			continue
 		var b: Node3D = p["who"]
-		if not is_instance_valid(b) or not b.alive or not b.conscious or b.fallen or b.cuffed:
+		# (slipping on his chair is not leaving the game: he is sat back on it)
+		if not is_instance_valid(b) or not b.alive or not b.conscious or (b.fallen and not p["sat"]) or b.cuffed:
 			if state == "gather":
 				seats_taken.erase(p)
 				if is_instance_valid(b):
 					_release_bot(b)
+				if _manager and _manager.has_method("refill") and _is_event():
+					_manager.refill(self)
 				return
+			if OS.is_debug_build():
+				print("roulette_game: %s off (valid=%s alive=%s conscious=%s fallen=%s cuffed=%s) in %s" % [p["name"], is_instance_valid(b),
+						is_instance_valid(b) and b.alive, is_instance_valid(b) and b.conscious, is_instance_valid(b) and b.fallen,
+						is_instance_valid(b) and b.cuffed, state])
 			_abort("Стрельба не по правилам. Игра окончена, все по домам.")
 			return
 	if player != null and (not is_instance_valid(player) or player._dead) and state != "win" and state != "collect":
@@ -347,33 +358,67 @@ func _announce_turn() -> void:
 	if c["player"]:
 		_judge_say(["Твоя очередь.", "Револьвер у тебя. Не тяни.", "Ну, твой ход, герой."].pick_random(), 2.0)
 	else:
-		_judge_say(["%s, твой ход." % c["name"], "Револьвер переходит к %s." % c["name"],
-				"%s берёт револьвер." % c["name"], "Очередь %s. Не торопись." % c["name"]].pick_random(), 2.2)
+		_judge_say(["%s, твой ход." % c["name"], "Ход: %s." % c["name"],
+				"%s берёт револьвер." % c["name"], "Стреляет %s. Не торопись." % c["name"]].pick_random(), 2.2)
 
 
 # --- Gathering ----------------------------------------------------------------------------
 
+func _is_event() -> bool:
+	return table.get("kind", "") == "event"
+
+
+## The judge there and standing at his place (at the event), or no judge
+## needed (a small table).
+func _judge_ready() -> bool:
+	if not _is_event():
+		return true
+	if judge == null or not is_instance_valid(judge) or not judge.alive or not judge.conscious or judge.fallen:
+		return false
+	var spot: Vector3 = table["judge"]
+	var me: Vector3 = judge.position_ground()
+	return Vector2(spot.x - me.x, spot.z - me.z).length() < 0.6
+
+
+## At the event: every chair taken (five, exactly) and the judge at his
+## place - not before. A small table: two or more, sat.
 func _gather() -> void:
-	var all_sat := seats_taken.size() >= 2
+	var need: int = (table["seats"] as Array).size() if _is_event() else 2
+	var all_sat := seats_taken.size() >= need
 	for p in seats_taken:
 		all_sat = all_sat and p["sat"]
 	if _once("hello"):
-		_judge_say("Собираемся за столом. Приз - %d ₽. Свободный стул - F." % prize if table.get("kind") == "event"
+		_judge_say("Собираемся за столом. Нужно %d игроков. Приз - %d ₽. Свободный стул - F." % [need, prize] if _is_event()
 				else "Садимся. На кону %d ₽." % prize, 4.0)
-	if all_sat and _t > 2.0:
-		_judge_say(["Все на местах. Начинаем.", "Все сели. Правила: один патрон, по кругу, до последнего.",
-				"Двери закрыты. Играем."].pick_random(), 3.0)
+	if _is_event() and (judge == null or not is_instance_valid(judge) or not judge.alive):
+		_abort("Судьи нет - игры не будет.")
+		return
+	if all_sat and _judge_ready() and _t > 2.0:
+		_judge_say(["Все пятеро на местах. Начинаем.", "Все сели. Правила: один патрон, по кругу, до последнего.",
+				"Двери закрыты. Играем."].pick_random() if _is_event() else "Все сели. Начинаем.", 3.0)
 		_turn = randi() % seats_taken.size()
 		_new_gun()
 		_go("load")
 		return
+	if all_sat and not _judge_ready() and _once("wait_judge", 3.0):
+		_judge_say("Ждём судью.", 2.0)
+	if _is_event() and seats_taken.size() < need and _manager and _manager.has_method("refill") and _once("refill%d" % int(_t / 5.0)):
+		_manager.refill(self)
 	if _t > GATHER_TIME:
-		# Those not there by now are out of it.
+		# Those not there by now are out of it (at the event, others come instead).
 		for p in seats_taken.duplicate():
 			if not p["sat"] and not p["player"]:
 				_release_bot(p["who"])
 				seats_taken.erase(p)
-		if seats_taken.size() < 2:
+		if _is_event():
+			if _manager and _manager.has_method("refill"):
+				_manager.refill(self)
+			_judge_say("Кто не успел - тот не играет. Ищем ещё людей.", 3.0)
+			_t = 3.0
+			for k in _flags.keys():
+				if str(k).begins_with("gatherrefill"):
+					_flags.erase(k)
+		elif seats_taken.size() < 2:
 			_abort("Не набралось игроков. В другой раз.")
 		elif _once("late"):
 			_t = GATHER_TIME - 2.5
@@ -421,7 +466,23 @@ func stance_for(b: Node3D, delta: float) -> void:
 			if state == "gather" and _once("sat" + str(seat)):
 				_judge_say(["%s сел за стол." % p["name"], "%s на месте." % p["name"], "%s занял стул." % p["name"]].pick_random(), 2.0)
 		else:
-			b.move_velocity = to.normalized() * clampf(left * 2.0, 0.7, 1.5)
+			# (stuck somewhere on the way for a while: a new path from where he is)
+			var last: Vector3 = p.get("last_pos", me)
+			if me.distance_to(last) > 0.5:
+				p["last_pos"] = me
+				p["stuck_t"] = 0.0
+			else:
+				p["stuck_t"] = float(p.get("stuck_t", 0.0)) + delta
+				if float(p["stuck_t"]) > 3.0:
+					p["stuck_t"] = 0.0
+					p["path"] = PackedVector3Array()
+					b.move_velocity = -to.normalized() * 0.8 + to.normalized().cross(Vector3.UP) * 0.8
+					return
+			var path_left := left
+			if i < path.size():
+				path_left = Vector2(path[path.size() - 1].x - me.x, path[path.size() - 1].z - me.z).length()
+			var sp := 2.3 if path_left > 8.0 else clampf(left * 2.0, 0.7, 1.5)
+			b.move_velocity = to.normalized() * sp
 			b.facing = (b.facing as Vector3).slerp(to.normalized(), minf(delta * 6.0, 1.0)).normalized()
 			b.posture = b.Posture.STAND
 			b.seat = Vector3.INF

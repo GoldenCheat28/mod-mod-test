@@ -369,15 +369,25 @@ static func akm() -> Node3D:
 	# Magazine: the curved box, a lip at the top with a round showing, the
 	# floor plate - rides along its seat when changed.
 	var mag := _node(root, "Mag", Vector3(0, -0.012, -0.13))
-	mag.rotation = Vector3(0.12, 0, 0)
-	var mag_path := [Vector3(0, 0.006, 0.0), Vector3(0, -0.03, -0.004), Vector3(0, -0.07, -0.013), Vector3(0, -0.11, -0.026),
-			Vector3(0, -0.15, -0.042), Vector3(0, -0.17, -0.051), Vector3(0, -0.178, -0.054)]
+	mag.rotation = Vector3(0.06, 0, 0)
+	# (a 30-round magazine: long, and curving well forward toward its foot)
+	var mag_path := []
+	for i in 11:
+		var k := float(i) / 10.0
+		var ang := k * 0.62
+		mag_path.append(Vector3(0, 0.006 - sin(ang) / 0.62 * 0.205 * (1.0 - k * 0.05), -(1.0 - cos(ang)) / 0.62 * 0.205))
 	var mag_rings := []
 	for i in mag_path.size():
 		var k := float(i) / (mag_path.size() - 1)
-		var w := 0.025 + (0.004 if i == mag_path.size() - 1 else 0.0)
-		mag_rings.append(R.call(w, lerpf(0.056, 0.07, k) + (0.006 if i == mag_path.size() - 1 else 0.0), 0.004, 3))
-	mag.add_child(Shape.sweep(mag_path, mag_rings, bake))
+		var foot := i == mag_path.size() - 1
+		mag_rings.append(R.call(0.024 + (0.004 if foot else 0.0), lerpf(0.058, 0.068, k) + (0.008 if foot else 0.0), 0.004, 3))
+	var mag_steel := _colmat("akm_mag", Color(0.13, 0.13, 0.14), 0.55, 0.55)
+	mag.add_child(Shape.sweep(mag_path, mag_rings, mag_steel))
+	# The stamped ribs down each side.
+	var rib_rings := []
+	for i in range(1, 9):
+		rib_rings.append(R.call(0.0275, 0.02, 0.003, 3))
+	mag.add_child(Shape.sweep(mag_path.slice(1, 9), rib_rings, mag_steel))
 	_box(mag, Vector3(0.009, 0.005, 0.022), Vector3(0, 0.008, 0.0), "brass")
 	# Charging handle on the bolt carrier.
 	var slide := _node(root, "Slide")
@@ -389,7 +399,52 @@ static func akm() -> Node3D:
 	for c in root.get_children():
 		if c is GeometryInstance3D:
 			(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_akm_true_length(root)
 	return root
+
+
+## The AKM's real proportions (880 mm overall, 378 mm from the rear sight
+## notch to the front post): the stock and the barrel end were drawn too
+## long, so what lies behind the grip and ahead of the trunnion is drawn in
+## along the gun (the receiver between stays as it is).
+static func _akm_z(z: float) -> float:
+	if z > 0.062:
+		return 0.062 + (z - 0.062) * 0.62
+	if z < -0.2:
+		return -0.2 + (z + 0.2) * 0.865
+	return z
+
+
+static func _akm_true_length(root: Node3D) -> void:
+	for c in root.get_children():
+		if c.name == "Mag":
+			continue
+		var n3 := c as Node3D
+		if n3 == null:
+			continue
+		var mi := c as MeshInstance3D
+		if mi and mi.mesh is ArrayMesh and n3.transform == Transform3D.IDENTITY:
+			# (made in the gun's own space: each point moved)
+			var src: ArrayMesh = mi.mesh
+			var out := ArrayMesh.new()
+			for si in src.get_surface_count():
+				var arr := src.surface_get_arrays(si)
+				var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				for i in v.size():
+					v[i].z = _akm_z(v[i].z)
+				arr[Mesh.ARRAY_VERTEX] = v
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+				out.surface_set_material(si, src.surface_get_material(si))
+			mi.mesh = out
+			continue
+		# A part placed by its node: moved (and drawn in if it lies along the stretch).
+		var z0 := n3.position.z
+		var nz := _akm_z(z0)
+		var k := (_akm_z(z0 + 0.001) - nz) / 0.001
+		n3.position.z = nz
+		if absf(k - 1.0) > 0.01 and mi:
+			# (drawn in along the gun, whatever way the part itself is turned)
+			n3.transform = Transform3D(Basis.from_scale(Vector3(1.0, 1.0, k)) * n3.basis, n3.position)
 
 
 ## A loft straight along the gun: `secs` is [[z, ring], ...].

@@ -119,6 +119,9 @@ func _ready() -> void:
 	var tg: Node = preload("res://scripts/game/table_games.gd").new()
 	tg.name = "TableGames"
 	add_child(tg)
+	var pm: CanvasLayer = preload("res://scripts/ui/pause_menu.gd").new()
+	pm.name = "PauseMenu"
+	add_child(pm)
 	# Now the world is drawn once, still under the loading screen: the
 	# shaders are all compiled here and not in the first seconds of play.
 	get_viewport().disable_3d = false
@@ -148,6 +151,9 @@ var _bot_counter := 0
 
 func spawn_bot(p: Vector3, yaw: float, seed_v := -1, outfit := "") -> Node3D:
 	var bot := Humanoid.new()
+	if outfit == "judge":
+		bot.set_meta("judge", true)
+		outfit = "suit"
 	if outfit != "":
 		bot.set_meta("outfit", outfit)
 	bot.name = "Bot%d" % _bot_counter

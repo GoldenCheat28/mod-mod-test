@@ -153,14 +153,7 @@ static func _shell(c: Dictionary) -> void:
 		if k < 2:
 			# Over the stairs (flight B comes up through it).
 			holes.append(Rect2(float(c["bay_x0"]), float(c["sz0"]), float(c["bay_x1"]) - float(c["bay_x0"]), float(c["sz1"]) - float(c["sz0"])))
-		if k == 1:
-			# Fallen through on the top floor.
-			var hr := Rect2(x0 + 1.2 if c["east"] else x1 - 3.4, z1 - 4.6, 2.2, 1.9)
-			holes.append(hr)
-			c["holes"]["top"] = hr
 		geo.slab(Vector2(x0, z0), Vector2(x1, z1), top - SLAB, top, c["floor"], holes)
-		if k == 1:
-			c["mb"]._hole_edges(c["holes"]["top"], top)
 		# Balconies on the upper floors.
 		if k > 0:
 			_balcony(c, fy)
@@ -269,6 +262,18 @@ static func _flight(geo, base: Vector3, dir: Vector3, width: float, rise: float,
 		centre.y = top - thick * 0.5
 		var size := Vector3(TREAD + 0.02, thick, width) if absf(dir.x) > 0.5 else Vector3(width, thick, TREAD + 0.02)
 		geo.box(centre, size, mat)
+	# Walking collision: a ramp resting on the step noses (as geo.stairs), so
+	# feet and the player's capsule go up smoothly, not catching on each edge.
+	var p0 := base - dir * TREAD
+	var p1 := base + dir * TREAD * (steps - 1) + Vector3.UP * rise
+	var u := (p1 - p0).normalized()
+	var side := Vector3.UP.cross(dir).normalized()
+	var n := u.cross(side).normalized()
+	if n.y < 0.0:
+		side = -side
+		n = -n
+	var t := 0.3
+	geo.add_collision_box(Transform3D(Basis(side, n, u), (p0 + p1) * 0.5 + n * (0.01 - t * 0.5)), Vector3(width, t, p0.distance_to(p1)))
 
 
 static func _stairs(c: Dictionary) -> void:

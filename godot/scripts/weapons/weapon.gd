@@ -113,8 +113,8 @@ func setup(weapon_kind: String) -> void:
 		loudness = 1.0
 	elif kind == "akm":
 		model = Models.akm()
-		hip_pos = Vector3(0.12, -0.15, -0.3)
-		aim_pos = Vector3(0.0, -0.069, -0.25)    # front post in the rear notch, stock in the shoulder
+		hip_pos = Vector3(0.12, -0.15, -0.26)
+		aim_pos = Vector3(0.0, -0.069, -0.2)     # front post in the rear notch, stock in the shoulder
 		capacity = 30
 		mag = 30
 		fire_interval = 0.1       # ~600 rounds a minute

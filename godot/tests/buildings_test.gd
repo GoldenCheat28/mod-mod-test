@@ -16,6 +16,20 @@ var views := [
 	[Vector3(-12.0, 4.95, 27.2), Vector3(-15.0, 4.0, 29.0), "v_kitchen"],
 	[Vector3(-1.0, 4.95, 15.5), Vector3(-1.0, 4.4, 17.5), "b_balcony"],
 ]
+var views2 := [
+	[Vector3(9.0, 1.8, 23.0), Vector3(9.0, 3.0, 27.0), "s1_b_flightA"],
+	[Vector3(8.3, 3.4, 27.0), Vector3(7.6, 4.0, 24.0), "s2_b_landing"],
+	[Vector3(7.6, 5.0, 23.3), Vector3(7.6, 3.0, 27.0), "s3_b_f1_down"],
+	[Vector3(8.0, 5.0, 22.8), Vector3(8.5, 8.0, 26.0), "s4_b_f1_up"],
+	[Vector3(7.6, 8.2, 23.3), Vector3(9.0, 6.55, 27.0), "s5_b_f2_stairs"],
+	[Vector3(3.0, 8.2, 24.0), Vector3(8.0, 7.5, 25.0), "s6_b_f2_room"],
+	[Vector3(-14.0, 1.8, 30.0), Vector3(-20.0, 1.5, 31.0), "v1_f0"],
+	[Vector3(-14.0, 5.0, 30.0), Vector3(-20.0, 4.5, 32.0), "v2_f1"],
+	[Vector3(-12.0, 5.0, 31.0), Vector3(-9.0, 4.5, 27.0), "v3_f1b"],
+	[Vector3(-20.0, 1.8, 31.0), Vector3(-20.0, 3.0, 34.5), "v4_stairs"],
+	[Vector3(-14.0, 8.2, 30.0), Vector3(-20.0, 7.5, 33.0), "v5_f2"],
+	[Vector3(-16.0, 8.2, 28.0), Vector3(-10.0, 7.5, 34.0), "v6_f2b"],
+]
 var _vi := 0
 var _cam: Camera3D
 
@@ -60,6 +74,8 @@ func _process(delta: float) -> void:
 		if out == "":
 			get_tree().quit()
 			return
+		if OS.get_environment("VIEWS") == "2":
+			views = views2
 		_cam = Camera3D.new()
 		_cam.fov = 75.0
 		add_child(_cam)

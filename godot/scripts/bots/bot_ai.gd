@@ -1415,7 +1415,7 @@ func _hold_gun() -> void:
 	body.hand_goal["r"] = xf * (Vector3(0, -0.06, 0.04) if akm else (Vector3(0, -0.035, 0.07) if shotgun else Vector3(0, -0.058, 0.03)))
 	if shotgun:
 		var pump := gun.get_node_or_null("Pump") as Node3D
-		body.hand_goal["l"] = xf * Vector3(0, -0.02, -0.32) if akm else (pump.global_transform if pump else xf) * Vector3(0, -0.015, -0.3)
+		body.hand_goal["l"] = xf * Vector3(0, -0.02, -0.3) if akm else (pump.global_transform if pump else xf) * Vector3(0, -0.015, -0.3)
 	elif aiming:
 		body.hand_goal["l"] = xf * Vector3(-0.03, -0.065, 0.02)
 	else:
