@@ -208,9 +208,8 @@ static func _rug(mb: Node3D, at: Vector3, size: Vector2, col: Color) -> void:
 	var pm := PlaneMesh.new()
 	pm.size = size
 	mi.mesh = pm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = col
-	m.roughness = 1.0
+	# (the level's blood shader: blood soaks into it like into the floor)
+	var m: Material = Mat.wood("rug_" + col.to_html(false), col, 1.0)
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.position = at
@@ -220,10 +219,7 @@ static func _rug(mb: Node3D, at: Vector3, size: Vector2, col: Color) -> void:
 	var bp := PlaneMesh.new()
 	bp.size = size - Vector2(0.25, 0.25)
 	border.mesh = bp
-	var bm := StandardMaterial3D.new()
-	bm.albedo_color = col.lightened(0.25)
-	bm.roughness = 1.0
-	border.material_override = bm
+	border.material_override = Mat.wood("rug_" + col.lightened(0.25).to_html(false), col.lightened(0.25), 1.0)
 	border.position = at + Vector3(0, 0.002, 0)
 	border.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mb.add_child(border)

@@ -81,6 +81,8 @@ func _make_bulb(parent: Node3D, top: Vector3, flickers: bool) -> void:
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.08, 0.08, 0.08)
 	cord.material_override = dark
+	# (right by the light: they would throw a huge shadow over the ceiling)
+	cord.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(cord)
 	cord.global_position = top + Vector3.DOWN * flex_len * 0.5
 	var holder := MeshInstance3D.new()
@@ -90,6 +92,7 @@ func _make_bulb(parent: Node3D, top: Vector3, flickers: bool) -> void:
 	hm.height = 0.045
 	holder.mesh = hm
 	holder.material_override = dark
+	holder.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(holder)
 	holder.global_position = top + Vector3.DOWN * (flex_len + 0.02)
 	var glass := MeshInstance3D.new()
@@ -112,9 +115,9 @@ func _make_bulb(parent: Node3D, top: Vector3, flickers: bool) -> void:
 	light.omni_range = 6.0
 	light.omni_attenuation = 1.3
 	# Shadows: only the nearest couple of bulbs cast them (see _shadow_pick),
-	# each in two passes rather than six.
+	# as a cube (the two-pass paraboloid one bends and tears shadows close up).
 	light.shadow_enabled = false
-	light.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	light.omni_shadow_mode = OmniLight3D.SHADOW_CUBE
 	light.distance_fade_enabled = true
 	light.distance_fade_begin = 24.0
 	light.distance_fade_length = 6.0

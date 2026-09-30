@@ -333,7 +333,7 @@ static func _game_table(c: Dictionary, centre: Vector3, n: int, kind: String, ju
 	top.bottom_radius = r
 	top.height = 0.045
 	top.radial_segments = 28
-	var green := Mat.standard("baize", Color(0.1, 0.24, 0.13), 0.95)
+	var green := Mat.wood("baize", Color(0.1, 0.24, 0.13), 0.95)       # (shows the blood)
 	geo.add_mesh(top, Transform3D(Basis(), centre + Vector3(0, 0.75, 0)), wood)
 	var cloth := CylinderMesh.new()
 	cloth.top_radius = r - 0.06
@@ -352,7 +352,7 @@ static func _game_table(c: Dictionary, centre: Vector3, n: int, kind: String, ju
 	foot.bottom_radius = 0.34
 	foot.height = 0.04
 	geo.add_mesh(foot, Transform3D(Basis(), centre + Vector3(0, 0.02, 0)), wood)
-	geo.add_collision_box(Transform3D(Basis(), centre + Vector3(0, 0.74, 0)), Vector3(r * 1.5, 0.05, r * 1.5))
+	geo.add_collision_box(Transform3D(Basis(), centre + Vector3(0, 0.75, 0)), Vector3(r * 1.5, 0.05, r * 1.5))
 	geo.add_collision_box(Transform3D(Basis(), centre + Vector3(0, 0.37, 0)), Vector3(0.18, 0.74, 0.18))
 	var seats := []
 	var gap := 1 if judge else 0
@@ -390,13 +390,13 @@ static func _game_chair(c: Dictionary, at: Vector3, yaw: float, table_i: int, se
 	sb.collision_mask = 0
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(0.44, 0.6, 0.44)
+	bs.size = Vector3(0.44, 0.47, 0.44)          # (up to the top of the seat: blood lands on it)
 	cs.shape = bs
 	sb.add_child(cs)
 	sb.set_meta("game_seat", {"table": table_i, "seat": seat_i})
 	sb.set_meta("surface", "wood")
 	c["mb"].nav_region.add_child(sb)
-	sb.global_transform = Transform3D(b, at + Vector3(0, 0.3, 0))
+	sb.global_transform = Transform3D(b, at + Vector3(0, 0.235, 0))
 
 
 static func _event_interior(c: Dictionary) -> void:
@@ -415,33 +415,25 @@ static func _event_interior(c: Dictionary) -> void:
 	var hall_x := (x0 + float(c["bay_x0"])) * 0.5
 	var centre := Vector3(hall_x, f0, (z0 + z1) * 0.5 + 0.3)
 	_game_table(c, centre, 5, "event", true)
-	mb.event_hall = {"center": centre, "door": Vector3(x0 + (x1 - x0) * 0.36 + 0.9, f0, z0 - 0.8)}
-	# The bar: a counter, a shelf of bottles behind it.
-	geo.block(Vector3(x0 + T, f0, z0 + 2.6), Vector3(x0 + T + 0.6, f0 + 1.05, z1 - 3.0), dark_wood)
-	geo.block(Vector3(x0 + T - 0.05, f0 + 1.05, z0 + 2.55), Vector3(x0 + T + 0.7, f0 + 1.1, z1 - 2.95), wood)
-	var rng: RandomNumberGenerator = c["rng"]
-	var body := CylinderMesh.new()
-	body.top_radius = 0.034
-	body.bottom_radius = 0.034
-	body.height = 0.17
-	var neck := CylinderMesh.new()
-	neck.top_radius = 0.012
-	neck.bottom_radius = 0.03
-	neck.height = 0.08
-	for i in 7:
-		var gc: Color = [Color(0.15, 0.35, 0.12), Color(0.35, 0.2, 0.06), Color(0.7, 0.75, 0.72)][rng.randi() % 3]
-		var rb: RigidBody3D = preload("res://scripts/world/bottle.gd").make(Mat.glass(gc), gc, body, neck)
-		rb.position = Vector3(x0 + T + 0.3, f0 + 1.2, z0 + 3.0 + i * 0.55 + rng.randf_range(-0.1, 0.1))
-		mb.add_child(rb)
+	mb.event_hall = {"center": centre, "door": Vector3(x0 + (x1 - x0) * 0.36 + 0.9, f0, z0 - 0.8),
+			"bounds": [x0 + T, float(c["bay_x0"]) - 0.2, z0 + T, z1 - T]}
+	_bar(c, dark_wood, wood)
 	# Benches along the back and the east wall for the ones who come to watch.
 	for i in 2:
 		var bz := z1 - 1.2
 		var bxx := hall_x - 2.4 + i * 3.2
 		Furn._sofa(mb, geo, Vector3(bxx, f0, bz), PI, Mat.standard("sofa_brown", Color(0.28, 0.18, 0.12), 0.95), centre + Vector3(0, 1.0, 0))
 	Furn._rug(mb, centre + Vector3(0, 0.004, 0), Vector2(4.2, 4.2), Color(0.35, 0.08, 0.07))
-	# Crates and a stack of chairs in a corner.
-	geo.box(Vector3(float(c["bay_x0"]) - 1.0, f0 + 0.3, z0 + 1.0), Vector3(0.9, 0.6, 0.6), dark_wood)
-	geo.box(Vector3(float(c["bay_x0"]) - 1.0, f0 + 0.85, z0 + 1.0), Vector3(0.7, 0.5, 0.5), wood, Vector3(0, 0.3, 0))
+	# Crates in the corner by the bar.
+	geo.box(Vector3(x0 + T + 0.6, f0 + 0.3, z0 + T + 0.5), Vector3(0.9, 0.6, 0.6), dark_wood)
+	geo.box(Vector3(x0 + T + 0.6, f0 + 0.85, z0 + T + 0.5), Vector3(0.7, 0.5, 0.5), wood, Vector3(0, 0.3, 0))
+	# The way down to the cellar (where the cleaners come up from), and the
+	# dumpster out the back.
+	_cellar(c, Vector3(float(c["bay_x0"]) - 1.0, f0, z0 + T))
+	var bin_at := Vector3((x0 + x1) * 0.5 + 2.2, 0.0, z1 + 1.9)
+	mb._dumpster(bin_at, 0.0)
+	mb.event_hall["dumpster"] = Vector3(bin_at.x, mb._gy(bin_at.x, bin_at.z), bin_at.z)
+	mb.event_hall["back_door"] = Vector3((x0 + x1) * 0.5, f0, z1 + 0.6)
 	# --- First floor: a room with a table for three, a sofa and a bed-room.
 	var f1: float = floors[1]
 	var part_x := x0 + (float(c["bay_x0"]) - x0) * 0.55
@@ -462,6 +454,151 @@ static func _event_interior(c: Dictionary) -> void:
 	Furn._mattress(mb, geo, Vector3(x0 + 2.2, f2, z0 + 1.6), 0.1, cloth, Mat.standard("blanket2", Color(0.2, 0.26, 0.33), 0.95))
 	Furn._mattress(mb, geo, Vector3(x0 + 4.4, f2, z0 + 1.9), -0.2, cloth, Mat.standard("blanket", Color(0.35, 0.18, 0.15), 0.95))
 	Furn._crate_table(geo, Vector3(x0 + 5.5, f2, z1 - 2.0), dark_wood)
+
+
+## The bar along the west wall of the hall: a panelled counter with a
+## brass foot rail and a top that overhangs, shelves of bottles on the wall
+## behind, the bartender's place between them (in at the far end), and
+## tall stools along the front. Recorded in event_hall["bar"].
+static func _bar(c: Dictionary, dark_wood: Material, wood: Material) -> void:
+	var geo = c["geo"]
+	var mb: Node3D = c["mb"]
+	var x0: float = c["x0"]
+	var z0: float = c["z0"]
+	var z1: float = c["z1"]
+	var f0: float = c["floors"][0]
+	var rng: RandomNumberGenerator = c["rng"]
+	var brass := Mat.standard("brass_rail", Color(0.7, 0.55, 0.25), 0.3, 0.9)
+	var cz0 := z0 + 2.6
+	var cz1 := z1 - 3.2
+	var cx0 := x0 + T + 1.05              # the counter's back face
+	var cx1 := cx0 + 0.6                  # its front, to the room
+	# Counter: the body, a darker plinth, panels on the front, the top.
+	geo.block(Vector3(cx0, f0, cz0), Vector3(cx1, f0 + 1.02, cz1), dark_wood)
+	geo.block(Vector3(cx1, f0, cz0), Vector3(cx1 + 0.03, f0 + 0.12, cz1), c["dark"])
+	var n_pan := int((cz1 - cz0) / 0.8)
+	for i in n_pan:
+		var pz := cz0 + (i + 0.5) * (cz1 - cz0) / n_pan
+		geo.box(Vector3(cx1 + 0.012, f0 + 0.58, pz), Vector3(0.02, 0.6, (cz1 - cz0) / n_pan - 0.12), wood, Vector3.ZERO, false)
+	geo.block(Vector3(cx0 - 0.05, f0 + 1.02, cz0 - 0.05), Vector3(cx1 + 0.12, f0 + 1.07, cz1 + 0.05), wood)
+	# The foot rail on its brackets.
+	var rail := CylinderMesh.new()
+	rail.top_radius = 0.022
+	rail.bottom_radius = 0.022
+	rail.height = cz1 - cz0
+	geo.add_mesh(rail, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(cx1 + 0.16, f0 + 0.22, (cz0 + cz1) * 0.5)), brass)
+	for i in 4:
+		var bz := lerpf(cz0 + 0.2, cz1 - 0.2, float(i) / 3.0)
+		geo.box(Vector3(cx1 + 0.09, f0 + 0.22, bz), Vector3(0.14, 0.02, 0.02), brass, Vector3.ZERO, false)
+	# The shelves on the wall behind, bottles on them (all kinds), a mirror.
+	var wall_x := x0 + T
+	var glass_cols := [Color(0.15, 0.35, 0.12), Color(0.35, 0.2, 0.06), Color(0.7, 0.75, 0.72), Color(0.4, 0.08, 0.06), Color(0.55, 0.45, 0.2)]
+	geo.box(Vector3(wall_x + 0.02, f0 + 1.75, (cz0 + cz1) * 0.5), Vector3(0.02, 0.7, cz1 - cz0 - 0.6), Mat.glass(Color(0.35, 0.37, 0.38)), Vector3.ZERO, false)
+	for k in 3:
+		var sy := f0 + 1.05 + k * 0.42
+		geo.block(Vector3(wall_x, sy - 0.03, cz0 + 0.1), Vector3(wall_x + 0.3, sy, cz1 - 0.1), dark_wood)
+		var bz := cz0 + 0.2
+		while bz < cz1 - 0.2:
+			var gc: Color = glass_cols[rng.randi() % glass_cols.size()]
+			var h := rng.randf_range(0.2, 0.32)
+			var bm := CylinderMesh.new()
+			bm.top_radius = 0.032
+			bm.bottom_radius = 0.034
+			bm.height = h * 0.7
+			bm.radial_segments = 10
+			var nm := CylinderMesh.new()
+			nm.top_radius = 0.011
+			nm.bottom_radius = 0.03
+			nm.height = h * 0.3
+			nm.radial_segments = 8
+			var bx := wall_x + 0.15 + rng.randf_range(-0.05, 0.05)
+			geo.add_mesh(bm, Transform3D(Basis(), Vector3(bx, sy + h * 0.35, bz)), Mat.glass(gc))
+			geo.add_mesh(nm, Transform3D(Basis(), Vector3(bx, sy + h * 0.85, bz)), Mat.glass(gc))
+			bz += rng.randf_range(0.09, 0.16)
+	# Stools along the front: a round seat on a post, a ring for the feet.
+	var stools := []
+	var n_st := 5
+	for i in n_st:
+		var sz := lerpf(cz0 + 0.45, cz1 - 0.45, float(i) / (n_st - 1))
+		var sp := Vector3(cx1 + 0.55, f0, sz)
+		var seat := CylinderMesh.new()
+		seat.top_radius = 0.19
+		seat.bottom_radius = 0.17
+		seat.height = 0.06
+		geo.add_mesh(seat, Transform3D(Basis(), sp + Vector3(0, 0.74, 0)), Mat.standard("stool_top", Color(0.15, 0.08, 0.06), 0.6))
+		var post := CylinderMesh.new()
+		post.top_radius = 0.03
+		post.bottom_radius = 0.03
+		post.height = 0.72
+		geo.add_mesh(post, Transform3D(Basis(), sp + Vector3(0, 0.36, 0)), brass)
+		var ring := TorusMesh.new()
+		ring.inner_radius = 0.15
+		ring.outer_radius = 0.17
+		geo.add_mesh(ring, Transform3D(Basis(), sp + Vector3(0, 0.3, 0)), brass)
+		var foot := CylinderMesh.new()
+		foot.top_radius = 0.12
+		foot.bottom_radius = 0.2
+		foot.height = 0.03
+		geo.add_mesh(foot, Transform3D(Basis(), sp + Vector3(0, 0.015, 0)), c["dark"])
+		stools.append({"pos": sp, "seat_h": 0.77, "glass": Vector3(cx1 - 0.15, f0 + 1.07, sz)})
+	mb.event_hall["bar"] = {"stools": stools, "bartender": Vector3(x0 + T + 0.65, f0, (cz0 + cz1) * 0.5),
+			"in_at": Vector3(x0 + T + 0.65, f0, cz1 + 0.5), "wall_x": wall_x, "cz0": cz0, "cz1": cz1, "top_y": f0 + 1.07, "cx0": cx0, "cx1": cx1}
+
+
+## The cellar door in the hall's front corner: a concrete stair head with a
+## steel door (the stairs going down, dark, behind it). Locked to the
+## player; the cleaners come up through it and go back down.
+static func _cellar(c: Dictionary, at: Vector3) -> void:
+	var geo = c["geo"]
+	var mb: Node3D = c["mb"]
+	var conc: Material = c["wall"]
+	var dark: Material = c["dark"]
+	# The stair head: a box 1.6 x 1.8 against the front wall, door on its west side.
+	var bx0 := at.x - 0.8
+	var bx1 := at.x + 0.8
+	var bz0 := at.z
+	var bz1 := at.z + 1.8
+	var top := at.y + 2.3
+	geo.block(Vector3(bx0 + 0.15, at.y, bz1 - 0.15), Vector3(bx1, top, bz1), conc)          # back
+	geo.block(Vector3(bx1 - 0.15, at.y, bz0), Vector3(bx1, top, bz1), conc)                   # east
+	geo.block(Vector3(bx0, top - 0.15, bz0), Vector3(bx1, top, bz1), conc)                    # roof
+	geo.block(Vector3(bx0, at.y + 2.05, bz0), Vector3(bx0 + 0.15, top, bz1), conc)            # over the door
+	geo.block(Vector3(bx0, at.y, bz1 - 0.15), Vector3(bx0 + 0.15, top, bz1), conc)            # jamb
+	# Inside: black, steps going down out of sight.
+	var black := Mat.standard("cellar_dark", Color(0.01, 0.01, 0.012), 1.0)
+	geo.box(Vector3(at.x + 0.05, at.y + 0.004, (bz0 + bz1) * 0.5), Vector3(1.3, 0.008, 1.45), black, Vector3.ZERO, false)
+	for k in 4:
+		geo.box(Vector3(at.x + 0.3 - k * 0.0, at.y - 0.09 - k * 0.18, bz0 + 0.3 + k * 0.28), Vector3(0.9, 0.04, 0.28), dark, Vector3.ZERO, false)
+	# (the doorway is closed to the player by an invisible wall; the door leaf swings)
+	geo.add_collision_box(Transform3D(Basis(), Vector3(bx0 + 0.075, at.y + 1.0, (bz0 + bz1 - 0.15) * 0.5)), Vector3(0.15, 2.0, bz1 - bz0 - 0.15))
+	var hinge := Node3D.new()
+	hinge.name = "CellarDoor"
+	mb.add_child(hinge)
+	hinge.position = Vector3(bx0 + 0.03, at.y, bz0 + 0.05)
+	var steel := Mat.standard("cellar_door", Color(0.22, 0.24, 0.23), 0.6, 0.6)
+	var leaf := MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.05, 2.0, bz1 - bz0 - 0.22)
+	leaf.mesh = lm
+	leaf.material_override = steel
+	leaf.position = Vector3(0, 1.0, lm.size.z * 0.5)
+	hinge.add_child(leaf)
+	var handle := MeshInstance3D.new()
+	var hm := BoxMesh.new()
+	hm.size = Vector3(0.06, 0.03, 0.14)
+	handle.mesh = hm
+	handle.material_override = Mat.rust()
+	handle.position = Vector3(-0.05, 1.0, lm.size.z - 0.12)
+	hinge.add_child(handle)
+	var plate := Label3D.new()
+	plate.text = "ПОСТОРОННИМ ВХОД ВОСПРЕЩЁН"
+	plate.font_size = 22
+	plate.modulate = Color(0.75, 0.1, 0.08)
+	plate.position = Vector3(-0.04, 1.6, lm.size.z * 0.5)
+	plate.rotation = Vector3(0, -PI * 0.5, 0)
+	hinge.add_child(plate)
+	mb.event_hall["cellar"] = {"door": hinge, "out": Vector3(bx0 - 0.7, at.y, (bz0 + bz1) * 0.5),
+			"in": Vector3(at.x, at.y, (bz0 + bz1) * 0.5)}
 
 
 static func _flats_interior(c: Dictionary) -> void:

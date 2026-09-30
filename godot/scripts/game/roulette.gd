@@ -366,14 +366,11 @@ func _player_pose(which: String) -> Transform3D:
 		var b := Basis.looking_at(Vector3(-1.0, -0.05, -0.12).normalized(), Vector3.UP)
 		var local := Transform3D(b, Vector3(0.0, 0.0, 0.0))
 		local.origin = Vector3(0.105, 0.0, -0.085) - b * Revolver.MUZZLE
-		if Game.bodycam:
-			# (the head is up above the chest camera, and back from it)
-			local.origin += Vector3(0.0, 0.3, 0.17)
 		var shake := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * 0.0012
 		local.origin += shake
 		return cx * local
 	var fb := Basis.looking_at(Vector3(-0.35, 0.05, -1.0).normalized(), Vector3.UP) * Basis(Vector3(0, 0, 1), -0.5)
-	return cx * Transform3D(fb, Vector3(0.06, -0.2, -0.36) + (Vector3(0.0, 0.16, -0.06) if Game.bodycam else Vector3.ZERO))
+	return cx * Transform3D(fb, Vector3(0.06, -0.2, -0.36))
 
 
 ## In the bot's right hand: down by his side, or at his own temple (and the

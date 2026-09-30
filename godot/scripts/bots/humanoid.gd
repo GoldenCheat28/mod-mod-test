@@ -887,6 +887,9 @@ func _body_wear() -> void:
 	if has_meta("judge"):
 		_briefcase()
 		return
+	if has_meta("bartender") or has_meta("cleaner"):
+		_apron(has_meta("cleaner"))
+		return
 	var gold := StandardMaterial3D.new()
 	gold.albedo_color = Color(0.85, 0.65, 0.2) if rng.randf() < 0.6 else Color(0.75, 0.76, 0.78)
 	gold.metallic = 1.0
@@ -951,6 +954,27 @@ func _body_wear() -> void:
 					Vector3(0.1 * sx, 0.14, -0.075), Vector3(0.105 * sx, 0.06, _front_z(0.06, 0.105) - 0.008),
 					Vector3(0.115 * sx, -0.04, _front_z(-0.04, 0.115) - 0.008), Vector3(0.14 * sx, -0.12, -0.075)]
 			_band(chest, s_pts, 0.036, 0.008, bag, Vector3(0.06 * sx, 0.04, 0.0))
+
+
+## A long apron over the front (the bartender's white-ish, the cleaners'
+## rubber, dark), tied at the waist.
+func _apron(rubber: bool) -> void:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.1, 0.12, 0.1) if rubber else Color(0.78, 0.76, 0.7)
+	m.roughness = 0.35 if rubber else 0.9
+	var ab: Node3D = parts[part_index["abdomen"]] if part_index.has("abdomen") else chest
+	var top := BoxMesh.new()
+	top.size = Vector3(0.26, 0.24, 0.012) * scale_factor
+	_mesh(chest, top, m, Vector3(0, 0.02, _front_z(0.02, 0.0) - 0.008))
+	var mid := BoxMesh.new()
+	mid.size = Vector3(0.32, 0.26, 0.012) * scale_factor
+	_mesh(ab, mid, m, Vector3(0, -0.02, -0.105))
+	var low := BoxMesh.new()
+	low.size = Vector3(0.36, 0.34, 0.012) * scale_factor
+	_mesh(pelvis, low, m, Vector3(0, -0.14, -0.115))
+	var tie := BoxMesh.new()
+	tie.size = Vector3(0.34, 0.018, 0.2) * scale_factor
+	_mesh(ab, tie, m, Vector3(0, 0.02, 0.0))
 
 
 ## The judge's case, in his right hand: black leather, a handle, the metal

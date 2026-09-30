@@ -14,6 +14,8 @@ extends Node
 ## his place.
 
 const Game_ = preload("res://scripts/game/roulette_game.gd")
+const Bar = preload("res://scripts/game/bar.gd")
+const Crew = preload("res://scripts/game/cleanup_crew.gd")
 
 const EVENT_EVERY := 90.0
 const EVENT_PRIZE := 3000
@@ -25,6 +27,10 @@ var judge: Node3D = null
 var event_in := EVENT_EVERY      # seconds to the next event
 var _games := {}                 # table index -> roulette_game
 var _bot_game_in := 50.0
+var bar: Node = null
+var crew: Node = null
+var _crew_in := -1.0             # seconds to the cleaners coming up (after the event)
+var _drink_in := 30.0            # to someone off the street dropping in for a drink
 
 
 func _tables() -> Array:
@@ -42,8 +48,31 @@ func _event_table() -> int:
 func _physics_process(delta: float) -> void:
 	if Game.player == null or (Net.active and not Net.is_host):
 		return
+	var hall: Dictionary = Game.main.map.event_hall if Game.main and Game.main.map else {}
+	if bar == null and hall.has("bar"):
+		bar = Bar.new()
+		bar.name = "Bar"
+		add_child(bar)
+		bar.setup(hall["bar"])
+	if bar:
+		bar.ensure_bartender()
+		_drink_in -= delta
+		if _drink_in <= 0.0:
+			_drink_in = randf_range(40.0, 75.0)
+			var who := _free_bots(hall["center"], 1, 35.0)
+			if not who.is_empty():
+				bar.visit(who[0])
+	# The cleaners, a little after the event is over.
+	if _crew_in > 0.0:
+		_crew_in -= delta
+		if _crew_in <= 0.0 and (crew == null or not is_instance_valid(crew)) and hall.has("cellar"):
+			crew = Crew.new()
+			crew.name = "CleanupCrew"
+			add_child(crew)
+			crew.setup(hall)
 	var ev := _event_table()
-	if ev >= 0 and not _games.has(ev):
+	# (not while the cleaners are still at it)
+	if ev >= 0 and not _games.has(ev) and not (crew and is_instance_valid(crew)) and _crew_in <= 0.0:
 		event_in -= delta
 		if event_in <= 0.0:
 			event_in = EVENT_EVERY
@@ -226,6 +255,13 @@ func game_over(g: Node) -> void:
 			_games.erase(k)
 			if k == _event_table():
 				event_in = EVENT_EVERY
+				_crew_in = 6.0
+	# The winner (a bot) goes for a drink.
+	var won: Dictionary = g.get("_winner")
+	if bar and not won.is_empty() and not won.get("player", false):
+		var wb: Node3D = won["who"]
+		if is_instance_valid(wb) and wb.alive:
+			bar.visit.call_deferred(wb)
 
 
 # --- Who is free ---------------------------------------------------------------------------------
@@ -233,7 +269,8 @@ func game_over(g: Node) -> void:
 func _free_bots(centre: Vector3, n: int, within: float) -> Array:
 	var cands: Array = []
 	for b in Game.bots:
-		if not is_instance_valid(b) or b == judge or b.has_meta("trader") or b.has_meta("puppet"):
+		if not is_instance_valid(b) or b == judge or b.has_meta("trader") or b.has_meta("puppet") \
+				or b.has_meta("bartender") or b.has_meta("cleaner") or float(b.get_meta("late_until", -1.0)) > Game.clock:
 			continue
 		if not b.alive or not b.conscious or b.fallen or b.cuffed or b.weapon:
 			continue

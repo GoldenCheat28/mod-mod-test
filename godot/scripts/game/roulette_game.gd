@@ -408,6 +408,7 @@ func _gather() -> void:
 		# Those not there by now are out of it (at the event, others come instead).
 		for p in seats_taken.duplicate():
 			if not p["sat"] and not p["player"]:
+				(p["who"] as Node3D).set_meta("late_until", Game.clock + 60.0)
 				_release_bot(p["who"])
 				seats_taken.erase(p)
 		if _is_event():
@@ -439,8 +440,8 @@ func stance_for(b: Node3D, delta: float) -> void:
 	var seat: int = p["seat"]
 	var at: Vector3 = _seat(seat)["pos"]
 	var me: Vector3 = b.position_ground()
-	if p["out"]:
-		return
+	if p["out"] or (state == "collect" and p == _winner):
+		return                          # (the winner gathering the money: _collect moves him)
 	if not p["sat"]:
 		var stand := _stand_point(seat)
 		var path: PackedVector3Array = p["path"]
@@ -452,6 +453,17 @@ func stance_for(b: Node3D, delta: float) -> void:
 				path = PackedVector3Array([stand])
 			p["path"] = path
 			p["pi"] = 0
+		# Far off and nobody watching: he is simply nearer (somewhere on his
+		# way that the player cannot see either) - the last of it he walks.
+		p["warp_t"] = float(p.get("warp_t", 0.0)) + delta
+		if float(p["warp_t"]) > 2.0 and not p.get("warped", false) and path.size() > 1:
+			p["warp_t"] = 0.0
+			var to := _warp_point(path, b)
+			if to != Vector3.INF:
+				_warp(b, to)
+				p["warped"] = true
+				p["path"] = PackedVector3Array()
+				return
 		var i: int = p["pi"]
 		while i < path.size() and Vector2(path[i].x - me.x, path[i].z - me.z).length() < 0.35:
 			i += 1
@@ -476,6 +488,15 @@ func stance_for(b: Node3D, delta: float) -> void:
 				if float(p["stuck_t"]) > 3.0:
 					p["stuck_t"] = 0.0
 					p["path"] = PackedVector3Array()
+					p["stuck_n"] = int(p.get("stuck_n", 0)) + 1
+					if int(p["stuck_n"]) >= 3:
+						# Can't get here: someone else instead (and not him again for a while).
+						b.set_meta("late_until", Game.clock + 60.0)
+						seats_taken.erase(p)
+						_release_bot(b)
+						if _manager and _manager.has_method("refill") and _is_event():
+							_manager.refill.call_deferred(self)
+						return
 					b.move_velocity = -to.normalized() * 0.8 + to.normalized().cross(Vector3.UP) * 0.8
 					return
 			var path_left := left
@@ -501,6 +522,49 @@ func stance_for(b: Node3D, delta: float) -> void:
 	b.hand_goal["l"] = Vector3.INF
 	if cur.is_empty() or cur["who"] != b or not state in ["raise", "wait", "pull", "lower", "pass"]:
 		b.hand_goal["r"] = Vector3.INF
+
+
+## A point on his path 3-9 m short of the chair, out of the player's sight
+## (and him out of it now), if he still has further than that to go.
+func _warp_point(path: PackedVector3Array, b: Node3D) -> Vector3:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or b._in_view():
+		return Vector3.INF
+	var left := 0.0
+	var me: Vector3 = b.position_ground()
+	var total := 0.0
+	var prev := me
+	for q in path:
+		total += prev.distance_to(q)
+		prev = q
+	if total < 12.0:
+		return Vector3.INF
+	var space: PhysicsDirectSpaceState3D = b.get_world_3d().direct_space_state
+	for k in range(path.size() - 1, 0, -1):
+		left += path[k].distance_to(path[k - 1])
+		if left < 3.0:
+			continue
+		if left > 9.0:
+			break
+		var q: Vector3 = path[k - 1]
+		var eye := q + Vector3.UP * 1.2
+		if eye.distance_to(cam.global_position) < 6.0:
+			continue
+		if cam.is_position_in_frustum(eye):
+			var rq := PhysicsRayQueryParameters3D.create(cam.global_position, eye, Game.LAYER_WORLD)
+			if space.intersect_ray(rq).is_empty():
+				continue                  # (in plain sight)
+		return q
+	return Vector3.INF
+
+
+func _warp(b: Node3D, to: Vector3) -> void:
+	var off: Vector3 = to + Vector3.UP * 0.05 - b.position_ground()
+	for part in b.parts:
+		part.global_position += off
+		part.linear_velocity = Vector3.ZERO
+		part.angular_velocity = Vector3.ZERO
+		part.reset_physics_interpolation()
 
 
 func _judge_stance(b: Node3D, delta: float) -> void:
@@ -614,7 +678,7 @@ func _hold_pose(p: Dictionary) -> Transform3D:
 	if p["player"]:
 		var cx: Transform3D = player.cam.global_transform
 		var fb := Basis.looking_at(Vector3(-0.35, 0.05, -1.0).normalized(), Vector3.UP) * Basis(Vector3(0, 0, 1), -0.5)
-		return cx * Transform3D(fb, Vector3(0.06, -0.2, -0.36) + (Vector3(0.0, 0.16, -0.06) if Game.bodycam else Vector3.ZERO))
+		return cx * Transform3D(fb, Vector3(0.06, -0.2, -0.36))
 	var b: Node3D = p["who"]
 	var s: float = b.scale_factor
 	var cb: Basis = b.chest.global_basis.orthonormalized()
@@ -629,8 +693,6 @@ func _temple_pose(p: Dictionary) -> Transform3D:
 		var cx: Transform3D = player.cam.global_transform
 		var b := Basis.looking_at(Vector3(-1.0, -0.05, -0.12).normalized(), Vector3.UP)
 		var local := Transform3D(b, Vector3(0.105, 0.0, -0.085) - b * Revolver.MUZZLE)
-		if Game.bodycam:
-			local.origin += Vector3(0.0, 0.3, 0.17)
 		local.origin += Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * 0.0012
 		return cx * local
 	var bot: Node3D = p["who"]
@@ -792,7 +854,7 @@ func _collect(delta: float) -> void:
 		_finish()
 		return
 	_stacks = _stacks.filter(func(s): return is_instance_valid(s) and not s.is_queued_for_deletion())
-	if _stacks.is_empty() or _t > 40.0:
+	if _stacks.is_empty() or _t > 70.0:
 		if _once("done"):
 			_judge_say(["%s забрал всё. На сегодня всё, господа." % _winner["name"], "Касса пуста. До следующей игры."].pick_random(), 3.0)
 			var pe = b.ai._persona()
@@ -810,13 +872,15 @@ func _collect(delta: float) -> void:
 	var to := Vector3(stand.x - me.x, 0.0, stand.z - me.z)
 	b.seat = Vector3.INF
 	b.posture = b.Posture.STAND
-	if to.length() > 0.3:
+	_flags["walk_t"] = float(_flags.get("walk_t", 0.0)) + delta
+	if to.length() > 0.3 and float(_flags["walk_t"]) < 8.0:
 		b.move_velocity = to.normalized() * 1.0
 		b.facing = (b.facing as Vector3).slerp(to.normalized(), minf(delta * 5.0, 1.0)).normalized()
 		_flags["grab_t"] = 0.0
 		return
 	b.move_velocity = Vector3.ZERO
-	b.facing = -out
+	var look_at := Vector3(sp.x - me.x, 0.0, sp.z - me.z)
+	b.facing = look_at.normalized() if look_at.length() > 0.05 else -out
 	b.hand_goal["r"] = sp
 	b.look_target = sp
 	b.has_look_target = true

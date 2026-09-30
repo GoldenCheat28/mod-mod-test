@@ -20,6 +20,26 @@ func _process(delta: float) -> void:
 	var tg: Node = Game.main.get_node_or_null("TableGames")
 	if tg == null:
 		return
+	if OS.get_environment("CREW") == "1" and _done.has("start") and int(t / 5.0) != int((t - delta) / 5.0) \
+			and (is_instance_valid(tg.crew) or not tg.bar.patrons.is_empty()):
+		tg.event_in = 9999.0
+		tg._bot_game_in = 9999.0
+		var dead := 0
+		for b in Game.bots:
+			if is_instance_valid(b) and not b.alive:
+				dead += 1
+		var line := "t=%.1f dead=%d" % [t, dead]
+		if is_instance_valid(tg.crew):
+			for w in tg.crew.workers:
+				if not is_instance_valid(w["who"]):
+					continue
+				var wb: Node3D = w["who"]
+				line += " | %s:%s/%s job=%d at %s" % [w["role"], w["state"], w.get("stage", ""), int(w["job"]), wb.position_ground().snapped(Vector3.ONE * 0.1)]
+		line += " || bar: " + str(tg.bar.patrons.map(func(p): return [p["sat"], p["served"]]))
+		print(line)
+		if t > 700.0 or (_done.has("over") and not is_instance_valid(tg.crew) and t > float(_done.get("over_t", 0.0)) + 60.0):
+			get_tree().quit()
+		return
 	if t > 1.0 and _g == null and not _done.has("start"):
 		_done["start"] = true
 		Engine.time_scale = 3.0 if OS.get_environment("OUT") == "" else 1.0
@@ -29,7 +49,7 @@ func _process(delta: float) -> void:
 			tg.event_in = 0.0
 	if _g == null:
 		for c in tg.get_children():
-			if c.has_method("stance_for"):
+			if c.has_method("add_player"):
 				_g = c
 				print("t=%.1f game at table %d kind=%s players=%d judge=%s" % [t, c.table_i, c.table.get("kind"), c.seats_taken.size(), c.judge != null])
 				if OS.get_environment("JOIN") == "1":
@@ -39,10 +59,34 @@ func _process(delta: float) -> void:
 					Game.player.global_position = s + (s - cc).normalized() * 0.8 + Vector3.UP * 0.1
 					c.add_player(Game.player, seat)
 		return
-	if not is_instance_valid(_g):
-		print("t=%.1f game node gone" % t)
-		get_tree().quit()
-		return
+	if not is_instance_valid(_g) or _g.over:
+		if not _done.has("over_t"):
+			_done["over_t"] = t
+		if OS.get_environment("CREW") == "1" and t - float(_done["over_t"]) < 200.0:
+			if int(t / 5.0) != int((t - delta) / 5.0):
+				var dead := 0
+				for b in Game.bots:
+					if is_instance_valid(b) and not b.alive:
+						dead += 1
+				var line := "t=%.1f dead=%d" % [t, dead]
+				if is_instance_valid(tg.crew):
+					for w in tg.crew.workers:
+						if not is_instance_valid(w["who"]):
+							continue
+						var wb: Node3D = w["who"]
+						line += " | %s:%s/%s job=%d at %s" % [w["role"], w["state"], w.get("stage", ""), int(w["job"]), wb.position_ground().snapped(Vector3.ONE * 0.1)]
+				if tg.bar:
+					line += " || bar: " + str(tg.bar.patrons.map(func(p): return [p["sat"], p["served"]]))
+					line += " bartender=" + str(tg.bar.bartender != null)
+				print(line)
+			if _g != null and is_instance_valid(_g) and _g.over and not _done.has("over"):
+				pass
+			else:
+				return
+		elif not is_instance_valid(_g):
+			print("t=%.1f game node gone" % t)
+			get_tree().quit()
+			return
 	if _g.state != _last_state:
 		_last_state = _g.state
 		var sat := 0
@@ -75,7 +119,7 @@ func _process(delta: float) -> void:
 			if is_instance_valid(s):
 				money += 1
 		print("t=%.1f OVER winner=%s stacks_left=%d" % [t, _g._winner.get("name", "-"), money])
-	if t > 400.0:
+	if t > (750.0 if OS.get_environment("CREW") == "1" else 400.0):
 		print("timeout")
 		get_tree().quit()
 
