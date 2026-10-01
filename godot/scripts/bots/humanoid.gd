@@ -1038,6 +1038,69 @@ func _physics_process(d: float) -> void: # @@PROF@@
 	Game.prof["max humanoid._physics_process"] = maxi(Game.prof.get("max humanoid._physics_process", 0), __d)
 
 
+## Walking among people: who is coming the other way, or standing in the
+## way, is seen a few steps ahead and gone round - keeping to the right of
+## someone coming towards him, round the side of one standing still - and
+## he slows a little when it is close, instead of walking into him and
+## shoving. (Whatever set the walk - his own mind or a game he is in -
+## this is the last word on it.)
+var _avoid_off := Vector3.ZERO
+static var _no_avoid := OS.get_environment("AVOID_OFF") == "1"       # (dev: to compare)
+
+
+func _avoid_people(want: Vector3, delta: float) -> Vector3:
+	var flat := Vector3(want.x, 0.0, want.z)
+	var speed := flat.length()
+	if speed < 0.2:
+		_avoid_off = Vector3.ZERO
+		return want
+	var dir := flat / speed
+	var right := dir.cross(Vector3.UP)
+	var me := pelvis.global_position
+	var push := Vector3.ZERO
+	var slow := 1.0
+	var others: Array = Game.bots
+	if Game.player and is_instance_valid(Game.player):
+		others = others + [Game.player]
+	for o in others:
+		if o == self or not is_instance_valid(o):
+			continue
+		var op: Vector3
+		var ov: Vector3
+		if o == Game.player:
+			op = o.global_position
+			ov = o.velocity
+		else:
+			if not o.alive or o.parts.is_empty() or o.fallen:
+				continue
+			op = o.pelvis.global_position
+			ov = o.move_velocity
+		var rel := Vector3(op.x - me.x, 0.0, op.z - me.z)
+		var d := rel.length()
+		if d > 3.5 or d < 0.01 or absf(op.y - me.y) > 1.5:
+			continue
+		# Where the two will be closest, going on as they are.
+		var vr := flat - Vector3(ov.x, 0.0, ov.z)
+		var vr2 := vr.length_squared()
+		if vr2 < 0.01:
+			continue
+		var t := clampf(rel.dot(vr) / vr2, 0.0, 2.0)
+		if t <= 0.0 and d > 0.9:
+			continue                     # (behind him, or going away)
+		var closest := (rel - vr * t).length()
+		if closest > 0.95:
+			continue
+		var w := (1.0 - closest / 0.95) * (1.0 - t / 2.0)
+		# To the right of him - unless he is already on that side.
+		var side := 1.0 if rel.dot(right) <= 0.05 else -1.0
+		push += right * side * w
+		if d < 1.2 and rel.dot(dir) > 0.3:
+			slow = minf(slow, lerpf(0.45, 1.0, clampf((d - 0.6) / 0.6, 0.0, 1.0)))
+	_avoid_off = _avoid_off.lerp(push, minf(delta * 5.0, 1.0))
+	var steer := (dir + _avoid_off * 1.3).normalized()
+	return Vector3(steer.x * speed * slow, want.y, steer.z * speed * slow)
+
+
 func _physics_process_real(delta: float) -> void:
 	if parts.is_empty():
 		return
@@ -1048,6 +1111,8 @@ func _physics_process_real(delta: float) -> void:
 	if _asleep_off_screen(delta):
 		return
 	_time += delta
+	if alive and ai != null and player_owner == null and not _no_avoid:
+		move_velocity = _avoid_people(move_velocity, delta)
 	_update_health(delta)
 	_update_state(delta)
 	_compose_pose(delta)
