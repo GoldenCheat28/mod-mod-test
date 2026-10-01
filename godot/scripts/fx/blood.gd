@@ -17,6 +17,7 @@ extends Node3D
 
 const BT = preload("res://scripts/fx/blood_tex.gd")
 const BloodCanvas = preload("res://scripts/fx/blood_canvas.gd")
+const BloodSplash = preload("res://scripts/fx/blood_splash.gd")
 const Tex = preload("res://scripts/world/textures.gd")
 
 const MAX_DROPS := 560
@@ -165,6 +166,7 @@ var _mist_i := 0
 var _orm_wet: Texture2D
 var _orm_dry: Texture2D
 var _canvas: BloodCanvas
+var splash: Node3D               # the 2D splash at a hit (blood_splash.gd)
 
 
 ## The clock the blood shaders age blood by (their `blood_time`).
@@ -181,6 +183,9 @@ func _ready() -> void:
 	_canvas = BloodCanvas.new()
 	_canvas.name = "Canvas"
 	add_child(_canvas)
+	splash = BloodSplash.new()
+	splash.name = "Splash"
+	add_child(splash)
 	_orm_dry = BT.orm(false)
 	# Warm the texture cache now rather than on the first shot.
 	for v in SPARE:
@@ -215,6 +220,8 @@ func on_hit(bot, part: RigidBody3D, point: Vector3, dir: Vector3, weapon: String
 	var graze := clampf(slide.length(), 0.0, 1.0)
 	var slide_n := slide.normalized() if graze > 0.05 else Vector3.ZERO
 	_body_stamp(part, point, entry_n, dir, ws, ws * (1.0 + graze * 1.2), "wound", 0)
+	# The burst where it went in: thrown back out the way it came.
+	splash.splash(point, (entry_n - dir * 0.6).normalized(), 0.3 if pellet else 0.42)
 	# Then the stain spreads out from it through the clothes over the next
 	# seconds (the more it bleeds, the wider).
 	if bot.has_method("bloom_blood"):
@@ -231,6 +238,7 @@ func on_hit(bot, part: RigidBody3D, point: Vector3, dir: Vector3, weapon: String
 		var ex_n: Vector3 = (sxf.basis * (_shape_project(cs.shape, sxf.affine_inverse() * exit)[1] as Vector3)).normalized()
 		var es := 0.09 if pellet else 0.14
 		_body_stamp(part, exit, ex_n, dir, es, es, "splat", randi() % SPARE)
+		splash.splash(exit, dir, 0.45 if pellet else 0.7, 0.38)
 		if bot.has_method("bloom_blood"):
 			bot.bloom_blood(part, exit, es * 1.3, 3.0, 0.8)
 
@@ -1524,6 +1532,7 @@ func exit_splatter(origin: Vector3, dir: Vector3, strength := 1.0, ignore: Array
 	strength *= 3.0
 	var space := get_world_3d().direct_space_state
 	var d := dir.normalized()
+	splash.splash(origin, d, clampf(0.55 * strength, 0.8, 1.6), 0.45)
 	var helper := Vector3.UP if absf(d.y) < 0.95 else Vector3.RIGHT
 	var fwd := Basis.looking_at(d, helper)
 	var mask := Game.LAYER_WORLD | Game.LAYER_PROPS

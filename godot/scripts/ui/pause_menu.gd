@@ -68,7 +68,7 @@ func _input(event: InputEvent) -> void:
 	# (Esc first closes whatever else is open: the bag, a talk, the shop...)
 	var p = Game.player
 	if p and is_instance_valid(p) and "_inv_ui" in p and p._inv_ui != null and (p._inv_ui.is_open or p._craft_ui.is_open
-			or p.bench != null or (p._shop_ui != null and p._shop_ui.is_open) or (p._dialog_ui != null and p._dialog_ui.is_open)):
+			or p.bench != null or (p._shop_ui != null and p._shop_ui.is_open) or (p._trade_ui != null and p._trade_ui.is_open) or (p._dialog_ui != null and p._dialog_ui.is_open)):
 		return
 	open()
 	get_viewport().set_input_as_handled()

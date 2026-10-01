@@ -144,6 +144,7 @@ var _inv_ui: Control
 var _craft_ui: Control
 var bench: Node3D = null            # making something with the hands (craft_bench.gd)
 var _shop_ui: Control
+var _trade_ui: Control
 var _dialog_ui: Control
 var _note: Label                   # a short message on screen
 var _note_t := 0.0
@@ -298,6 +299,10 @@ func _ready() -> void:
 	_shop_ui = preload("res://scripts/ui/shop_ui.gd").new()
 	_shop_ui.inv = inventory
 	ui.add_child(_shop_ui)
+	_trade_ui = preload("res://scripts/ui/trade_ui.gd").new()
+	_trade_ui.inv = inventory
+	_trade_ui.player = self
+	ui.add_child(_trade_ui)
 	_dialog_ui = preload("res://scripts/ui/dialog_ui.gd").new()
 	_dialog_ui.inv = inventory
 	_dialog_ui.player = self
@@ -335,7 +340,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("craft") and roulette == null and not _inv_ui.is_open:
 		_craft_ui.toggle()
 		return
-	if _craft_ui.is_open or _shop_ui.is_open or _dialog_ui.is_open:
+	if _craft_ui.is_open or _shop_ui.is_open or _trade_ui.is_open or _dialog_ui.is_open:
 		return
 	if event.is_action_pressed("inventory") and roulette == null:
 		_inv_ui.toggle()
@@ -820,7 +825,7 @@ func _process(d: float) -> void: # @@PROF@@
 func _process_real(delta: float) -> void:
 	_time += delta
 	# (a menu open blocks the fire button until it has been let go outside it)
-	if not Game.is_mouse_captured() or _inv_ui.is_open or _radial.is_open or _craft_ui.is_open or _shop_ui.is_open or _dialog_ui.is_open or bench != null:
+	if not Game.is_mouse_captured() or _inv_ui.is_open or _radial.is_open or _craft_ui.is_open or _shop_ui.is_open or _trade_ui.is_open or _dialog_ui.is_open or bench != null:
 		_fire_blocked = true
 	elif not Input.is_action_pressed("fire"):
 		_fire_blocked = false
@@ -3607,7 +3612,7 @@ func open_dialog(b: Node3D, line := "", page := "main") -> void:
 
 ## In the middle of something that a talk should not break into.
 func is_busy() -> bool:
-	return _dialog_ui.is_open or _inv_ui.is_open or _craft_ui.is_open or _shop_ui.is_open or _radial.is_open or bench != null \
+	return _dialog_ui.is_open or _inv_ui.is_open or _craft_ui.is_open or _shop_ui.is_open or _trade_ui.is_open or _radial.is_open or bench != null \
 			or roulette != null or _ragdoll != null or _dead
 
 

@@ -147,7 +147,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed:
 		# (not while a menu such as the bag is open and wants the mouse)
 		var menu_open: bool = player != null and "_inv_ui" in player and player._inv_ui != null and (player._inv_ui.is_open or player._craft_ui.is_open or player.bench != null
-				or (player._shop_ui != null and player._shop_ui.is_open) or (player._dialog_ui != null and player._dialog_ui.is_open))
+				or (player._shop_ui != null and player._shop_ui.is_open) or (player._trade_ui != null and player._trade_ui.is_open) or (player._dialog_ui != null and player._dialog_ui.is_open))
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not menu_open and not get_tree().paused:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			get_viewport().set_input_as_handled()

@@ -111,8 +111,10 @@ func _show(page: String) -> void:
 					_show("main")])
 			_opts.append(["Поговорить", func(): _talk()])
 			_opts.append(["Спросить...", func(): _show("ask")])
-			_opts.append(["Предложить вещь (продать)", func(): _show("sell_pick")])
-			_opts.append(["Отдать вещь", func(): _show("give_pick")])
+			_opts.append(["Торговать / обмен", func():
+				var b := bot
+				close()
+				player._trade_ui.open(b)])
 			_opts.append(["Попросить об одолжении...", func(): _show("favour")])
 			_opts.append(["Сыграем в рулетку?", func(): _roulette_ask()])
 			_opts.append(["Пока", func(): _bye()])
@@ -151,6 +153,17 @@ func _show(page: String) -> void:
 			_opts.append(["[-50]", func(): _price_by(-50)])
 			_opts.append(["Предложить за %d ₽" % _price, func(): _offer()])
 			_opts.append(["Назад", func(): _show("sell_pick")])
+		"needs":
+			for w in p.wants:
+				var id: String = w[0]
+				if not inv.has(id):
+					continue
+				var price := mini(int(int(w[1]) * 0.85), maxi(p.money, 0))
+				_opts.append(["Вот, держи %s - за %d ₽" % [p.item_name(id), price], func():
+					_pick = id
+					_sell(price)])
+				_opts.append(["Держи %s просто так" % p.item_name(id), func(): _give(id)])
+			_opts.append(["Назад", func(): _show("ask")])
 		"roulette":
 			_opts.append(["Стреляемся здесь", func(): _roulette_go(false)])
 			_opts.append(["Пойдём за стол", func(): _roulette_go(true)])
@@ -219,6 +232,11 @@ func _answer_needs() -> void:
 		_say = "Мне бы %s. Дам %d, если найдёшь." % [p.item_name(w[0]), int(w[1] * 0.85)]
 		if p.wants.size() > 1:
 			_say += " Ещё %s не помешает." % p.item_name(p.wants[1][0])
+		# What of it the player has on him: straight to handing it over.
+		for w2 in p.wants:
+			if inv.has(w2[0]):
+				_show("needs")
+				return
 	_show("ask")
 
 

@@ -504,6 +504,7 @@ func blood_materials() -> Array:
 ## A heavy blow to the whole body (buckshot): every part pushed along `dir`
 ## by `dv` m/s, whatever way he was going - he stops and goes over.
 func knockback(dir: Vector3, dv: float) -> void:
+	lod_wake()
 	wake()
 	var d := Vector3(dir.x, maxf(dir.y, 0.0) * 0.3, dir.z).normalized()
 	for p in parts:
@@ -523,6 +524,7 @@ func knockback(dir: Vector3, dv: float) -> void:
 ## and legs, he screams and runs, his clothes and skin blacken; long enough
 ## in it, he dies.
 func ignite(seconds: float) -> void:
+	lod_wake()
 	var was := burning > 0.0
 	burning = maxf(burning, seconds)
 	if was:
@@ -2020,6 +2022,7 @@ func _upright_torque(b: RigidBody3D, target: Basis, inertia: float, strength: fl
 # --- Damage ---------------------------------------------------------------------------------
 
 func receive_hit(body: RigidBody3D, point: Vector3, dir: Vector3, impulse: float, weapon: String) -> void:
+	lod_wake()
 	wake()
 	body.apply_impulse(dir * impulse, point - body.global_position)
 	if player_owner:
@@ -2152,6 +2155,7 @@ func knock_muscle(part: String, amount: float) -> void:
 ## Pressure wave from an explosion `d` metres away. Up close it throws the
 ## body, knocks it down, stuns or kills; further out it staggers and scares.
 func blast(origin: Vector3, power: float, d: float) -> void:
+	lod_wake()
 	wake()
 	_blast_until = Game.clock + 1.0
 	var k := power / maxf(d * d, 0.25)
@@ -2973,6 +2977,17 @@ func _ground_under(p: Vector3) -> float:
 
 
 ## Back to a fully physical body (see _update_squat_hold).
+## Put to sleep far off (crowd_lod.gd) and something reaches him (a shot
+## from afar, a blast): back into the world at once.
+func lod_wake() -> void:
+	if process_mode != Node.PROCESS_MODE_DISABLED or not alive:
+		return
+	process_mode = Node.PROCESS_MODE_INHERIT
+	var lod: Node = Game.main.get_node_or_null("CrowdLOD") if Game.main else null
+	if lod:
+		lod.asleep.erase(self)
+
+
 func wake() -> void:
 	if _off_frozen:
 		_off_frozen = false
