@@ -470,6 +470,16 @@ func _update_drops(dt: float) -> void:
 		d.vel += Vector3.DOWN * GRAVITY * dt
 		d.vel *= maxf(1.0 - drag * d.vel.length() * dt * 0.1, 0.5)
 		var to := d.pos + d.vel * dt
+		# Its first step: born inside something (a wound pressed to a table
+		# top, a cheek on the floor), a ray from there sees nothing and it
+		# would fall through - it lands on that thing's surface instead.
+		if d.age <= dt * 1.5:
+			var land := _inside_surface(space, d)
+			if not land.is_empty():
+				_drop_land(d, land)
+				_q.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_BOTS
+				_drops.remove_at(i)
+				continue
 		_q.from = d.pos
 		_q.to = to
 		_q.exclude = d.ignore if d.ignore_t > 0.0 else _no_ex
@@ -484,6 +494,27 @@ func _update_drops(dt: float) -> void:
 			_drops.remove_at(i)
 			continue
 		i += 1
+
+
+## If the drop starts inside level geometry or a prop: the surface it is
+## under (straight up out of it), as a hit; else {}.
+func _inside_surface(space: PhysicsDirectSpaceState3D, d: Drop) -> Dictionary:
+	_q.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS
+	_q.exclude = _no_ex
+	_q.hit_from_inside = true
+	_q.from = d.pos
+	_q.to = d.pos + Vector3.UP * 0.001
+	var inside := space.intersect_ray(_q)
+	_q.hit_from_inside = false
+	var out := {}
+	if not inside.is_empty() and (inside.normal as Vector3) == Vector3.ZERO:
+		_q.from = d.pos + Vector3.UP * 0.12
+		_q.to = d.pos + Vector3.DOWN * 0.02
+		out = space.intersect_ray(_q)
+		if out.is_empty():
+			out = {"position": d.pos, "normal": Vector3.UP, "collider": inside.collider}
+	_q.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_BOTS
+	return out
 
 
 func _drop_land(d: Drop, hit: Dictionary) -> void:
