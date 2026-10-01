@@ -35,6 +35,9 @@ var bodycam := false
 ## Graphics: -1 auto (starts at medium, drops if the frame rate is low),
 ## 0 low, 1 medium, 2 high.
 var quality_setting := -1
+## Physics at 90 steps a second instead of 120: a quarter less of what the
+## people cost, their balance a little looser.
+var fast_physics := false
 var quality := 1
 ## Guns lying around that can be picked up.
 var pickups: Array = []
@@ -245,6 +248,7 @@ func save_settings() -> void:
 	c.set_value("video", "vsync", vsync)
 	c.set_value("video", "aa", aa)
 	c.set_value("video", "bodycam", bodycam)
+	c.set_value("video", "fast_physics", fast_physics)
 	c.save(SETTINGS)
 
 
@@ -259,6 +263,8 @@ func _load_settings() -> void:
 	vsync = bool(c.get_value("video", "vsync", true)) and OS.get_environment("WINDOWED") == ""
 	bodycam = bool(c.get_value("video", "bodycam", false))
 	aa = clampi(int(c.get_value("video", "aa", 0)), 0, AA_NAMES.size() - 1)
+	fast_physics = bool(c.get_value("video", "fast_physics", false))
+	apply_physics_rate()
 	if bool(c.get_value("video", "fullscreen", false)) and OS.get_environment("WINDOWED") == "":
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
@@ -319,6 +325,10 @@ func apply_bodycam_audio() -> void:
 		if nm != "Master" and nm != "CamMic" and AudioServer.get_bus_send(i) in [&"Master", &"CamMic"]:
 			AudioServer.set_bus_send(i, "CamMic" if bodycam else "Master")
 	AudioServer.set_bus_bypass_effects(bus, not bodycam)
+
+
+func apply_physics_rate() -> void:
+	Engine.physics_ticks_per_second = 90 if fast_physics else 120
 
 
 # --- Graphics quality -----------------------------------------------------------------------

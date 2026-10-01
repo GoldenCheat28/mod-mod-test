@@ -83,5 +83,9 @@ func _report(what: String) -> void:
 		kinds[k] = int(kinds.get(k, 0)) + 1
 	var lod = Game.main.get_node_or_null("CrowdLOD")
 	print("   asleep: %d of %d people" % [lod.asleep.size() if lod else -1, Game.bots.size()])
+	var fallen := 0
+	for b in Game.bots:
+		fallen += int(b.fallen)
+	print("   fallen now: %d" % fallen)
 	for k in keys.slice(0, 8):
 		print("   %-40s %.2f ms/frame  (max %.1f)" % [k, float(Game.prof[k]) / maxf(_frames, 1) / 1000.0, float(Game.prof.get("max " + str(k), 0)) / 1000.0])

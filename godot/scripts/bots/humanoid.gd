@@ -1113,18 +1113,73 @@ func _physics_process_real(delta: float) -> void:
 	if _asleep_off_screen(delta):
 		return
 	_time += delta
+	# Far off or out of view, the pose and the muscles are worked out every
+	# other step (the joints keep driving at what they were last told in
+	# between) and the face not at all past FACE_DIST.
+	_lod_t -= delta
+	if _lod_t <= 0.0:
+		_lod_t = 0.3 + randf() * 0.1
+		_lod_check()
+	var half := _lod_far and not _lod_off and alive and conscious and not fallen and _stagger <= 0.0 \
+			and player_owner == null and Game.clock >= _blast_until
+	_lod_odd = not _lod_odd
+	var run := not half or _lod_odd
+	_lod_dt += delta
 	if alive and ai != null and player_owner == null and not _no_avoid:
 		move_velocity = _avoid_people(move_velocity, delta)
 	_update_health(delta)
 	_update_state(delta)
-	_compose_pose(delta)
-	_apply_muscles()
+	if run:
+		_compose_pose(_lod_dt)
+		_apply_muscles()
 	_update_chain()
 	if support > 0.001:
 		_apply_balance()
 	_update_squat_hold(delta)
-	_update_face(delta)
+	if run:
+		if not _lod_faceless:
+			_update_face(_lod_dt)
+		_lod_dt = 0.0
 	_limit_speed()
+
+
+## Level of detail: is he far from the eye, or out of its view?
+const LOD_DIST := 12.0
+const FACE_DIST := 15.0
+const SHADOW_DIST := 20.0
+var _lod_shadowless := false
+var _shadow_meshes: Array = []
+var _lod_t := 0.0
+var _lod_far := false
+var _lod_faceless := false
+var _lod_odd := randf() < 0.5     # (half of them on the other step: the load evened out)
+var _lod_dt := 0.0
+static var _lod_off := OS.get_environment("LOD_OFF") == "1"       # (dev: to compare)
+
+
+func _lod_check() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or parts.is_empty():
+		_lod_far = false
+		_lod_faceless = false
+		return
+	var d := cam.global_position.distance_to(pelvis.global_position)
+	var seen := cam.is_position_in_frustum(pelvis.global_position) or cam.is_position_in_frustum(head.global_position)
+	_lod_far = d > LOD_DIST or (not seen and d > 3.0)
+	_lod_faceless = d > FACE_DIST or not seen
+	# No shadows far off: every lamp draws everyone in its reach once more
+	# for its shadow, and a shadow that far is not missed.
+	var shadowless := d > SHADOW_DIST
+	if shadowless != _lod_shadowless:
+		_lod_shadowless = shadowless
+		if _shadow_meshes.is_empty():
+			for m in find_children("*", "GeometryInstance3D", true, false):
+				if (m as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+					_shadow_meshes.append(m)
+		for m in _shadow_meshes:
+			if is_instance_valid(m):
+				(m as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if shadowless \
+						else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 
 ## The dead lying still where nobody is looking cost nothing: the parts are

@@ -65,6 +65,16 @@ static func build() -> PanelContainer:
 		Game.apply_aa()
 		Game.save_settings())
 	v.add_child(ab)
+	var fp := CheckButton.new()
+	fp.text = "Быстрая физика (больше FPS с толпой)"
+	fp.tooltip_text = "Физика 90 раз в секунду вместо 120: люди обходятся процессору на четверть дешевле, держатся на ногах чуть менее твёрдо."
+	fp.add_theme_font_size_override("font_size", 20)
+	fp.button_pressed = Game.fast_physics
+	fp.toggled.connect(func(on: bool):
+		Game.fast_physics = on
+		Game.apply_physics_rate()
+		Game.save_settings())
+	v.add_child(fp)
 	var fs := CheckButton.new()
 	fs.text = "Полный экран"
 	fs.add_theme_font_size_override("font_size", 20)

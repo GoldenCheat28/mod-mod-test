@@ -8,9 +8,9 @@ extends Node
 ## Whoever is busy with something that matters (a game at a table, walking
 ## to one, working here) is never put to sleep.
 
-const SLEEP_DIST := 35.0
-const WAKE_DIST := 30.0
-const SEEN_DIST := 60.0          # further than this, even in view he may sleep
+const SLEEP_DIST := 22.0
+const WAKE_DIST := 18.0
+const SEEN_DIST := 50.0          # further than this, even in view he may sleep
 
 var _t := 0.0
 var asleep := {}
