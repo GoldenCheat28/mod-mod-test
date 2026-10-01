@@ -25,6 +25,7 @@ const PAUSE := 0.55            # gap between one line ending and the reply
 static var _streams := {}
 static var _bank: Array = []         # voices.json: [{id, name, clips: {situation: [{file, text}]}}]
 static var _bank_loaded := false
+static var _debug := OS.get_environment("TALK_DEBUG") != ""
 static var _last_react := -100.0     # one bot at a time reacts out loud
 
 var ai: Node
@@ -62,7 +63,8 @@ func setup(a: Node, rng: RandomNumberGenerator) -> void:
 	_author = bank.is_empty() or rng.randf() < 0.12
 	_rude = rng.randf() < 0.25
 	_next_chat = rng.randf_range(6.0, 30.0)
-	_next_mutter = rng.randf_range(20.0, 60.0)
+	_next_mutter = rng.randf_range(8.0, 30.0)
+	_next_banter = rng.randf_range(4.0, 20.0)
 	_gun_cd = rng.randf_range(3.0, 12.0)
 	_voice = AudioStreamPlayer3D.new()
 	_voice.bus = &"World"
@@ -94,16 +96,24 @@ static func stream(line: String) -> AudioStream:
 
 ## Which clip this one says for a situation (or an old line name): his own
 ## voice's, not the same one twice running.
+const OLD_TEXT := {
+	"greet": "Привет, как дела?", "reply_fine": "Нормально.", "go_away": "Ну и пошёл нахуй.",
+	"tease": "Чё кислый такой?", "heard_you": "Услышал тебя, связь.", "saw_gun": "А ебать, это что там?",
+}
+
+
 func _clip_for(key: String) -> String:
 	var sit: String = OLD.get(key, key)
 	if _author:
 		for old in OLD:
 			if OLD[old] == sit and (old == key or not OLD.has(key)):
+				last_text = OLD_TEXT.get(old, "")
 				return old
 	var clips: Array = (voice.get("clips", {}) as Dictionary).get(sit, [])
 	if clips.is_empty():
 		for old in OLD:
 			if OLD[old] == sit:
+				last_text = OLD_TEXT.get(old, "")
 				return old
 		return ""
 	var c: Dictionary = clips[randi() % clips.size()]
@@ -129,6 +139,8 @@ func say(key: String) -> float:
 		return 0.0
 	var line := _clip_for(key)
 	var s := stream(line) if line != "" else null
+	if _debug:
+		print("SAY t=%.1f %s key=%s clip=%s stream=%s text=%s" % [Game.clock, body.name, key, line, s != null, last_text])
 	if s == null:
 		return 0.0
 	_last_clip = line
@@ -156,8 +168,18 @@ func tick(delta: float) -> void:
 		if partner:
 			end()
 		return
+	# An answer to something said near him, when it has been said.
+	if _reply_key != "":
+		_reply_at -= delta
+		if _reply_at <= 0.0:
+			var k := _reply_key
+			_reply_key = ""
+			if partner == null and not speaking() and not _holding_gun():
+				say(k)
 	if partner:
 		_converse(delta)
+	elif ai.roulette != null or ai.spectate != null:
+		_banter(delta)
 	else:
 		_alone(delta)
 
@@ -174,7 +196,7 @@ func _calm(c: Node) -> bool:
 func _find_partner() -> Node:
 	var me: Vector3 = body.position_ground()
 	var best: Node = null
-	var best_d := 16.0
+	var best_d := 25.0
 	for b in Game.bots:
 		if b == body or b.ai == null or not is_instance_valid(b):
 			continue
@@ -304,22 +326,86 @@ func _converse(delta: float) -> void:
 	_step += 1
 
 
+# --- At a table, or watching a game ------------------------------------------------
+
+## What one says to the table, and what someone else there says back.
+const BANTER := ["gamble", "gamble", "tease", "story", "how_are_you", "money_work", "thinking", "smoke", "bar_drunk", "greet"]
+const ANSWER := {
+	"tease": "tease_back", "story": "react_story", "how_are_you": "answer_life", "money_work": "react_story",
+	"gamble": "react_story", "greet": "greet_reply", "thinking": "react_story", "bar_drunk": "react_story",
+	"smoke": "smoke", "tease_back": "make_peace",
+}
+var _next_banter := 10.0
+var _reply_to: Node = null        # someone at the table to answer, when he has finished
+var _reply_key := ""
+var _reply_at := 0.0
+
+
+## Those sitting round the same table (or watching the same game) talk
+## among themselves while it goes on: one says something to the table, one
+## of the others answers. (Not the one with the gun in his hand.)
+func _banter(delta: float) -> void:
+	_next_banter -= delta
+	if _reply_key != "":
+		return
+	if _next_banter > 0.0 or speaking() or ai.fear > 0.3 or _holding_gun():
+		return
+	_next_banter = randf_range(14.0, 32.0)
+	if Game.clock - _last_banter < 6.0:
+		return                       # (one at a time round a table)
+	var key: String = BANTER[randi() % BANTER.size()]
+	var dur := say(key)
+	if dur <= 0.0:
+		return
+	_last_banter = Game.clock
+	# Someone near answers.
+	var me: Vector3 = body.position_ground()
+	var others: Array = []
+	for b in Game.bots:
+		if b == body or not is_instance_valid(b) or b.ai == null or b.ai.talk == null or not b.alive:
+			continue
+		var c: Node = b.ai.talk
+		if (b.ai.roulette != null and b.ai.roulette == ai.roulette) or (b.ai.spectate != null and b.ai.spectate == ai.spectate) \
+				or b.position_ground().distance_to(me) < 4.0:
+			if c != self and c.partner == null and not c.speaking():
+				others.append(c)
+	if others.is_empty() or randf() > 0.8:
+		return
+	var who: Node = others[randi() % others.size()]
+	who._reply_key = ANSWER.get(key, "react_story")
+	who._reply_at = dur + PAUSE + randf_range(0.0, 0.6)
+	who._next_banter = maxf(who._next_banter, who._reply_at + 8.0)
+
+
+static var _last_banter := -100.0
+
+
+func _holding_gun() -> bool:
+	if body.weapon != null:
+		return true
+	var g = ai.roulette
+	if g and g.has_method("_cur"):
+		var c: Dictionary = g._cur()
+		return c.get("who") == body and g.get("state") not in ["gather", "collect", "after", "over"]
+	return false
+
+
 # --- On their own -------------------------------------------------------------------
 
 func _alone(delta: float) -> void:
 	var calm: bool = ai.fear < 0.1
 	# Start a conversation.
 	if _next_chat <= 0.0:
-		_next_chat = randf_range(8.0, 20.0)
-		if _calm(self) and randf() < 0.55:
+		_next_chat = randf_range(5.0, 12.0)
+		if _calm(self) and randf() < 0.75:
 			var other := _find_partner()
 			if other:
 				_start(other)
 				return
 	# Muttering to themselves.
 	if _next_mutter <= 0.0:
-		_next_mutter = randf_range(35.0, 90.0)
-		if calm and ai.state == ai.S.IDLE and not speaking() and randf() < 0.5:
+		_next_mutter = randf_range(18.0, 40.0)
+		if calm and ai.state in [ai.S.IDLE, ai.S.WANDER] and not speaking() and randf() < 0.7:
 			say(["thinking", "thinking", "money_work", "smoke"].pick_random() if randf() < 0.5 else "thinking")
 	# A player walking up: most say hello; only a surly one, and only if he
 	# keeps standing right in his face, tells him where to go.
