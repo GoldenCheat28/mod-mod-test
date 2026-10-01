@@ -1,0 +1,31 @@
+newmtl 00_concrete_dark_5c5954
+Kd 1 1 1
+map_Kd textures/00_concrete_dark_5c5954.png
+
+newmtl 01_container_471f14
+Kd 1 1 1
+map_Kd textures/01_container_471f14.png
+
+newmtl 02_concrete_sidewalk_99968f
+Kd 1 1 1
+map_Kd textures/02_concrete_sidewalk_99968f.png
+
+newmtl 03_concrete_wall_8c8a82
+Kd 1 1 1
+map_Kd textures/03_concrete_wall_8c8a82.png
+
+newmtl 04_concrete_brick_73402e
+Kd 1 1 1
+map_Kd textures/04_concrete_brick_73402e.png
+
+newmtl 05_window_dark_0d0f12
+Kd 1 1 1
+map_Kd textures/05_window_dark_0d0f12.png
+
+newmtl 06_window_hole_040404
+Kd 1 1 1
+map_Kd textures/06_window_hole_040404.png
+
+newmtl 07_window_boards_4d3824
+Kd 1 1 1
+map_Kd textures/07_window_boards_4d3824.png

@@ -1,0 +1,215 @@
+newmtl 00_asphalt_999999
+Kd 1 1 1
+map_Kd textures/00_asphalt_999999.png
+
+newmtl 01_wood_bench_wood_4d3824
+Kd 1 1 1
+map_Kd textures/01_wood_bench_wood_4d3824.png
+
+newmtl 02_play_steel_59738c
+Kd 1 1 1
+map_Kd textures/02_play_steel_59738c.png
+
+newmtl 03_rust_8c4d26
+Kd 1 1 1
+map_Kd textures/03_rust_8c4d26.png
+
+newmtl 04_dumpster_29422e
+Kd 1 1 1
+map_Kd textures/04_dumpster_29422e.png
+
+newmtl 05_lamp_steel_474a4d
+Kd 1 1 1
+map_Kd textures/05_lamp_steel_474a4d.png
+
+newmtl 06_garage_door_4d594d
+Kd 1 1 1
+map_Kd textures/06_garage_door_4d594d.png
+
+newmtl 07_car_0_591f14
+Kd 1 1 1
+map_Kd textures/07_car_0_591f14.png
+
+newmtl 08_car_dark_0d0d0d
+Kd 1 1 1
+map_Kd textures/08_car_dark_0d0d0d.png
+
+newmtl 09_car_chrome_8c8f8f
+Kd 1 1 1
+map_Kd textures/09_car_chrome_8c8f8f.png
+
+newmtl 10_glass_334040ff_334040
+Kd 1 1 1
+map_Kd textures/10_glass_334040ff_334040.png
+
+newmtl 11_car_seat_1f1a17
+Kd 1 1 1
+map_Kd textures/11_car_seat_1f1a17.png
+
+newmtl 12_car_tail_8c0d0a
+Kd 1 1 1
+map_Kd textures/12_car_tail_8c0d0a.png
+
+newmtl 13_car_lamp_ccccb8
+Kd 1 1 1
+map_Kd textures/13_car_lamp_ccccb8.png
+
+newmtl 14_car_plate_d9d9cc
+Kd 1 1 1
+map_Kd textures/14_car_plate_d9d9cc.png
+
+newmtl 15_car_1_333d42
+Kd 1 1 1
+map_Kd textures/15_car_1_333d42.png
+
+newmtl 16_car_2_4d4733
+Kd 1 1 1
+map_Kd textures/16_car_2_4d4733.png
+
+newmtl 17_bark_332b24
+Kd 1 1 1
+map_Kd textures/17_bark_332b24.png
+
+newmtl 18_pole_wood_473829
+Kd 1 1 1
+map_Kd textures/18_pole_wood_473829.png
+
+newmtl 19_wire_0a0a0a
+Kd 1 1 1
+map_Kd textures/19_wire_0a0a0a.png
+
+newmtl 20_concrete_dark_5c5954
+Kd 1 1 1
+map_Kd textures/20_concrete_dark_5c5954.png
+
+newmtl 21_concrete_floor_78756e
+Kd 1 1 1
+map_Kd textures/21_concrete_floor_78756e.png
+
+newmtl 22_concrete_wall_8c8a82
+Kd 1 1 1
+map_Kd textures/22_concrete_wall_8c8a82.png
+
+newmtl 23_panel_glass_0f1214
+Kd 1 1 1
+map_Kd textures/23_panel_glass_0f1214.png
+
+newmtl 24_panel_frame_bfbdb3
+Kd 1 1 1
+map_Kd textures/24_panel_frame_bfbdb3.png
+
+newmtl 25_цвет_33291a
+Kd 1 1 1
+map_Kd textures/25_цвет_33291a.png
+
+newmtl 26_balcony_glaze_33383d
+Kd 1 1 1
+map_Kd textures/26_balcony_glaze_33383d.png
+
+newmtl 27_washing_1_404d80
+Kd 1 1 1
+map_Kd textures/27_washing_1_404d80.png
+
+newmtl 28_washing_0_ccccbf
+Kd 1 1 1
+map_Kd textures/28_washing_0_ccccbf.png
+
+newmtl 29_entrance_door_38423d
+Kd 1 1 1
+map_Kd textures/29_entrance_door_38423d.png
+
+newmtl 30_intercom_999994
+Kd 1 1 1
+map_Kd textures/30_intercom_999994.png
+
+newmtl 31_aircon_ccccc7
+Kd 1 1 1
+map_Kd textures/31_aircon_ccccc7.png
+
+newmtl 32_цвет_33291a
+Kd 1 1 1
+map_Kd textures/32_цвет_33291a.png
+
+newmtl 33_washing_2_404d80
+Kd 1 1 1
+map_Kd textures/33_washing_2_404d80.png
+
+newmtl 34_wood_play_wood_664d2e
+Kd 1 1 1
+map_Kd textures/34_wood_play_wood_664d2e.png
+
+newmtl 35_play_red_99261f
+Kd 1 1 1
+map_Kd textures/35_play_red_99261f.png
+
+newmtl 36_sand_9e8c66
+Kd 1 1 1
+map_Kd textures/36_sand_9e8c66.png
+
+newmtl 37_sheet_0_d9d9cc
+Kd 1 1 1
+map_Kd textures/37_sheet_0_d9d9cc.png
+
+newmtl 38_sheet_1_8c4033
+Kd 1 1 1
+map_Kd textures/38_sheet_1_8c4033.png
+
+newmtl 39_sheet_2_4d598c
+Kd 1 1 1
+map_Kd textures/39_sheet_2_4d598c.png
+
+newmtl 40_sheet_3_998c4d
+Kd 1 1 1
+map_Kd textures/40_sheet_3_998c4d.png
+
+newmtl 41_dumpster_in_121412
+Kd 1 1 1
+map_Kd textures/41_dumpster_in_121412.png
+
+newmtl 42_резина_0d0d0d
+Kd 1 1 1
+map_Kd textures/42_резина_0d0d0d.png
+
+newmtl 43_concrete_brick_73402e
+Kd 1 1 1
+map_Kd textures/43_concrete_brick_73402e.png
+
+newmtl 44_stop_panel_596673
+Kd 1 1 1
+map_Kd textures/44_stop_panel_596673.png
+
+newmtl 45_glass_4d595cff_4d595c
+Kd 1 1 1
+map_Kd textures/45_glass_4d595cff_4d595c.png
+
+newmtl 46_bus_sign_e6d94d
+Kd 1 1 1
+map_Kd textures/46_bus_sign_e6d94d.png
+
+newmtl 47_kiosk_8c8573
+Kd 1 1 1
+map_Kd textures/47_kiosk_8c8573.png
+
+newmtl 48_kiosk_shutter_808580
+Kd 1 1 1
+map_Kd textures/48_kiosk_shutter_808580.png
+
+newmtl 49_kiosk_sign_b31f1a
+Kd 1 1 1
+map_Kd textures/49_kiosk_sign_b31f1a.png
+
+newmtl 50_bin_drum_334038
+Kd 1 1 1
+map_Kd textures/50_bin_drum_334038.png
+
+newmtl 51_bin_lid_0a0a0b
+Kd 1 1 1
+map_Kd textures/51_bin_lid_0a0a0b.png
+
+newmtl 52_binbag_060608
+Kd 1 1 1
+map_Kd textures/52_binbag_060608.png
+
+newmtl 53_crate_735938ff_735938
+Kd 1 1 1
+map_Kd textures/53_crate_735938ff_735938.png

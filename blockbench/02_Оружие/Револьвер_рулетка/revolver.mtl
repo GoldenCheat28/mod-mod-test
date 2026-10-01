@@ -1,0 +1,15 @@
+newmtl 00_цвет_1a1a1c
+Kd 1 1 1
+map_Kd textures/00_цвет_1a1a1c.png
+
+newmtl 01_цвет_050505
+Kd 1 1 1
+map_Kd textures/01_цвет_050505.png
+
+newmtl 02_цвет_4d2914
+Kd 1 1 1
+map_Kd textures/02_цвет_4d2914.png
+
+newmtl 03_цвет_331a0d
+Kd 1 1 1
+map_Kd textures/03_цвет_331a0d.png

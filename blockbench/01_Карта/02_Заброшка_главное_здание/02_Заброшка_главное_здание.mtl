@@ -1,0 +1,23 @@
+newmtl 00_concrete_wall_8c8a82
+Kd 1 1 1
+map_Kd textures/00_concrete_wall_8c8a82.png
+
+newmtl 01_rust_8c4d26
+Kd 1 1 1
+map_Kd textures/01_rust_8c4d26.png
+
+newmtl 02_concrete_floor_78756e
+Kd 1 1 1
+map_Kd textures/02_concrete_floor_78756e.png
+
+newmtl 03_concrete_dark_5c5954
+Kd 1 1 1
+map_Kd textures/03_concrete_dark_5c5954.png
+
+newmtl 04_concrete_brick_73402e
+Kd 1 1 1
+map_Kd textures/04_concrete_brick_73402e.png
+
+newmtl 05_резина_0d0d0d
+Kd 1 1 1
+map_Kd textures/05_резина_0d0d0d.png

@@ -1,0 +1,39 @@
+newmtl 00_кожа_d6a88a
+Kd 1 1 1
+map_Kd textures/00_кожа_d6a88a.png
+
+newmtl 01_рукав_1f2126
+Kd 1 1 1
+map_Kd textures/01_рукав_1f2126.png
+
+newmtl 02_фильтр_ffffff
+Kd 1 1 1
+map_Kd textures/02_фильтр_ffffff.png
+
+newmtl 03_бумага_ffffff
+Kd 1 1 1
+map_Kd textures/03_бумага_ffffff.png
+
+newmtl 04_пепел_у_огонька_ffffff
+Kd 1 1 1
+map_Kd textures/04_пепел_у_огонька_ffffff.png
+
+newmtl 05_огонёк_ffffff
+Kd 1 1 1
+map_Kd textures/05_огонёк_ffffff.png
+
+newmtl 06_зажигалка_990d0a
+Kd 1 1 1
+map_Kd textures/06_зажигалка_990d0a.png
+
+newmtl 07_металл_99999e
+Kd 1 1 1
+map_Kd textures/07_металл_99999e.png
+
+newmtl 08_рукав_левый_26262b
+Kd 1 1 1
+map_Kd textures/08_рукав_левый_26262b.png
+
+newmtl 09_пламя_ffffff
+Kd 1 1 1
+map_Kd textures/09_пламя_ffffff.png

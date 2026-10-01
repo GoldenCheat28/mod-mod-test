@@ -1,0 +1,19 @@
+newmtl 00_воронёная_сталь_ffffff
+Kd 1 1 1
+map_Kd textures/00_воронёная_сталь_ffffff.png
+
+newmtl 01_сталь_светлая_ffffff
+Kd 1 1 1
+map_Kd textures/01_сталь_светлая_ffffff.png
+
+newmtl 02_орех_ffffff
+Kd 1 1 1
+map_Kd textures/02_орех_ffffff.png
+
+newmtl 03_канал_ствола_030303
+Kd 1 1 1
+map_Kd textures/03_канал_ствола_030303.png
+
+newmtl 04_латунь_c79947
+Kd 1 1 1
+map_Kd textures/04_латунь_c79947.png

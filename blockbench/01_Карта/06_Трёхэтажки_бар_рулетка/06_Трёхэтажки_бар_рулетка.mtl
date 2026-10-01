@@ -1,0 +1,415 @@
+newmtl 00_wood_furn_wood_523621
+Kd 1 1 1
+map_Kd textures/00_wood_furn_wood_523621.png
+
+newmtl 01_rust_8c4d26
+Kd 1 1 1
+map_Kd textures/01_rust_8c4d26.png
+
+newmtl 02_wood_baize_1a3d21
+Kd 1 1 1
+map_Kd textures/02_wood_baize_1a3d21.png
+
+newmtl 03_brass_rail_b38c40
+Kd 1 1 1
+map_Kd textures/03_brass_rail_b38c40.png
+
+newmtl 04_glass_66140fff_66140f
+Kd 1 1 1
+map_Kd textures/04_glass_66140fff_66140f.png
+
+newmtl 05_glass_8c7333ff_8c7333
+Kd 1 1 1
+map_Kd textures/05_glass_8c7333ff_8c7333.png
+
+newmtl 06_glass_26591fff_26591f
+Kd 1 1 1
+map_Kd textures/06_glass_26591fff_26591f.png
+
+newmtl 07_glass_59330fff_59330f
+Kd 1 1 1
+map_Kd textures/07_glass_59330fff_59330f.png
+
+newmtl 08_glass_b3bfb8ff_b3bfb8
+Kd 1 1 1
+map_Kd textures/08_glass_b3bfb8ff_b3bfb8.png
+
+newmtl 09_stool_top_26140f
+Kd 1 1 1
+map_Kd textures/09_stool_top_26140f.png
+
+newmtl 10_concrete_dark_5c5954
+Kd 1 1 1
+map_Kd textures/10_concrete_dark_5c5954.png
+
+newmtl 11_sofa_brown_472e1f
+Kd 1 1 1
+map_Kd textures/11_sofa_brown_472e1f.png
+
+newmtl 12_dumpster_29422e
+Kd 1 1 1
+map_Kd textures/12_dumpster_29422e.png
+
+newmtl 13_sofa_green_33402e
+Kd 1 1 1
+map_Kd textures/13_sofa_green_33402e.png
+
+newmtl 14_wood_furn_dark_332114
+Kd 1 1 1
+map_Kd textures/14_wood_furn_dark_332114.png
+
+newmtl 15_knob_998c66
+Kd 1 1 1
+map_Kd textures/15_knob_998c66.png
+
+newmtl 16_book_0_935e46
+Kd 1 1 1
+map_Kd textures/16_book_0_935e46.png
+
+newmtl 17_book_1_7c2932
+Kd 1 1 1
+map_Kd textures/17_book_1_7c2932.png
+
+newmtl 18_book_2_8d2948
+Kd 1 1 1
+map_Kd textures/18_book_2_8d2948.png
+
+newmtl 19_book_3_7f3827
+Kd 1 1 1
+map_Kd textures/19_book_3_7f3827.png
+
+newmtl 20_bed_metal_4d5254
+Kd 1 1 1
+map_Kd textures/20_bed_metal_4d5254.png
+
+newmtl 21_mattress_old_998f78
+Kd 1 1 1
+map_Kd textures/21_mattress_old_998f78.png
+
+newmtl 22_blanket_592e26
+Kd 1 1 1
+map_Kd textures/22_blanket_592e26.png
+
+newmtl 23_pillow_c7c2b3
+Kd 1 1 1
+map_Kd textures/23_pillow_c7c2b3.png
+
+newmtl 24_blanket2_334254
+Kd 1 1 1
+map_Kd textures/24_blanket2_334254.png
+
+newmtl 25_concrete_rubble_858078
+Kd 1 1 1
+map_Kd textures/25_concrete_rubble_858078.png
+
+newmtl 26_concrete_floor_78756e
+Kd 1 1 1
+map_Kd textures/26_concrete_floor_78756e.png
+
+newmtl 27_concrete_wall_8c8a82
+Kd 1 1 1
+map_Kd textures/27_concrete_wall_8c8a82.png
+
+newmtl 28_wood_window_frame_38332b
+Kd 1 1 1
+map_Kd textures/28_wood_window_frame_38332b.png
+
+newmtl 29_glass_808c80ff_808c80
+Kd 1 1 1
+map_Kd textures/29_glass_808c80ff_808c80.png
+
+newmtl 30_pot_733824
+Kd 1 1 1
+map_Kd textures/30_pot_733824.png
+
+newmtl 31_glass_595e61ff_595e61
+Kd 1 1 1
+map_Kd textures/31_glass_595e61ff_595e61.png
+
+newmtl 32_cellar_dark_030303
+Kd 1 1 1
+map_Kd textures/32_cellar_dark_030303.png
+
+newmtl 33_dumpster_in_121412
+Kd 1 1 1
+map_Kd textures/33_dumpster_in_121412.png
+
+newmtl 34_резина_0d0d0d
+Kd 1 1 1
+map_Kd textures/34_резина_0d0d0d.png
+
+newmtl 35_concrete_brick_73402e
+Kd 1 1 1
+map_Kd textures/35_concrete_brick_73402e.png
+
+newmtl 36_stove_ccccc2
+Kd 1 1 1
+map_Kd textures/36_stove_ccccc2.png
+
+newmtl 37_wood_rug_591412_591412
+Kd 1 1 1
+map_Kd textures/37_wood_rug_591412_591412.png
+
+newmtl 38_wood_rug_834f4d_834f4d
+Kd 1 1 1
+map_Kd textures/38_wood_rug_834f4d_834f4d.png
+
+newmtl 39_cellar_door_333836
+Kd 1 1 1
+map_Kd textures/39_cellar_door_333836.png
+
+newmtl 40_sign_enamel_dbd9cc
+Kd 1 1 1
+map_Kd textures/40_sign_enamel_dbd9cc.png
+
+newmtl 41_wood_rug_333359_333359
+Kd 1 1 1
+map_Kd textures/41_wood_rug_333359_333359.png
+
+newmtl 42_wood_rug_666683_666683
+Kd 1 1 1
+map_Kd textures/42_wood_rug_666683_666683.png
+
+newmtl 43_paper_1_ffffff
+Kd 1 1 1
+map_Kd textures/43_paper_1_ffffff.png
+
+newmtl 44_paper_0_ffffff
+Kd 1 1 1
+map_Kd textures/44_paper_0_ffffff.png
+
+newmtl 45_paper_2_ffffff
+Kd 1 1 1
+map_Kd textures/45_paper_2_ffffff.png
+
+newmtl 46_water_999999
+Kd 1 1 1
+map_Kd textures/46_water_999999.png
+
+newmtl 47_paper_3_ffffff
+Kd 1 1 1
+map_Kd textures/47_paper_3_ffffff.png
+
+newmtl 48_water_999999
+Kd 1 1 1
+map_Kd textures/48_water_999999.png
+
+newmtl 49_water_999999
+Kd 1 1 1
+map_Kd textures/49_water_999999.png
+
+newmtl 50_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/50_цвет_c7bfa8.png
+
+newmtl 51_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/51_цвет_e6e0cc.png
+
+newmtl 52_цвет_33302b
+Kd 1 1 1
+map_Kd textures/52_цвет_33302b.png
+
+newmtl 53_цвет_141414
+Kd 1 1 1
+map_Kd textures/53_цвет_141414.png
+
+newmtl 54_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/54_цвет_d9d1b3.png
+
+newmtl 55_цвет_141414
+Kd 1 1 1
+map_Kd textures/55_цвет_141414.png
+
+newmtl 56_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/56_цвет_d9d1b3.png
+
+newmtl 57_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/57_цвет_c7bfa8.png
+
+newmtl 58_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/58_цвет_e6e0cc.png
+
+newmtl 59_цвет_33302b
+Kd 1 1 1
+map_Kd textures/59_цвет_33302b.png
+
+newmtl 60_цвет_141414
+Kd 1 1 1
+map_Kd textures/60_цвет_141414.png
+
+newmtl 61_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/61_цвет_d9d1b3.png
+
+newmtl 62_цвет_141414
+Kd 1 1 1
+map_Kd textures/62_цвет_141414.png
+
+newmtl 63_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/63_цвет_d9d1b3.png
+
+newmtl 64_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/64_цвет_c7bfa8.png
+
+newmtl 65_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/65_цвет_e6e0cc.png
+
+newmtl 66_цвет_33302b
+Kd 1 1 1
+map_Kd textures/66_цвет_33302b.png
+
+newmtl 67_цвет_141414
+Kd 1 1 1
+map_Kd textures/67_цвет_141414.png
+
+newmtl 68_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/68_цвет_d9d1b3.png
+
+newmtl 69_цвет_141414
+Kd 1 1 1
+map_Kd textures/69_цвет_141414.png
+
+newmtl 70_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/70_цвет_d9d1b3.png
+
+newmtl 71_wood_rug_73241a_73241a
+Kd 1 1 1
+map_Kd textures/71_wood_rug_73241a_73241a.png
+
+newmtl 72_wood_rug_965b53_965b53
+Kd 1 1 1
+map_Kd textures/72_wood_rug_965b53_965b53.png
+
+newmtl 73_wood_rug_403359_403359
+Kd 1 1 1
+map_Kd textures/73_wood_rug_403359_403359.png
+
+newmtl 74_wood_rug_706683_706683
+Kd 1 1 1
+map_Kd textures/74_wood_rug_706683_706683.png
+
+newmtl 75_wood_rug_4d471f_4d471f
+Kd 1 1 1
+map_Kd textures/75_wood_rug_4d471f_4d471f.png
+
+newmtl 76_wood_rug_797557_797557
+Kd 1 1 1
+map_Kd textures/76_wood_rug_797557_797557.png
+
+newmtl 77_door_paint_4d5447
+Kd 1 1 1
+map_Kd textures/77_door_paint_4d5447.png
+
+newmtl 78_door_wood_473321
+Kd 1 1 1
+map_Kd textures/78_door_wood_473321.png
+
+newmtl 79_door_metal_736e66
+Kd 1 1 1
+map_Kd textures/79_door_metal_736e66.png
+
+newmtl 80_water_999999
+Kd 1 1 1
+map_Kd textures/80_water_999999.png
+
+newmtl 81_water_999999
+Kd 1 1 1
+map_Kd textures/81_water_999999.png
+
+newmtl 82_water_999999
+Kd 1 1 1
+map_Kd textures/82_water_999999.png
+
+newmtl 83_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/83_цвет_c7bfa8.png
+
+newmtl 84_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/84_цвет_e6e0cc.png
+
+newmtl 85_цвет_33302b
+Kd 1 1 1
+map_Kd textures/85_цвет_33302b.png
+
+newmtl 86_цвет_141414
+Kd 1 1 1
+map_Kd textures/86_цвет_141414.png
+
+newmtl 87_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/87_цвет_d9d1b3.png
+
+newmtl 88_цвет_141414
+Kd 1 1 1
+map_Kd textures/88_цвет_141414.png
+
+newmtl 89_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/89_цвет_d9d1b3.png
+
+newmtl 90_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/90_цвет_c7bfa8.png
+
+newmtl 91_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/91_цвет_e6e0cc.png
+
+newmtl 92_цвет_33302b
+Kd 1 1 1
+map_Kd textures/92_цвет_33302b.png
+
+newmtl 93_цвет_141414
+Kd 1 1 1
+map_Kd textures/93_цвет_141414.png
+
+newmtl 94_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/94_цвет_d9d1b3.png
+
+newmtl 95_цвет_141414
+Kd 1 1 1
+map_Kd textures/95_цвет_141414.png
+
+newmtl 96_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/96_цвет_d9d1b3.png
+
+newmtl 97_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/97_цвет_c7bfa8.png
+
+newmtl 98_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/98_цвет_e6e0cc.png
+
+newmtl 99_цвет_33302b
+Kd 1 1 1
+map_Kd textures/99_цвет_33302b.png
+
+newmtl 100_цвет_141414
+Kd 1 1 1
+map_Kd textures/100_цвет_141414.png
+
+newmtl 101_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/101_цвет_d9d1b3.png
+
+newmtl 102_цвет_141414
+Kd 1 1 1
+map_Kd textures/102_цвет_141414.png
+
+newmtl 103_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/103_цвет_d9d1b3.png

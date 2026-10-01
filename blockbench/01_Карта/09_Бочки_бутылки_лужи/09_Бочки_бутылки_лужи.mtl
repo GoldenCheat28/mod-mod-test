@@ -1,0 +1,67 @@
+newmtl 00_glass_26591fff_26591f
+Kd 1 1 1
+map_Kd textures/00_glass_26591fff_26591f.png
+
+newmtl 01_glass_59330fff_59330f
+Kd 1 1 1
+map_Kd textures/01_glass_59330fff_59330f.png
+
+newmtl 02_glass_b3bfb8ff_b3bfb8
+Kd 1 1 1
+map_Kd textures/02_glass_b3bfb8ff_b3bfb8.png
+
+newmtl 03_paper_0_ffffff
+Kd 1 1 1
+map_Kd textures/03_paper_0_ffffff.png
+
+newmtl 04_barrel_1_ffffff
+Kd 1 1 1
+map_Kd textures/04_barrel_1_ffffff.png
+
+newmtl 05_barrel_0_ffffff
+Kd 1 1 1
+map_Kd textures/05_barrel_0_ffffff.png
+
+newmtl 06_barrel_3_ffffff
+Kd 1 1 1
+map_Kd textures/06_barrel_3_ffffff.png
+
+newmtl 07_barrel_2_ffffff
+Kd 1 1 1
+map_Kd textures/07_barrel_2_ffffff.png
+
+newmtl 08_paper_2_ffffff
+Kd 1 1 1
+map_Kd textures/08_paper_2_ffffff.png
+
+newmtl 09_paper_3_ffffff
+Kd 1 1 1
+map_Kd textures/09_paper_3_ffffff.png
+
+newmtl 10_paper_1_ffffff
+Kd 1 1 1
+map_Kd textures/10_paper_1_ffffff.png
+
+newmtl 11_water_999999
+Kd 1 1 1
+map_Kd textures/11_water_999999.png
+
+newmtl 12_water_999999
+Kd 1 1 1
+map_Kd textures/12_water_999999.png
+
+newmtl 13_water_999999
+Kd 1 1 1
+map_Kd textures/13_water_999999.png
+
+newmtl 14_water_999999
+Kd 1 1 1
+map_Kd textures/14_water_999999.png
+
+newmtl 15_water_999999
+Kd 1 1 1
+map_Kd textures/15_water_999999.png
+
+newmtl 16_water_999999
+Kd 1 1 1
+map_Kd textures/16_water_999999.png

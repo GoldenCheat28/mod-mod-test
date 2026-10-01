@@ -1,0 +1,415 @@
+newmtl 00_door_paint_4d5447
+Kd 1 1 1
+map_Kd textures/00_door_paint_4d5447.png
+
+newmtl 01_door_wood_473321
+Kd 1 1 1
+map_Kd textures/01_door_wood_473321.png
+
+newmtl 02_door_metal_736e66
+Kd 1 1 1
+map_Kd textures/02_door_metal_736e66.png
+
+newmtl 03_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/03_цвет_c7bfa8.png
+
+newmtl 04_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/04_цвет_e6e0cc.png
+
+newmtl 05_цвет_33302b
+Kd 1 1 1
+map_Kd textures/05_цвет_33302b.png
+
+newmtl 06_цвет_141414
+Kd 1 1 1
+map_Kd textures/06_цвет_141414.png
+
+newmtl 07_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/07_цвет_d9d1b3.png
+
+newmtl 08_цвет_141414
+Kd 1 1 1
+map_Kd textures/08_цвет_141414.png
+
+newmtl 09_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/09_цвет_d9d1b3.png
+
+newmtl 10_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/10_цвет_c7bfa8.png
+
+newmtl 11_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/11_цвет_e6e0cc.png
+
+newmtl 12_цвет_33302b
+Kd 1 1 1
+map_Kd textures/12_цвет_33302b.png
+
+newmtl 13_цвет_141414
+Kd 1 1 1
+map_Kd textures/13_цвет_141414.png
+
+newmtl 14_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/14_цвет_d9d1b3.png
+
+newmtl 15_цвет_141414
+Kd 1 1 1
+map_Kd textures/15_цвет_141414.png
+
+newmtl 16_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/16_цвет_d9d1b3.png
+
+newmtl 17_цвет_c7bfa8
+Kd 1 1 1
+map_Kd textures/17_цвет_c7bfa8.png
+
+newmtl 18_цвет_e6e0cc
+Kd 1 1 1
+map_Kd textures/18_цвет_e6e0cc.png
+
+newmtl 19_цвет_33302b
+Kd 1 1 1
+map_Kd textures/19_цвет_33302b.png
+
+newmtl 20_цвет_141414
+Kd 1 1 1
+map_Kd textures/20_цвет_141414.png
+
+newmtl 21_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/21_цвет_d9d1b3.png
+
+newmtl 22_цвет_141414
+Kd 1 1 1
+map_Kd textures/22_цвет_141414.png
+
+newmtl 23_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/23_цвет_d9d1b3.png
+
+newmtl 24_cast_iron_141414
+Kd 1 1 1
+map_Kd textures/24_cast_iron_141414.png
+
+newmtl 25_cone_e6520d
+Kd 1 1 1
+map_Kd textures/25_cone_e6520d.png
+
+newmtl 26_reflect_e6e6e0
+Kd 1 1 1
+map_Kd textures/26_reflect_e6e6e0.png
+
+newmtl 27_bin_drum_334038
+Kd 1 1 1
+map_Kd textures/27_bin_drum_334038.png
+
+newmtl 28_bin_lid_0a0a0b
+Kd 1 1 1
+map_Kd textures/28_bin_lid_0a0a0b.png
+
+newmtl 29_binbag_060608
+Kd 1 1 1
+map_Kd textures/29_binbag_060608.png
+
+newmtl 30_цвет_66666b
+Kd 1 1 1
+map_Kd textures/30_цвет_66666b.png
+
+newmtl 31_цвет_141414
+Kd 1 1 1
+map_Kd textures/31_цвет_141414.png
+
+newmtl 32_цвет_8c7347
+Kd 1 1 1
+map_Kd textures/32_цвет_8c7347.png
+
+newmtl 33_цвет_d9d1b3
+Kd 1 1 1
+map_Kd textures/33_цвет_d9d1b3.png
+
+newmtl 34_цвет_806640
+Kd 1 1 1
+map_Kd textures/34_цвет_806640.png
+
+newmtl 35_цвет_b31f1a
+Kd 1 1 1
+map_Kd textures/35_цвет_b31f1a.png
+
+newmtl 36_цвет_ede6d1
+Kd 1 1 1
+map_Kd textures/36_цвет_ede6d1.png
+
+newmtl 37_цвет_b31f1a
+Kd 1 1 1
+map_Kd textures/37_цвет_b31f1a.png
+
+newmtl 38_цвет_b31f1a
+Kd 1 1 1
+map_Kd textures/38_цвет_b31f1a.png
+
+newmtl 39_цвет_0d0d0d
+Kd 1 1 1
+map_Kd textures/39_цвет_0d0d0d.png
+
+newmtl 40_цвет_cc1414
+Kd 1 1 1
+map_Kd textures/40_цвет_cc1414.png
+
+newmtl 41_цвет_0f0f0f
+Kd 1 1 1
+map_Kd textures/41_цвет_0f0f0f.png
+
+newmtl 42_цвет_0a0a0d
+Kd 1 1 1
+map_Kd textures/42_цвет_0a0a0d.png
+
+newmtl 43_цвет_8cbfe6
+Kd 1 1 1
+map_Kd textures/43_цвет_8cbfe6.png
+
+newmtl 44_цвет_8cbfe6
+Kd 1 1 1
+map_Kd textures/44_цвет_8cbfe6.png
+
+newmtl 45_цвет_1a4dcc
+Kd 1 1 1
+map_Kd textures/45_цвет_1a4dcc.png
+
+newmtl 46_цвет_e6e6f2
+Kd 1 1 1
+map_Kd textures/46_цвет_e6e6f2.png
+
+newmtl 47_цвет_805c38
+Kd 1 1 1
+map_Kd textures/47_цвет_805c38.png
+
+newmtl 48_цвет_735332
+Kd 1 1 1
+map_Kd textures/48_цвет_735332.png
+
+newmtl 49_цвет_66492d
+Kd 1 1 1
+map_Kd textures/49_цвет_66492d.png
+
+newmtl 50_цвет_bf9e4d
+Kd 1 1 1
+map_Kd textures/50_цвет_bf9e4d.png
+
+newmtl 51_цвет_b3b3b8
+Kd 1 1 1
+map_Kd textures/51_цвет_b3b3b8.png
+
+newmtl 52_цвет_b3b3b8
+Kd 1 1 1
+map_Kd textures/52_цвет_b3b3b8.png
+
+newmtl 53_цвет_b3b3b8
+Kd 1 1 1
+map_Kd textures/53_цвет_b3b3b8.png
+
+newmtl 54_цвет_735238
+Kd 1 1 1
+map_Kd textures/54_цвет_735238.png
+
+newmtl 55_цвет_66666b
+Kd 1 1 1
+map_Kd textures/55_цвет_66666b.png
+
+newmtl 56_цвет_0a0a0d
+Kd 1 1 1
+map_Kd textures/56_цвет_0a0a0d.png
+
+newmtl 57_цвет_cc1414
+Kd 1 1 1
+map_Kd textures/57_цвет_cc1414.png
+
+newmtl 58_цвет_0f0f0f
+Kd 1 1 1
+map_Kd textures/58_цвет_0f0f0f.png
+
+newmtl 59_цвет_998c73
+Kd 1 1 1
+map_Kd textures/59_цвет_998c73.png
+
+newmtl 60_цвет_596680
+Kd 1 1 1
+map_Kd textures/60_цвет_596680.png
+
+newmtl 61_цвет_8c4d40
+Kd 1 1 1
+map_Kd textures/61_цвет_8c4d40.png
+
+newmtl 62_цвет_998c73
+Kd 1 1 1
+map_Kd textures/62_цвет_998c73.png
+
+newmtl 63_цвет_596680
+Kd 1 1 1
+map_Kd textures/63_цвет_596680.png
+
+newmtl 64_цвет_8c4d40
+Kd 1 1 1
+map_Kd textures/64_цвет_8c4d40.png
+
+newmtl 65_цвет_bfd1cc
+Kd 1 1 1
+map_Kd textures/65_цвет_bfd1cc.png
+
+newmtl 66_цвет_e6e6d9
+Kd 1 1 1
+map_Kd textures/66_цвет_e6e6d9.png
+
+newmtl 67_цвет_bfd1cc
+Kd 1 1 1
+map_Kd textures/67_цвет_bfd1cc.png
+
+newmtl 68_цвет_264db3
+Kd 1 1 1
+map_Kd textures/68_цвет_264db3.png
+
+newmtl 69_цвет_e6ebf2
+Kd 1 1 1
+map_Kd textures/69_цвет_e6ebf2.png
+
+newmtl 70_цвет_f2f2f2
+Kd 1 1 1
+map_Kd textures/70_цвет_f2f2f2.png
+
+newmtl 71_цвет_f2f2f2
+Kd 1 1 1
+map_Kd textures/71_цвет_f2f2f2.png
+
+newmtl 72_цвет_ccccd1
+Kd 1 1 1
+map_Kd textures/72_цвет_ccccd1.png
+
+newmtl 73_цвет_996633
+Kd 1 1 1
+map_Kd textures/73_цвет_996633.png
+
+newmtl 74_цвет_996633
+Kd 1 1 1
+map_Kd textures/74_цвет_996633.png
+
+newmtl 75_цвет_996633
+Kd 1 1 1
+map_Kd textures/75_цвет_996633.png
+
+newmtl 76_цвет_f2f2f7
+Kd 1 1 1
+map_Kd textures/76_цвет_f2f2f7.png
+
+newmtl 77_цвет_3359bf
+Kd 1 1 1
+map_Kd textures/77_цвет_3359bf.png
+
+newmtl 78_цвет_f2f2eb
+Kd 1 1 1
+map_Kd textures/78_цвет_f2f2eb.png
+
+newmtl 79_цвет_f2f2eb
+Kd 1 1 1
+map_Kd textures/79_цвет_f2f2eb.png
+
+newmtl 80_цвет_f2f2eb
+Kd 1 1 1
+map_Kd textures/80_цвет_f2f2eb.png
+
+newmtl 81_цвет_1a80e6
+Kd 1 1 1
+map_Kd textures/81_цвет_1a80e6.png
+
+newmtl 82_цвет_f2f2f2
+Kd 1 1 1
+map_Kd textures/82_цвет_f2f2f2.png
+
+newmtl 83_цвет_59732e
+Kd 1 1 1
+map_Kd textures/83_цвет_59732e.png
+
+newmtl 84_цвет_506729
+Kd 1 1 1
+map_Kd textures/84_цвет_506729.png
+
+newmtl 85_цвет_475c25
+Kd 1 1 1
+map_Kd textures/85_цвет_475c25.png
+
+newmtl 86_цвет_59732e
+Kd 1 1 1
+map_Kd textures/86_цвет_59732e.png
+
+newmtl 87_цвет_506729
+Kd 1 1 1
+map_Kd textures/87_цвет_506729.png
+
+newmtl 88_цвет_475c25
+Kd 1 1 1
+map_Kd textures/88_цвет_475c25.png
+
+newmtl 89_цвет_59732e
+Kd 1 1 1
+map_Kd textures/89_цвет_59732e.png
+
+newmtl 90_цвет_d94026
+Kd 1 1 1
+map_Kd textures/90_цвет_d94026.png
+
+newmtl 91_цвет_f7f5eb
+Kd 1 1 1
+map_Kd textures/91_цвет_f7f5eb.png
+
+newmtl 92_цвет_ffffff
+Kd 1 1 1
+map_Kd textures/92_цвет_ffffff.png
+
+newmtl 93_цвет_ffffff
+Kd 1 1 1
+map_Kd textures/93_цвет_ffffff.png
+
+newmtl 94_цвет_ffffff
+Kd 1 1 1
+map_Kd textures/94_цвет_ffffff.png
+
+newmtl 95_sofa_4d331f
+Kd 1 1 1
+map_Kd textures/95_sofa_4d331f.png
+
+newmtl 96_sofa_torn_8c8066
+Kd 1 1 1
+map_Kd textures/96_sofa_torn_8c8066.png
+
+newmtl 97_mattress_9e947a
+Kd 1 1 1
+map_Kd textures/97_mattress_9e947a.png
+
+newmtl 98_stain_665433
+Kd 1 1 1
+map_Kd textures/98_stain_665433.png
+
+newmtl 99_crate_b31f1aff_b31f1a
+Kd 1 1 1
+map_Kd textures/99_crate_b31f1aff_b31f1a.png
+
+newmtl 100_crate_1a4099ff_1a4099
+Kd 1 1 1
+map_Kd textures/100_crate_1a4099ff_1a4099.png
+
+newmtl 101_crate_267333ff_267333
+Kd 1 1 1
+map_Kd textures/101_crate_267333ff_267333.png
+
+newmtl 102_drum_wood_80613d
+Kd 1 1 1
+map_Kd textures/102_drum_wood_80613d.png
+
+newmtl 103_cable_0f0f0f
+Kd 1 1 1
+map_Kd textures/103_cable_0f0f0f.png

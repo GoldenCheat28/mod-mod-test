@@ -1,0 +1,35 @@
+newmtl 00_воронёная_сталь_ffffff
+Kd 1 1 1
+map_Kd textures/00_воронёная_сталь_ffffff.png
+
+newmtl 01_канал_ствола_030303
+Kd 1 1 1
+map_Kd textures/01_канал_ствола_030303.png
+
+newmtl 02_сталь_потёртая_333336
+Kd 1 1 1
+map_Kd textures/02_сталь_потёртая_333336.png
+
+newmtl 03_сталь_светлая_ffffff
+Kd 1 1 1
+map_Kd textures/03_сталь_светлая_ffffff.png
+
+newmtl 04_бакелит_4d1a0d
+Kd 1 1 1
+map_Kd textures/04_бакелит_4d1a0d.png
+
+newmtl 05_дерево_АКМ_ffffff
+Kd 1 1 1
+map_Kd textures/05_дерево_АКМ_ffffff.png
+
+newmtl 06_сталь_1a1a1b
+Kd 1 1 1
+map_Kd textures/06_сталь_1a1a1b.png
+
+newmtl 07_магазин_сталь_212124
+Kd 1 1 1
+map_Kd textures/07_магазин_сталь_212124.png
+
+newmtl 08_латунь_c79440
+Kd 1 1 1
+map_Kd textures/08_латунь_c79440.png

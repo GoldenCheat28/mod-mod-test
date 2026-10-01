@@ -1,0 +1,127 @@
+newmtl 00_bed_metal_4d5254
+Kd 1 1 1
+map_Kd textures/00_bed_metal_4d5254.png
+
+newmtl 01_mattress_old_998f78
+Kd 1 1 1
+map_Kd textures/01_mattress_old_998f78.png
+
+newmtl 02_blanket_592e26
+Kd 1 1 1
+map_Kd textures/02_blanket_592e26.png
+
+newmtl 03_pillow_c7c2b3
+Kd 1 1 1
+map_Kd textures/03_pillow_c7c2b3.png
+
+newmtl 04_blanket2_334254
+Kd 1 1 1
+map_Kd textures/04_blanket2_334254.png
+
+newmtl 05_wood_furn_dark_332114
+Kd 1 1 1
+map_Kd textures/05_wood_furn_dark_332114.png
+
+newmtl 06_knob_998c66
+Kd 1 1 1
+map_Kd textures/06_knob_998c66.png
+
+newmtl 07_sofa_green_33402e
+Kd 1 1 1
+map_Kd textures/07_sofa_green_33402e.png
+
+newmtl 08_wood_furn_wood_523621
+Kd 1 1 1
+map_Kd textures/08_wood_furn_wood_523621.png
+
+newmtl 09_book_0_935e46
+Kd 1 1 1
+map_Kd textures/09_book_0_935e46.png
+
+newmtl 10_book_1_7c2932
+Kd 1 1 1
+map_Kd textures/10_book_1_7c2932.png
+
+newmtl 11_book_2_8d2948
+Kd 1 1 1
+map_Kd textures/11_book_2_8d2948.png
+
+newmtl 12_book_3_7f3827
+Kd 1 1 1
+map_Kd textures/12_book_3_7f3827.png
+
+newmtl 13_wood_table_4d331f
+Kd 1 1 1
+map_Kd textures/13_wood_table_4d331f.png
+
+newmtl 14_wood_chair_382414
+Kd 1 1 1
+map_Kd textures/14_wood_chair_382414.png
+
+newmtl 15_glass_26591fff_26591f
+Kd 1 1 1
+map_Kd textures/15_glass_26591fff_26591f.png
+
+newmtl 16_mug_ccccbf
+Kd 1 1 1
+map_Kd textures/16_mug_ccccbf.png
+
+newmtl 17_цвет_94999e
+Kd 1 1 1
+map_Kd textures/17_цвет_94999e.png
+
+newmtl 18_bucket_zinc_94999e
+Kd 1 1 1
+map_Kd textures/18_bucket_zinc_94999e.png
+
+newmtl 19_цвет_1a1c1c
+Kd 1 1 1
+map_Kd textures/19_цвет_1a1c1c.png
+
+newmtl 20_цвет_8c6b47
+Kd 1 1 1
+map_Kd textures/20_цвет_8c6b47.png
+
+newmtl 21_цвет_ad8f66
+Kd 1 1 1
+map_Kd textures/21_цвет_ad8f66.png
+
+newmtl 22_цвет_bf1f14
+Kd 1 1 1
+map_Kd textures/22_цвет_bf1f14.png
+
+newmtl 23_цвет_808085
+Kd 1 1 1
+map_Kd textures/23_цвет_808085.png
+
+newmtl 24_цвет_d9d4c2
+Kd 1 1 1
+map_Kd textures/24_цвет_d9d4c2.png
+
+newmtl 25_wood_rug_73241a_73241a
+Kd 1 1 1
+map_Kd textures/25_wood_rug_73241a_73241a.png
+
+newmtl 26_wood_rug_965b53_965b53
+Kd 1 1 1
+map_Kd textures/26_wood_rug_965b53_965b53.png
+
+newmtl 27_цвет_4d301a
+Kd 1 1 1
+map_Kd textures/27_цвет_4d301a.png
+
+newmtl 28_цвет_1f1c1a
+Kd 1 1 1
+map_Kd textures/28_цвет_1f1c1a.png
+
+newmtl 29_цвет_b3b3b3
+Kd 1 1 1
+map_Kd textures/29_цвет_b3b3b3.png
+
+newmtl 30_цвет_b3b3b3
+Kd 1 1 1
+map_Kd textures/30_цвет_b3b3b3.png
+
+newmtl 31_цвет_999999
+Kd 1 1 1
+map_Kd textures/31_цвет_999999.png

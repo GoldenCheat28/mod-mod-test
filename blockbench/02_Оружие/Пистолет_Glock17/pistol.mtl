@@ -1,0 +1,27 @@
+newmtl 00_полимер_121213
+Kd 1 1 1
+map_Kd textures/00_полимер_121213.png
+
+newmtl 01_канал_ствола_030303
+Kd 1 1 1
+map_Kd textures/01_канал_ствола_030303.png
+
+newmtl 02_резина_080808
+Kd 1 1 1
+map_Kd textures/02_резина_080808.png
+
+newmtl 03_сталь_1a1a1b
+Kd 1 1 1
+map_Kd textures/03_сталь_1a1a1b.png
+
+newmtl 04_сталь_потёртая_333336
+Kd 1 1 1
+map_Kd textures/04_сталь_потёртая_333336.png
+
+newmtl 05_мушка_e6e6d9
+Kd 1 1 1
+map_Kd textures/05_мушка_e6e6d9.png
+
+newmtl 06_латунь_c79440
+Kd 1 1 1
+map_Kd textures/06_латунь_c79440.png
