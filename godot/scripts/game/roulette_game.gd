@@ -363,6 +363,12 @@ func _announce_turn() -> void:
 	else:
 		_judge_say(["%s, твой ход." % c["name"], "Ход: %s." % c["name"],
 				"%s берёт револьвер." % c["name"], "Стреляет %s. Не торопись." % c["name"]].pick_random(), 2.2)
+		# The one whose turn it is says something to it (after the judge).
+		var who: Node3D = c["who"]
+		if randf() < 0.55 and is_instance_valid(who) and who.get("ai") and who.ai.talk:
+			get_tree().create_timer(2.3).timeout.connect(func():
+				if is_instance_valid(who) and who.alive and not who.ai.talk.speaking():
+					who.ai.talk.say("gamble"))
 
 
 # --- Gathering ----------------------------------------------------------------------------

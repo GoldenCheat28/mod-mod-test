@@ -8,7 +8,10 @@ extends RefCounted
 ## (smoke_field.gd) and the thin thread off the tip in between.
 
 const Sfx = preload("res://scripts/audio/sfx.gd")
-const LINES := ["reply_fine", "heard_you", "greet", "idle_high", "tease"]
+## What the one holding forth in a group says (situations, chatter.gd), and
+## what the others put in.
+const LINES := ["story", "story", "answer_life", "money_work", "thinking", "bar_drunk", "tease"]
+const LISTEN := ["react_story", "react_story", "react_story", "make_peace", "greet_reply"]
 
 const CigTex = preload("res://scripts/player/cig_tex.gd")
 
@@ -27,6 +30,7 @@ var _ember_mat: StandardMaterial3D
 var _can: Node3D
 var _drag_t := -1.0              # time into a drag, or -1
 var _next_drag := 3.0
+var _smoke_say := -1.0            # a word after the smoke is out, in this long
 var _exhale := -1.0              # time left breathing out
 var _look_t := 0.0
 var _look := Vector3.ZERO
@@ -135,6 +139,8 @@ func _talk(delta: float) -> void:
 		spot["speak_until"] = now + ai.rng.randf_range(3.0, 8.0)
 		if sp == body and members.size() > 1 and ai.rng.randf() < 0.3 and not ai.talk.speaking():
 			ai.talk.say(LINES[ai.rng.randi() % LINES.size()])
+		elif sp != body and ai.rng.randf() < 0.12 and not ai.talk.speaking():
+			ai.talk.say(LISTEN[ai.rng.randi() % LISTEN.size()])
 	if sp == body:
 		# Talking: looking round at them, hands going.
 		_look_t -= delta
@@ -264,8 +270,14 @@ func _smoke(delta: float) -> void:
 			_drag_t = -1.0
 			_exhale = ai.rng.randf_range(1.2, 1.8)
 			_next_drag = ai.rng.randf_range(6.0, 16.0)
+			if ai.rng.randf() < 0.3:
+				_smoke_say = 2.2
 	else:
 		_next_drag -= delta
+		if _smoke_say > 0.0:
+			_smoke_say -= delta
+			if _smoke_say <= 0.0 and ai.talk and not ai.talk.speaking() and not ai.talk.busy():
+				ai.talk.say("smoke")
 		if _next_drag <= 0.0 and _exhale < 0.0:
 			_drag_t = 0.0
 	if _exhale > 0.0 and Game.smoke:

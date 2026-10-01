@@ -131,6 +131,9 @@ func stance_for(b: Node3D, delta: float) -> void:
 			b.hand_goal["r"] = g.global_position + Vector3(0.03, -0.02, 0)
 			b.look_target = mouth + Vector3(-0.5, 0.1, 0)
 			if float(p["sip"]) >= 2.4:
+				# (and a word about it, now and then)
+				if randf() < 0.3 and b.ai and b.ai.talk and not b.ai.talk.speaking():
+					b.ai.talk.say("bar_drunk")
 				p["sip"] = 0.0
 				p["sip_t"] = randf_range(5.0, 10.0)
 				g.global_position = glass_at

@@ -8,10 +8,23 @@ extends Node
 ## distance, and tell off a player who comes and stands in their face.
 
 const VOICE_DIR := "res://assets/sounds/voice/%s.wav"
+## The generated voices (tools/voices/generate_voices.py): fifty people, each
+## with his own lines for each situation.
+const VOICES_DIR := "res://assets/sounds/voices/"
+## The first recordings, by the situation they belong to: a bot now and then
+## speaks with these where it has them.
+const OLD := {
+	"greet": "greet", "reply_fine": "greet_reply", "reply_rude": "brush_off", "go_away": "anger",
+	"man_go_away": "player_face", "tease": "tease", "tease_rude": "tease_back", "tease_rude2": "tease_back",
+	"heard_you": "make_peace", "idle_high": "thinking", "saw_gun": "scared",
+}
+const ANGRY := ["brush_off", "anger", "tease", "tease_back", "player_face"]
 const TALK_DIST := 1.25
 const PAUSE := 0.55            # gap between one line ending and the reply
 
 static var _streams := {}
+static var _bank: Array = []         # voices.json: [{id, name, clips: {situation: [{file, text}]}}]
+static var _bank_loaded := false
 static var _last_react := -100.0     # one bot at a time reacts out loud
 
 var ai: Node
@@ -33,12 +46,20 @@ var _scan_t := 0.0
 var _seen_dead := {}
 var _voice: AudioStreamPlayer3D
 var _pitch := 1.0
+var voice: Dictionary = {}       # this one's voice (from the bank)
+var _author := false             # speaks with the first recordings where there are any
+var _last_clip := ""
+var last_text := ""              # what was said last (for subtitles and tests)
 
 
 func setup(a: Node, rng: RandomNumberGenerator) -> void:
 	ai = a
 	body = a.body
-	_pitch = rng.randf_range(0.9, 1.1)
+	_pitch = rng.randf_range(0.97, 1.03)
+	var bank := voices()
+	if not bank.is_empty():
+		voice = bank[rng.randi() % bank.size()]
+	_author = bank.is_empty() or rng.randf() < 0.12
 	_rude = rng.randf() < 0.25
 	_next_chat = rng.randf_range(6.0, 30.0)
 	_next_mutter = rng.randf_range(20.0, 60.0)
@@ -51,10 +72,45 @@ func setup(a: Node, rng: RandomNumberGenerator) -> void:
 	body.head.add_child(_voice)
 
 
+static func voices() -> Array:
+	if not _bank_loaded:
+		_bank_loaded = true
+		var f := FileAccess.open(VOICES_DIR + "voices.json", FileAccess.READ)
+		if f:
+			var d = JSON.parse_string(f.get_as_text())
+			if d is Dictionary:
+				_bank = (d as Dictionary).get("voices", [])
+	return _bank
+
+
+## A clip by its name: "v07/greet_03.ogg" (a generated voice) or "greet" (a
+## first recording).
 static func stream(line: String) -> AudioStream:
 	if not _streams.has(line):
-		_streams[line] = load(VOICE_DIR % line)
+		var path: String = (VOICES_DIR + line) if "/" in line else (VOICE_DIR % line)
+		_streams[line] = load(path) if ResourceLoader.exists(path) else null
 	return _streams[line]
+
+
+## Which clip this one says for a situation (or an old line name): his own
+## voice's, not the same one twice running.
+func _clip_for(key: String) -> String:
+	var sit: String = OLD.get(key, key)
+	if _author:
+		for old in OLD:
+			if OLD[old] == sit and (old == key or not OLD.has(key)):
+				return old
+	var clips: Array = (voice.get("clips", {}) as Dictionary).get(sit, [])
+	if clips.is_empty():
+		for old in OLD:
+			if OLD[old] == sit:
+				return old
+		return ""
+	var c: Dictionary = clips[randi() % clips.size()]
+	if String(c["file"]) == _last_clip and clips.size() > 1:
+		c = clips[(clips.find(c) + 1) % clips.size()]
+	last_text = c["text"]
+	return c["file"]
 
 
 func busy() -> bool:
@@ -65,13 +121,19 @@ func speaking() -> bool:
 	return _voice.playing
 
 
-## Says a line; returns how long it lasts.
-func say(line: String) -> float:
-	var s := stream(line)
-	if s == null or not body.alive or not body.conscious:
+## Says something for a situation (greet, story, anger... - see
+## tools/voices/lines.json; the first recordings' names work too); returns
+## how long it lasts.
+func say(key: String) -> float:
+	if not body.alive or not body.conscious:
 		return 0.0
+	var line := _clip_for(key)
+	var s := stream(line) if line != "" else null
+	if s == null:
+		return 0.0
+	_last_clip = line
 	_voice.stream = s
-	if line in ["reply_rude", "go_away", "tease_rude", "tease_rude2", "man_go_away", "tease"]:
+	if OLD.get(key, key) in ANGRY:
 		body.angry_until = maxf(body.angry_until, Game.clock + s.get_length() + 2.5)
 	_voice.pitch_scale = _pitch * randf_range(0.97, 1.03)
 	_voice.play()
@@ -134,20 +196,57 @@ func _start(other: Node) -> void:
 	_step = 0
 	_wait = 0.0
 	_approach_t = 0.0
-	# Who says what, decided up front.
-	if randf() < 0.6:
-		_lines = [[true, "greet"]]
-		if randf() < 0.6:
-			_lines.append([false, "reply_fine"])
-		else:
-			_lines.append([false, "reply_rude"])
-			_lines.append([true, "go_away"])
-	else:
-		_lines = [[true, "tease"], [false, "tease_rude" if randf() < 0.6 else "tease_rude2"]]
-		_lines.append([true, "heard_you" if randf() < 0.5 else "go_away"])
+	# Who says what, decided up front ([the starter speaks, situation]).
+	_lines = _script()
 	ai._enter(ai.S.TALK)
 	other.ai._enter(ai.S.TALK)
 	other.ai.body.move_velocity = Vector3.ZERO
+
+
+## A conversation, from how it goes.
+func _script() -> Array:
+	var r := randf()
+	var L: Array = []
+	if r < 0.3:
+		# How's life: hello, how are you, the answer, a word back, bye.
+		L = [[true, "greet"], [false, "greet_reply"], [true, "how_are_you"], [false, "answer_life"]]
+		if randf() < 0.6:
+			L.append([true, "react_story"])
+		if randf() < 0.4:
+			L.append_array([[false, "how_are_you"], [true, "answer_life"]])
+		L.append([true, "bye"])
+		if randf() < 0.6:
+			L.append([false, "bye"])
+	elif r < 0.52:
+		# A story, and maybe one back.
+		L = [[true, "greet"], [false, "greet_reply"], [true, "story"], [false, "react_story"]]
+		if randf() < 0.45:
+			L.append_array([[false, "story"], [true, "react_story"]])
+		L.append([randf() < 0.5, "bye"])
+	elif r < 0.64:
+		# Money and work.
+		L = [[true, "how_are_you"], [false, "money_work"], [true, "react_story"], [true, "money_work"]]
+		if randf() < 0.5:
+			L.append([false, "react_story"])
+		L.append([false, "bye"])
+	elif r < 0.74:
+		# A smoke break together.
+		L = [[true, "greet"], [false, "smoke"], [true, "smoke"], [false, "thinking"], [true, "react_story"], [true, "bye"]]
+	elif r < 0.86:
+		# Hello - get lost - and the temper.
+		L = [[true, "greet"], [false, "brush_off"], [true, "anger"]]
+		if randf() < 0.4:
+			L.append([false, "anger"])
+	else:
+		# Picking on him: he bites back; made up, or not.
+		L = [[true, "tease"], [false, "tease_back"]]
+		if randf() < 0.55:
+			L.append([true, "make_peace"])
+			if randf() < 0.5:
+				L.append([false, "react_story"])
+		else:
+			L.append_array([[true, "anger"], [false, "brush_off"]])
+	return L
 
 
 func end() -> void:
@@ -221,7 +320,7 @@ func _alone(delta: float) -> void:
 	if _next_mutter <= 0.0:
 		_next_mutter = randf_range(35.0, 90.0)
 		if calm and ai.state == ai.S.IDLE and not speaking() and randf() < 0.5:
-			say("idle_high")
+			say(["thinking", "thinking", "money_work", "smoke"].pick_random() if randf() < 0.5 else "thinking")
 	# A player walking up: most say hello; only a surly one, and only if he
 	# keeps standing right in his face, tells him where to go.
 	var p = Game.player
@@ -258,7 +357,7 @@ func _alone(delta: float) -> void:
 		if eye.distance_to(at) < 25.0 and _facing(at) and ai._line_clear(eye, at + Vector3.UP * 0.2):
 			_seen_dead[b] = true
 			body.sad_until = Game.clock + 30.0     # the shock of it stays on the face
-			_react()
+			_react("saw_body")
 			return
 
 
@@ -268,7 +367,7 @@ func _facing(at: Vector3) -> bool:
 
 
 ## "А ебать, это что там?"
-func _react() -> void:
+func _react(what := "scared") -> void:
 	_last_react = Game.clock
-	say("saw_gun")
+	say(what)
 	_gun_cd = 35.0
