@@ -13,7 +13,6 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var look_rel := Vector2.ZERO      # движение мыши за кадр — для инерции оружия
 var bob_t := 0.0
 var roll := 0.0
-var land_dip := 0.0
 var trauma := 0.0
 var shake_t := 0.0
 var was_on_floor := true
@@ -66,8 +65,8 @@ func _physics_process(delta: float) -> void:
 	velocity.z = lerpf(velocity.z, wish.z * s, accel * delta)
 	move_and_slide()
 	if is_on_floor() and not was_on_floor:
-		land_dip = clampf(-last_vy * 0.025, 0.0, 0.3)   # приземление: камера «проседает»
-		add_trauma(clampf(-last_vy * 0.02, 0.0, 0.35))
+		dip_v = last_vy * 0.35   # приземление: камера пружинит вниз
+		add_trauma(clampf(-last_vy * 0.01, 0.0, 0.2))
 	was_on_floor = is_on_floor()
 	for i in get_slide_collision_count():
 		var col := get_slide_collision(i)
@@ -75,27 +74,29 @@ func _physics_process(delta: float) -> void:
 		if rb:
 			rb.apply_central_impulse(-col.get_normal() * 2.0)
 
-# Динамика камеры: покачивание, крен в стороны, FOV на скорости, просадка при приземлении, тряска
+# Динамика камеры: плавное покачивание, лёгкий крен, пружинная просадка при приземлении, мягкая тряска. FOV не меняется.
+var bob_amp := 0.0
+var dip := 0.0
+var dip_v := 0.0
+
 func _process(delta: float) -> void:
-	var hv := Vector2(velocity.x, velocity.z)
-	var spd := hv.length()
-	var sprinting := Input.is_action_pressed("sprint") and spd > speed * 1.1
+	var spd := Vector2(velocity.x, velocity.z).length()
 	var grounded := is_on_floor()
+	var sprinting := Input.is_action_pressed("sprint") and spd > speed * 1.1
+	bob_amp = lerpf(bob_amp, clampf(spd / speed, 0.0, 1.4) if grounded else 0.0, delta * 7.0)
 	if grounded:
-		bob_t += delta * spd * (1.25 if sprinting else 1.55)
-	var amp := clampf(spd / speed, 0.0, 1.5) if grounded else 0.0
-	var bob := Vector3(sin(bob_t * 0.5) * 0.022, absf(sin(bob_t * 0.5)) * 0.045 - 0.02, 0.0) * amp
-	# крен от бокового движения и поворота
+		bob_t += delta * spd * (1.1 if sprinting else 1.35)
+	# гладкое покачивание (синус, а не |sin|: без изломов)
+	var bob := Vector3(sin(bob_t * 0.5) * 0.014, (cos(bob_t) - 1.0) * 0.011, 0.0) * bob_amp
 	var lateral := velocity.dot(global_transform.basis.x)
-	roll = lerpf(roll, -lateral / sprint_speed * 0.045, delta * 8.0)
-	land_dip = lerpf(land_dip, 0.0, delta * 9.0)
-	# FOV
-	var fov_t := base_fov + (9.0 if sprinting else 0.0) + clampf(spd, 0.0, 10.0) * 0.5
-	cam.fov = lerpf(cam.fov, fov_t, delta * 7.0)
-	# тряска (trauma^2, шум)
-	trauma = maxf(0.0, trauma - delta * 1.6)
-	shake_t += delta * 38.0
+	roll = lerpf(roll, -lateral / sprint_speed * 0.022, delta * 6.0)
+	# пружина приземления
+	dip_v += (-dip * 160.0 - dip_v * 16.0) * delta
+	dip += dip_v * delta
+	trauma = maxf(0.0, trauma - delta * 1.8)
+	shake_t += delta * 11.0
 	var sh := trauma * trauma
 	var shake := Vector3(noise.get_noise_2d(shake_t, 0.0), noise.get_noise_2d(shake_t, 50.0), noise.get_noise_2d(shake_t, 100.0)) * sh
-	cam.position = bob + Vector3(0, -land_dip, 0) + shake * 0.03
-	cam.rotation = Vector3(shake.x * 0.05, shake.y * 0.05, roll + shake.z * 0.07 + sin(bob_t * 0.5) * 0.004 * amp)
+	cam.fov = base_fov
+	cam.position = bob + Vector3(0, dip, 0) + shake * 0.015
+	cam.rotation = Vector3(shake.x * 0.03, shake.y * 0.03, roll + shake.z * 0.04 + sin(bob_t * 0.5) * 0.0025 * bob_amp)

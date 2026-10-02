@@ -280,6 +280,7 @@ func _fire(dist: float) -> void:
 	else:
 		tp += Vector3(randf_range(-1.2, 1.2), randf_range(-0.6, 0.8), randf_range(-1.2, 1.2))
 	_tracer(from, tp)
+	Sfx.play_at(get_tree().current_scene, "enemy_shot", from, -4.0)
 
 func _tracer(a: Vector3, b: Vector3) -> void:
 	var m := MeshInstance3D.new()

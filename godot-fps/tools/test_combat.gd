@@ -35,5 +35,5 @@ func _ready() -> void:
 				c.get_meta("humanoid").receive_hit(c, r.position, (aim - from).normalized(), 25.0, "rifle")
 		await get_tree().create_timer(0.35).timeout
 	await get_tree().create_timer(6.0).timeout
-	print("done alive=", e.alive)
+	print("done alive=", e.alive, " splat_cells=", Game.blood._splat_grid.size(), " pools=", Game.blood._pools.size(), " drops=", Game.blood._drops.size(), " bleeders=", Game.blood._bleeders.size(), " body_runs=", Game.blood._body_runs.size(), " world_decals=", Game.blood._world.decals.size())
 	get_tree().quit()
