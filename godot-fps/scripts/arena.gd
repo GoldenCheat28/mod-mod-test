@@ -65,6 +65,8 @@ func _build(it: Dictionary) -> void:
 				c.shape = bs
 			rb.add_child(c)
 			rb.mass = maxf(0.2, size.x * size.y * size.z * 60.0)
+			rb.collision_layer = Game.LAYER_PROPS
+			rb.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_BODY | Game.LAYER_PLAYER
 			add_child(rb)
 		"light":
 			var m := _mesh(size, mat, "box")

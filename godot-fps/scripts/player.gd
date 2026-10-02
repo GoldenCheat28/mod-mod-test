@@ -23,6 +23,9 @@ var noise := FastNoiseLite.new()
 @onready var cam: Camera3D = $Head/Camera3D
 
 func _ready() -> void:
+	collision_layer = Game.LAYER_PLAYER
+	collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_BODY
+	Game.player = self
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	noise.frequency = 1.0
 	cam.fov = base_fov

@@ -5,8 +5,28 @@ config/name="FPS Shooter"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
+[autoload]
+
+Game="*res://scripts/game.gd"
+
 [shader_globals]
 
+blood_floor={
+"type": "sampler2D",
+"value": ""
+}
+blood_wall_x={
+"type": "sampler2D",
+"value": ""
+}
+blood_wall_z={
+"type": "sampler2D",
+"value": ""
+}
+blood_area={
+"type": "vec4",
+"value": Vector4(-40.5, 81, -0.5, 12.6)
+}
 blood_time={
 "type": "float",
 "value": 0.0

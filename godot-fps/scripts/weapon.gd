@@ -121,12 +121,14 @@ func _shoot() -> void:
 	var c := ray.get_collider()
 	var p := ray.get_collision_point()
 	var n := ray.get_collision_normal()
-	if c.has_method("take_damage"):
-		c.take_damage(damage, p, n, -cam_basis_z())
+	var shot_dir := -cam_basis_z()
+	if c is RigidBody3D and (c as Node).has_meta("humanoid"):
+		var bot = (c as Node).get_meta("humanoid")
+		bot.receive_hit(c, p, shot_dir, damage, "rifle")
 	elif c is RigidBody3D:
 		(c as RigidBody3D).apply_impulse(-n * 3.0, p - (c as RigidBody3D).global_position)
-	elif c is StaticBody3D:
-		Blood.instance.bullet_hole(p, n)
+	elif c is StaticBody3D and Game.holes:
+		Game.holes.add(p, n)
 
 func _reload() -> void:
 	if reloading or ammo == mag_size or reserve <= 0:

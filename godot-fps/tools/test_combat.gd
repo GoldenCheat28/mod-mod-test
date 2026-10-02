@@ -1,5 +1,6 @@
 extends Node
-# Отладочная сцена: ставит игрока перед врагом и стреляет. Запуск: godot --path . res://tools/test_combat.tscn
+# Отладка боя: игрок стреляет настоящим лучом по врагу (проверяет попадания по частям, кровь, регдолл).
+# Запуск: godot --path . res://tools/test_combat.tscn
 func _ready() -> void:
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
@@ -7,19 +8,31 @@ func _ready() -> void:
 	var player: Node3D = get_tree().get_first_node_in_group("player")
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	var e: Node3D = enemies[3]
-	player.global_position = e.global_position + Vector3(0, 0, 4.5)
-	player.look_at(e.global_position + Vector3(0, 1.3, 0))
-	player.rotation.x = 0
 	for en in enemies:
 		if en != e:
 			en.queue_free()
 	e.set_physics_process(false)
-	await get_tree().create_timer(0.3).timeout
-	var cam: Camera3D = player.get_node("Head/Camera3D")
+	player.global_position = e.global_position + Vector3(0, 0, 4.5)
+	player.rotation = Vector3.ZERO
 	var head: Node3D = player.get_node("Head")
 	head.look_at(e.global_position + Vector3(0, 1.3, 0))
-	for i in 4:
-		e.take_damage(25.0, e.global_position + Vector3(0, 1.3, 0), Vector3(0, 0, 1), Vector3(0, 0, -1))
-		await get_tree().create_timer(0.12).timeout
-	await get_tree().create_timer(2.5).timeout
+	await get_tree().create_timer(0.3).timeout
+	var cam: Camera3D = player.get_node("Head/Camera3D")
+	for i in 12:
+		if not is_instance_valid(e) or not e.alive:
+			break
+		var aim := e.global_position + Vector3(randf_range(-0.15, 0.15), randf_range(0.5, 1.6), 0)
+		var from := cam.global_position
+		var q := PhysicsRayQueryParameters3D.create(from, from + (aim - from).normalized() * 30.0, 7)
+		var r := get_viewport().world_3d.direct_space_state.intersect_ray(q)
+		if r.is_empty():
+			print("shot ", i, ": miss")
+		else:
+			var c: Object = r.collider
+			print("shot ", i, ": ", (c as Node).name, " hp=", e.health)
+			if c is RigidBody3D and c.has_meta("humanoid"):
+				c.get_meta("humanoid").receive_hit(c, r.position, (aim - from).normalized(), 25.0, "rifle")
+		await get_tree().create_timer(0.15).timeout
+	await get_tree().create_timer(3.0).timeout
+	print("done alive=", e.alive)
 	get_tree().quit()

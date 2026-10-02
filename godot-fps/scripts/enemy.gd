@@ -1,4 +1,6 @@
 extends CharacterBody3D
+
+const BodyBlood = preload("res://scripts/fx/body_blood.gd")
 # ИИ: патруль -> погоня -> поиск. Навигация по navmesh, зрение (конус + луч), слух (выстрелы),
 # реакция, стрельба с промахами, стрейф, ближний бой, оповещение союзников.
 # Анимации: добавь AnimationPlayer с клипами "idle", "run", "die" — скрипт запустит их сам.
@@ -28,15 +30,30 @@ var repath := 0.0
 var patrol_wait := 1.0
 var has_patrol_target := false
 var rig: Dictionary
+# --- интерфейс для системы крови (scripts/fx/blood.gd) ---
+var parts: Array[RigidBody3D] = []
+var head: RigidBody3D
+var _ray_exclude: Array[RID] = []
+var alive := true
+var fallen := false
+var bleed_rate := 0.0
+var scale_factor := 1.0
+var body_blood: RefCounted
 var walk_phase := 0.0
 var last_hit_point := Vector3.ZERO
 var last_shot_dir := Vector3.FORWARD
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 func _ready() -> void:
-	add_to_group("enemies")
 	target = get_tree().get_first_node_in_group("player")
+	add_to_group("enemies")
+	Game.bots.append(self)
 	rig = Humanoid.build(self)
+	parts = rig["parts"]
+	head = rig["head"]
+	_ray_exclude = rig["rids"].duplicate()
+	_ray_exclude.append(get_rid())
+	body_blood = BodyBlood.new(self)
 	agent = NavigationAgent3D.new()
 	agent.path_desired_distance = 0.6
 	agent.target_desired_distance = 1.0
@@ -57,7 +74,7 @@ func _can_see() -> bool:
 	var fwd := -global_transform.basis.z
 	if d > 4.0 and fwd.angle_to(to) > deg_to_rad(fov_deg * 0.5):
 		return false
-	var q := PhysicsRayQueryParameters3D.create(eye, tp, 1, [get_rid()])
+	var q := PhysicsRayQueryParameters3D.create(eye, tp, Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_PLAYER, [get_rid()])
 	var r: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
 	return not r.is_empty() and r.collider == target
 
@@ -70,16 +87,26 @@ func hear(pos: Vector3, radius: float) -> void:
 		search_t = 8.0
 		agent.target_position = pos
 
-func take_damage(amount: float, point := Vector3.ZERO, normal := Vector3.UP, shot_dir := Vector3.ZERO) -> void:
-	if state == S.DEAD:
-		return
-	if Blood.instance:
-		Blood.instance.splash(point, normal, shot_dir)
+func receive_hit(part: RigidBody3D, point: Vector3, dir: Vector3, damage: float, weapon: String) -> void:
+	var pname: String = part.get_meta("part")
+	var kind := "limb"
+	if pname == "head":
+		kind = "head"
+		damage *= 2.5
+	elif pname == "torso" or pname == "pelvis":
+		kind = "torso"
+	var rate := clampf(damage * 0.35, 3.0, 22.0)
+	var arterial := kind == "limb" and randf() < 0.15
+	bleed_rate += rate
+	if Game.blood:
+		Game.blood.on_hit(self, part, point, dir.normalized(), weapon, kind, rate, arterial)
 	last_hit_point = point
-	last_shot_dir = shot_dir if shot_dir != Vector3.ZERO else -normal
-	if point.y - global_position.y > 1.55:
-		amount *= 2.0   # хэдшот
-	health -= amount
+	last_shot_dir = dir
+	if not alive:
+		if not part.freeze:
+			part.apply_impulse(dir.normalized() * 2.0, point - part.global_position)
+		return
+	health -= damage
 	if health <= 0.0:
 		_die()
 		return
@@ -90,13 +117,30 @@ func take_damage(amount: float, point := Vector3.ZERO, normal := Vector3.UP, sho
 	get_tree().call_group("enemies", "hear", global_position, 15.0)
 
 func _die() -> void:
+	alive = false
+	fallen = true
 	state = S.DEAD
 	$CollisionShape3D.set_deferred("disabled", true)
-	if Blood.instance:
-		Blood.instance.pool(global_position)
 	var imp := last_shot_dir.normalized() * 9.0 + Vector3(0, 1.5, 0)
-	Humanoid.ragdoll(rig, get_tree().current_scene, velocity, imp, last_hit_point)
-	queue_free()
+	Humanoid.ragdoll(self, rig, get_tree().current_scene, velocity, imp, last_hit_point)
+	set_physics_process(false)
+
+# --- интерфейс крови на теле ---
+func paint_blood(part: RigidBody3D, world_p: Vector3, r: float, amount: float) -> void:
+	body_blood.paint(part, world_p, r, amount)
+
+func bloom_blood(part: RigidBody3D, world_p: Vector3, r: float, dur: float, amount: float) -> void:
+	body_blood.bloom(part, world_p, r, dur, amount)
+
+func blood_materials() -> Array:
+	return rig["materials"]
+
+func _process(delta: float) -> void:
+	body_blood.flush(delta)
+	bleed_rate = maxf(0.0, bleed_rate - delta * 0.25)
+
+func _exit_tree() -> void:
+	Game.bots.erase(self)
 
 func _play(anim: String) -> void:
 	var ap := get_node_or_null("AnimationPlayer") as AnimationPlayer
@@ -133,7 +177,7 @@ func _stop() -> void:
 	velocity.z = move_toward(velocity.z, 0.0, 20.0 * get_physics_process_delta_time())
 
 func _physics_process(delta: float) -> void:
-	if state == S.DEAD or target == null:
+	if not alive or target == null:
 		return
 	if not is_on_floor():
 		velocity.y -= gravity * delta

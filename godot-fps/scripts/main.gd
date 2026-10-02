@@ -12,7 +12,17 @@ var has_lights := false
 
 func _ready() -> void:
 	_setup_environment()
-	add_child(Blood.new())
+	Game.reset()
+	var blood := Node3D.new()
+	blood.name = "Blood"
+	blood.set_script(load("res://scripts/fx/blood.gd"))
+	add_child(blood)
+	Game.blood = blood
+	var holes := Node3D.new()
+	holes.name = "BulletHoles"
+	holes.set_script(load("res://scripts/fx/bullet_holes.gd"))
+	add_child(holes)
+	Game.holes = holes
 	# пол-коллайдер для частиц крови (уровень y=0)
 	var pc := GPUParticlesCollisionBox3D.new()
 	pc.size = Vector3(200, 1, 200)
@@ -156,7 +166,7 @@ func _spawn_player() -> void:
 	var ray := RayCast3D.new()
 	ray.name = "RayCast3D"
 	ray.target_position = Vector3(0, 0, -100)
-	ray.collision_mask = 5   # мир + регдоллы
+	ray.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_BOTS
 	var weapon := Node3D.new()
 	weapon.name = "Weapon"
 	weapon.set_script(load("res://scripts/weapon.gd"))
@@ -180,6 +190,8 @@ func _spawn_enemy(pos: Vector3) -> void:
 	cs.name = "CollisionShape3D"
 	cs.shape = CapsuleShape3D.new()
 	cs.position.y = 0.9
+	e.collision_layer = Game.LAYER_BODY
+	e.collision_mask = Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_PLAYER
 	e.add_child(cs)
 	e.position = pos
 	add_child(e)

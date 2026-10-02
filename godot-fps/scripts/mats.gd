@@ -68,7 +68,7 @@ const DEFS := {
 	"jersey":       ["concrete", Color(0.55, 0.55, 0.53), 256, 2.0, 0.95, 0.0, true],
 }
 
-static func pbr(key: String) -> StandardMaterial3D:
+static func pbr(key: String) -> Material:
 	if key == "window":
 		return emissive("window", Color(0.55, 0.72, 0.95), 1.6)
 	if key == "panel":
@@ -80,21 +80,28 @@ static func pbr(key: String) -> StandardMaterial3D:
 		return get_mat("fallback", Color(0.5, 0.5, 0.5))
 	var d: Array = DEFS[key]
 	var tex := _make_tex(d[0], d[1], d[2])
-	var m := StandardMaterial3D.new()
-	m.albedo_texture = tex[0]
-	m.normal_enabled = true
-	m.normal_texture = tex[1]
-	m.normal_scale = 1.0
-	m.roughness = d[4]
-	m.metallic = d[5]
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	var mat: Material
 	if d[6]:
-		m.uv1_triplanar = true
-		m.uv1_world_triplanar = true
-		var s := 1.0 / float(d[3])
-		m.uv1_scale = Vector3(s, s, s)
-	_cache[ck] = m
-	return m
+		# мировая геометрия: свой шейдер (триплпланарный + кровь из мировых карт)
+		var sm := ShaderMaterial.new()
+		sm.shader = load("res://shaders/surface.gdshader")
+		sm.set_shader_parameter("albedo_tex", tex[0])
+		sm.set_shader_parameter("normal_tex", tex[1])
+		sm.set_shader_parameter("tile", 1.0 / float(d[3]))
+		sm.set_shader_parameter("rough", d[4])
+		sm.set_shader_parameter("metal", d[5])
+		mat = sm
+	else:
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = tex[0]
+		m.normal_enabled = true
+		m.normal_texture = tex[1]
+		m.roughness = d[4]
+		m.metallic = d[5]
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		mat = m
+	_cache[ck] = mat
+	return mat
 
 static func _noise(seed_v: int, freq: float, octaves: int, size: int) -> Image:
 	var n := FastNoiseLite.new()
