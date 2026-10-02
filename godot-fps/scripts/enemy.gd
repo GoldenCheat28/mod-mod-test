@@ -27,11 +27,16 @@ var strafe_t := 0.0
 var repath := 0.0
 var patrol_wait := 1.0
 var has_patrol_target := false
+var rig: Dictionary
+var walk_phase := 0.0
+var last_hit_point := Vector3.ZERO
+var last_shot_dir := Vector3.FORWARD
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 func _ready() -> void:
 	add_to_group("enemies")
 	target = get_tree().get_first_node_in_group("player")
+	rig = Humanoid.build(self)
 	agent = NavigationAgent3D.new()
 	agent.path_desired_distance = 0.6
 	agent.target_desired_distance = 1.0
@@ -65,11 +70,15 @@ func hear(pos: Vector3, radius: float) -> void:
 		search_t = 8.0
 		agent.target_position = pos
 
-func take_damage(amount: float, point := Vector3.ZERO, normal := Vector3.UP) -> void:
+func take_damage(amount: float, point := Vector3.ZERO, normal := Vector3.UP, shot_dir := Vector3.ZERO) -> void:
 	if state == S.DEAD:
 		return
 	if Blood.instance:
-		Blood.instance.splash(point, normal)
+		Blood.instance.splash(point, normal, shot_dir)
+	last_hit_point = point
+	last_shot_dir = shot_dir if shot_dir != Vector3.ZERO else -normal
+	if point.y - global_position.y > 1.55:
+		amount *= 2.0   # хэдшот
 	health -= amount
 	if health <= 0.0:
 		_die()
@@ -85,11 +94,9 @@ func _die() -> void:
 	$CollisionShape3D.set_deferred("disabled", true)
 	if Blood.instance:
 		Blood.instance.pool(global_position)
-	if get_node_or_null("AnimationPlayer"):
-		_play("die")
-	else:
-		create_tween().tween_property(self, "rotation:x", -PI / 2.0, 0.5)
-	get_tree().create_timer(10.0).timeout.connect(queue_free)
+	var imp := last_shot_dir.normalized() * 9.0 + Vector3(0, 1.5, 0)
+	Humanoid.ragdoll(rig, get_tree().current_scene, velocity, imp, last_hit_point)
+	queue_free()
 
 func _play(anim: String) -> void:
 	var ap := get_node_or_null("AnimationPlayer") as AnimationPlayer
@@ -149,6 +156,9 @@ func _physics_process(delta: float) -> void:
 		S.SEARCH:
 			_search(delta)
 	move_and_slide()
+	var spd := Vector2(velocity.x, velocity.z).length()
+	walk_phase += spd * delta * 2.4
+	Humanoid.animate(rig, walk_phase, clampf(spd / 4.0, 0.0, 1.0))
 
 func _patrol(delta: float) -> void:
 	_play("run" if velocity.length() > 0.5 else "idle")

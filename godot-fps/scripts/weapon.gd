@@ -14,6 +14,7 @@ var cooldown := 0.0
 var reloading := false
 var reload_dip := 0.0
 var kick := 0.0
+var sway := Vector2.ZERO
 var bob_t := 0.0
 var flash_t := 0.0
 var base_pos := Vector3(0.2, -0.22, -0.45)
@@ -93,14 +94,19 @@ func _process(delta: float) -> void:
 	bob_t += delta * speed * 1.3
 	kick = lerpf(kick, 0.0, delta * 14.0)
 	var bob := Vector3(sin(bob_t) * 0.006, absf(cos(bob_t)) * 0.006, 0.0) * minf(speed / 6.0, 1.5)
-	position = base_pos + bob + Vector3(0, -reload_dip * 0.18, kick * 0.06)
-	rotation = Vector3(kick * 0.12 + reload_dip * 0.5, 0, reload_dip * -0.4)
+	var look: Vector2 = player.look_rel
+	player.look_rel = Vector2.ZERO
+	sway = sway.lerp(Vector2.ZERO, delta * 9.0) + look * 0.0009
+	sway = sway.limit_length(0.12)
+	position = base_pos + bob + Vector3(-sway.x * 0.35, sway.y * 0.35 - reload_dip * 0.18, kick * 0.06)
+	rotation = Vector3(kick * 0.12 + reload_dip * 0.5 - sway.y, -sway.x, reload_dip * -0.4 - sway.x * 0.5)
 
 func _shoot() -> void:
 	cooldown = fire_rate
 	ammo -= 1
 	ammo_changed.emit(ammo, reserve)
 	kick = 1.0
+	player.add_trauma(0.18)
 	head.rotation.x = clampf(head.rotation.x + 0.0045, -1.5, 1.5)
 	player.rotate_y(randf_range(-0.0012, 0.0012))
 	flash.visible = true
@@ -116,7 +122,7 @@ func _shoot() -> void:
 	var p := ray.get_collision_point()
 	var n := ray.get_collision_normal()
 	if c.has_method("take_damage"):
-		c.take_damage(damage, p, n)
+		c.take_damage(damage, p, n, -cam_basis_z())
 	elif c is RigidBody3D:
 		(c as RigidBody3D).apply_impulse(-n * 3.0, p - (c as RigidBody3D).global_position)
 	elif c is StaticBody3D:
@@ -139,3 +145,6 @@ func _finish_reload() -> void:
 	ammo += take
 	reserve -= take
 	ammo_changed.emit(ammo, reserve)
+
+func cam_basis_z() -> Vector3:
+	return get_parent().global_transform.basis.z

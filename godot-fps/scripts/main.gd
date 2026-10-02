@@ -3,14 +3,10 @@ extends Node3D
 
 @export var map_scene: PackedScene
 
-const SPAWNS := [
-	Vector3(-12, 1, -14), Vector3(-2, 1, -16), Vector3(8, 1, -15),
-	Vector3(14, 1, -10), Vector3(-14, 1, -10), Vector3(3, 1, -9),
-]
 const MAP_PATHS := ["res://maps/map.glb", "res://maps/map.gltf"]
 
 var region: NavigationRegion3D
-var player_spawn := Vector3(0, 1, 12)
+var player_spawn := Vector3(0, 1, 24)
 var enemy_spawns: Array[Vector3] = []
 var has_lights := false
 
@@ -29,7 +25,7 @@ func _ready() -> void:
 	nm.cell_size = 0.25
 	nm.cell_height = 0.25
 	nm.agent_radius = 0.5
-	nm.agent_height = 1.8
+	nm.agent_height = 2.0
 	nm.agent_max_climb = 0.25
 	region.navigation_mesh = nm
 	add_child(region)
@@ -50,9 +46,10 @@ func _ready() -> void:
 			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 			add_child(sun)
 	else:
-		region.add_child(Arena.new())
-		for sp in SPAWNS:
-			enemy_spawns.append(sp)
+		var arena := Arena.new()
+		region.add_child(arena)
+		player_spawn = arena.player_spawn
+		enemy_spawns = arena.enemy_spawns
 	region.bake_navigation_mesh(false)
 	_spawn_player()
 	for p in enemy_spawns:
@@ -130,7 +127,7 @@ func _setup_environment() -> void:
 	env.sky.sky_material = ProceduralSkyMaterial.new()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.4, 0.42, 0.48)
-	env.ambient_light_energy = 0.5
+	env.ambient_light_energy = 1.1
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.ssao_enabled = true
 	env.ssil_enabled = true
@@ -159,6 +156,7 @@ func _spawn_player() -> void:
 	var ray := RayCast3D.new()
 	ray.name = "RayCast3D"
 	ray.target_position = Vector3(0, 0, -100)
+	ray.collision_mask = 5   # мир + регдоллы
 	var weapon := Node3D.new()
 	weapon.name = "Weapon"
 	weapon.set_script(load("res://scripts/weapon.gd"))
@@ -182,26 +180,6 @@ func _spawn_enemy(pos: Vector3) -> void:
 	cs.name = "CollisionShape3D"
 	cs.shape = CapsuleShape3D.new()
 	cs.position.y = 0.9
-	var body := MeshInstance3D.new()
-	body.mesh = CapsuleMesh.new()
-	body.position.y = 0.9
-	body.material_override = Mats.get_mat("enemy", Color(0.35, 0.4, 0.3), 0.8)
-	var head := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.2
-	sm.height = 0.4
-	head.mesh = sm
-	head.position = Vector3(0, 1.75, 0)
-	head.material_override = Mats.get_mat("enemy_head", Color(0.7, 0.55, 0.45), 0.8)
-	var gun := MeshInstance3D.new()
-	var gm := BoxMesh.new()
-	gm.size = Vector3(0.08, 0.1, 0.6)
-	gun.mesh = gm
-	gun.position = Vector3(0.3, 1.3, -0.4)
-	gun.material_override = Mats.get_mat("gun_dark", Color(0.12, 0.12, 0.14), 0.4, 0.8, 4.0)
-	e.add_child(gun)
 	e.add_child(cs)
-	e.add_child(body)
-	e.add_child(head)
 	e.position = pos
 	add_child(e)
