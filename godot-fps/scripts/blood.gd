@@ -169,6 +169,8 @@ func _spot(pos: Vector3, n: Vector3, vel: Vector3, radius_m: float) -> void:
 	var stretch := 1.0 + oblique * oblique * 3.5 * clampf(speed / 5.0, 0.3, 1.0)
 	var spike := clampf((speed - 4.0) / 9.0, 0.0, 1.0) * (1.0 - 0.4 * oblique)
 	var kind := 1 if absf(n.y) > 0.7 else 0
+	if kind == 1:
+		spike *= 0.45   # на полу капли округлее
 	_place(pos, n, kind, radius_m, stretch, spike, tang, 90.0 + randf() * 60.0, 0.0)
 
 func _place(pos: Vector3, n: Vector3, kind: int, radius_m: float, stretch: float, spike: float, tang: Vector3, dry: float, growth: float) -> void:
