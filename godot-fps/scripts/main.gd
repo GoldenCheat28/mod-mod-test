@@ -7,27 +7,121 @@ const SPAWNS := [
 	Vector3(-12, 1, -14), Vector3(-2, 1, -16), Vector3(8, 1, -15),
 	Vector3(14, 1, -10), Vector3(-14, 1, -10), Vector3(3, 1, -9),
 ]
+const MAP_PATHS := ["res://maps/map.glb", "res://maps/map.gltf"]
+
+var region: NavigationRegion3D
+var player_spawn := Vector3(0, 1, 12)
+var enemy_spawns: Array[Vector3] = []
+var has_lights := false
 
 func _ready() -> void:
 	_setup_environment()
 	add_child(Blood.new())
-	# пол-коллайдер для частиц крови (карта должна быть на уровне y=0)
+	# пол-коллайдер для частиц крови (уровень y=0)
 	var pc := GPUParticlesCollisionBox3D.new()
 	pc.size = Vector3(200, 1, 200)
 	pc.position = Vector3(0, -0.5, 0)
 	add_child(pc)
-	if map_scene:
-		add_child(map_scene.instantiate())
-		var sun := DirectionalLight3D.new()
-		sun.rotation_degrees = Vector3(-50, -30, 0)
-		sun.shadow_enabled = true
-		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-		add_child(sun)
+	# навигация: navmesh запекается по статическим коллайдерам
+	region = NavigationRegion3D.new()
+	var nm := NavigationMesh.new()
+	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nm.cell_size = 0.25
+	nm.cell_height = 0.25
+	nm.agent_radius = 0.5
+	nm.agent_height = 1.8
+	nm.agent_max_climb = 0.25
+	region.navigation_mesh = nm
+	add_child(region)
+	var scene := map_scene
+	if scene == null:
+		for path in MAP_PATHS:
+			if ResourceLoader.exists(path):
+				scene = load(path)
+				break
+	if scene:
+		var map := scene.instantiate() as Node3D
+		region.add_child(map)
+		_prepare_map(map)
+		if not has_lights:
+			var sun := DirectionalLight3D.new()
+			sun.rotation_degrees = Vector3(-50, -30, 0)
+			sun.shadow_enabled = true
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+			add_child(sun)
 	else:
-		add_child(Arena.new())
+		region.add_child(Arena.new())
+		for sp in SPAWNS:
+			enemy_spawns.append(sp)
+	region.bake_navigation_mesh(false)
 	_spawn_player()
-	for p in SPAWNS:
+	for p in enemy_spawns:
 		_spawn_enemy(p)
+
+# Карта из Blockbench (glb): коллизии, лампы, пропсы, точки спавна — по именам объектов.
+#   spawn_player, spawn_enemy*  — точки спавна (кубы удаляются)
+#   light_*                     — светящаяся панель + источник света
+#   prop_*                      — физический предмет (ящик, бочка, мусор)
+#   nocol_*                     — без коллизии
+func _prepare_map(root: Node3D) -> void:
+	var meshes: Array[MeshInstance3D] = []
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		meshes.append(n as MeshInstance3D)
+	var box := AABB()
+	for i in meshes.size():
+		var wb := meshes[i].global_transform * meshes[i].get_aabb()
+		box = wb if i == 0 else box.merge(wb)
+	if box.size.x > 200.0 or box.size.z > 200.0:
+		root.scale = Vector3.ONE / 16.0   # glb в единицах Blockbench (16 = 1 м)
+	var light_i := 0
+	for mi in meshes:
+		var nm := String(mi.name).to_lower()
+		var center := mi.global_transform * mi.get_aabb().get_center()
+		if nm.begins_with("spawn_player"):
+			player_spawn = center
+			mi.queue_free()
+		elif nm.begins_with("spawn_enemy"):
+			enemy_spawns.append(center)
+			mi.queue_free()
+		elif nm.begins_with("light_"):
+			has_lights = true
+			mi.material_override = Mats.emissive("panel", Color(1.0, 0.95, 0.85), 3.0)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var l := OmniLight3D.new()
+			l.omni_range = 11.0
+			l.light_energy = 1.4
+			l.light_color = Color(1.0, 0.93, 0.82)
+			l.shadow_enabled = (light_i % 4 == 0)
+			light_i += 1
+			region.add_child(l)
+			l.global_position = center + Vector3(0, -0.6, 0)
+		elif nm.begins_with("prop_"):
+			_make_prop(mi)
+		elif nm.begins_with("nocol"):
+			continue
+		else:
+			mi.create_trimesh_collision()
+			var pcb := GPUParticlesCollisionBox3D.new()
+			pcb.size = mi.get_aabb().size
+			mi.add_child(pcb)
+			pcb.position = mi.get_aabb().get_center()
+
+func _make_prop(mi: MeshInstance3D) -> void:
+	var gt := mi.global_transform
+	var sc := gt.basis.get_scale()
+	var rb := RigidBody3D.new()
+	rb.mass = 10.0
+	region.add_child(rb)
+	rb.global_transform = Transform3D(gt.basis.orthonormalized(), gt.origin)
+	mi.reparent(rb)
+	var shape := mi.mesh.create_convex_shape() as ConvexPolygonShape3D
+	var pts := PackedVector3Array()
+	for p in shape.points:
+		pts.append(p * sc)
+	shape.points = pts
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	rb.add_child(cs)
 
 func _setup_environment() -> void:
 	var env := Environment.new()
@@ -72,7 +166,7 @@ func _spawn_player() -> void:
 	cam.add_child(weapon)
 	head.add_child(cam)
 	p.add_child(head)
-	p.position = Vector3(0, 1, 12)
+	p.position = player_spawn
 	add_child(p)
 	var hud := CanvasLayer.new()
 	hud.set_script(load("res://scripts/hud.gd"))
@@ -99,6 +193,13 @@ func _spawn_enemy(pos: Vector3) -> void:
 	head.mesh = sm
 	head.position = Vector3(0, 1.75, 0)
 	head.material_override = Mats.get_mat("enemy_head", Color(0.7, 0.55, 0.45), 0.8)
+	var gun := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(0.08, 0.1, 0.6)
+	gun.mesh = gm
+	gun.position = Vector3(0.3, 1.3, -0.4)
+	gun.material_override = Mats.get_mat("gun_dark", Color(0.12, 0.12, 0.14), 0.4, 0.8, 4.0)
+	e.add_child(gun)
 	e.add_child(cs)
 	e.add_child(body)
 	e.add_child(head)

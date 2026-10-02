@@ -107,6 +107,7 @@ func _shoot() -> void:
 	flash_mesh.visible = true
 	flash_mesh.scale = Vector3.ONE * randf_range(0.7, 1.3)
 	flash_t = 0.04
+	get_tree().call_group("enemies", "hear", player.global_position, 30.0)
 	ray.rotation = Vector3(randf_range(-spread, spread), randf_range(-spread, spread), 0.0)
 	ray.force_raycast_update()
 	if not ray.is_colliding():
