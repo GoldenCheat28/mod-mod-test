@@ -90,11 +90,11 @@ func _cyl(parent: Node3D, r: float, h: float, pos: Vector3, mat: Material, along
 	return m
 
 func _build_model() -> void:
-	var metal := Mats.get_mat("gun_dark", Color(0.12, 0.12, 0.14), 0.4, 0.8, 4.0)
-	var steel := Mats.get_mat("gun_grey", Color(0.28, 0.29, 0.31), 0.35, 0.9, 4.0)
-	var poly := Mats.get_mat("polymer", Color(0.07, 0.07, 0.08), 0.65, 0.1, 4.0)
-	var glove := Mats.get_mat("glove", Color(0.10, 0.10, 0.11), 0.85, 0.0, 3.0)
-	var sleeve := Mats.get_mat("sleeve", Color(0.26, 0.31, 0.24), 0.9, 0.0, 3.0)
+	var metal := Mats.get_mat("gun_dark", Color(0.2, 0.21, 0.23), 0.4, 0.8, 4.0)
+	var steel := Mats.get_mat("gun_grey", Color(0.45, 0.46, 0.48), 0.35, 0.9, 4.0)
+	var poly := Mats.get_mat("polymer", Color(0.16, 0.16, 0.17), 0.65, 0.1, 4.0)
+	var glove := Mats.get_mat("glove", Color(0.42, 0.34, 0.24), 0.85, 0.0, 3.0)
+	var sleeve := Mats.get_mat("sleeve", Color(0.30, 0.35, 0.27), 0.9, 0.0, 3.0)
 	# корпус
 	_box(self, Vector3(0.052, 0.075, 0.28), Vector3(0, 0, 0), metal)                    # нижняя часть ресивера
 	_box(self, Vector3(0.05, 0.03, 0.27), Vector3(0, 0.05, -0.005), steel)               # крышка ресивера
@@ -125,13 +125,13 @@ func _build_model() -> void:
 	var hand_r := Node3D.new()
 	hand_r.position = Vector3(0.0, -0.105, 0.08)
 	add_child(hand_r)
-	_box(hand_r, Vector3(0.075, 0.085, 0.085), Vector3.ZERO, glove, Vector3(0.28, 0, 0))
+	_box(hand_r, Vector3(0.062, 0.07, 0.07), Vector3.ZERO, glove, Vector3(0.28, 0, 0))
 	_box(hand_r, Vector3(0.062, 0.062, 0.45), Vector3(0.06, -0.05, 0.3), sleeve, Vector3(-0.18, -0.3, 0.1))
 	# левая рука (анимируется)
 	hand_l = Node3D.new()
 	hand_l.position = HAND_REST
 	add_child(hand_l)
-	_box(hand_l, Vector3(0.075, 0.075, 0.1), Vector3.ZERO, glove)
+	_box(hand_l, Vector3(0.062, 0.062, 0.085), Vector3.ZERO, glove)
 	_box(hand_l, Vector3(0.06, 0.06, 0.46), Vector3(-0.09, -0.07, 0.3), sleeve, Vector3(0.2, 0.42, 0.0))
 	# дульная вспышка
 	flash = OmniLight3D.new()
