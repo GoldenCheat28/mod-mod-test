@@ -2,6 +2,7 @@ extends Node
 # Отладка боя: игрок стреляет настоящим лучом по врагу (проверяет попадания по частям, кровь, регдолл).
 # Запуск: godot --path . res://tools/test_combat.tscn
 func _ready() -> void:
+	get_window().size = Vector2i(960, 540)
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 	await get_tree().create_timer(0.5).timeout
@@ -32,7 +33,7 @@ func _ready() -> void:
 			print("shot ", i, ": ", (c as Node).name, " hp=", e.health)
 			if c is RigidBody3D and c.has_meta("humanoid"):
 				c.get_meta("humanoid").receive_hit(c, r.position, (aim - from).normalized(), 25.0, "rifle")
-		await get_tree().create_timer(0.15).timeout
-	await get_tree().create_timer(3.0).timeout
+		await get_tree().create_timer(0.35).timeout
+	await get_tree().create_timer(6.0).timeout
 	print("done alive=", e.alive)
 	get_tree().quit()
