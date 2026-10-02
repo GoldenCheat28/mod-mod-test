@@ -11,8 +11,8 @@ enum S { PATROL, CHASE, SEARCH, DEAD }
 @export var sight_range := 35.0
 @export var fov_deg := 110.0
 @export var shoot_range := 20.0
-@export var shot_damage := 8.0
-@export var melee_damage := 12.0
+@export var shot_damage := 5.0
+@export var melee_damage := 10.0
 
 var state := S.PATROL
 var target: Node3D

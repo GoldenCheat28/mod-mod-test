@@ -223,7 +223,7 @@ static func _make_tex(kind: String, base: Color, n: int) -> Array:
 			alb.set_pixel(x, y, Color(clampf(col.r, 0, 1), clampf(col.g, 0, 1), clampf(col.b, 0, 1)))
 			hgt[y * n + x] = ht
 	var nrm := Image.create(n, n, false, Image.FORMAT_RGB8)
-	var k := 3.0 if kind in ["corrugated", "diamond", "brick", "tile", "barrel"] else 1.6
+	var k := 3.0 if kind in ["corrugated", "brick", "tile", "barrel"] else 1.6
 	for y in n:
 		for x in n:
 			var hl := hgt[y * n + (x - 1 + n) % n]

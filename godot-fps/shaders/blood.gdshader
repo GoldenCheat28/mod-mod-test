@@ -69,10 +69,10 @@ float field(vec2 q, float age) {
 			float hy = h11(seed * 5.0 + fi * 4.3);
 			float cx = (hx - 0.5) * R * 1.6;
 			if (abs(cx) > R * 0.75) { continue; }
-			float w = R * (0.05 + 0.07 * hy);
+			float w = R * (0.07 + 0.09 * hy);
 			float delay = 0.6 + hy * 4.0;
-			float vmax = R * (1.3 + 3.2 * h11(fi + seed * 8.0));
-			float len = vmax * (1.0 - exp(-max(age - delay, 0.0) * (0.04 + 0.05 * hy)));
+			float vmax = R * (2.6 + 5.5 * h11(fi + seed * 8.0));
+			float len = vmax * (1.0 - exp(-max(age - delay, 0.0) * (0.07 + 0.06 * hy)));
 			float start = R * 0.2;
 			float da = pg.x - start;
 			float tube = (1.0 - smoothstep(w * 0.55, w, abs(pg.y - cx))) * step(0.0, da) * step(da, len);
@@ -103,11 +103,11 @@ void fragment() {
 		float alpha = smoothstep(0.0, soft, h);
 		alpha *= 1.0 - 0.25 * smoothstep(dry_t * 1.5, dry_t * 6.0, age);   // старая засохшая кровь бледнеет
 		alpha *= 1.0 - smoothstep(0.88, 1.0, max(abs(q.x), abs(q.y)));
-		vec3 wet = mix(vec3(0.62, 0.015, 0.03), vec3(0.13, 0.0, 0.01), h);
+		vec3 wet = mix(vec3(0.46, 0.0, 0.02), vec3(0.09, 0.0, 0.006), h);
 		vec3 dry = mix(vec3(0.28, 0.07, 0.035), vec3(0.075, 0.015, 0.01), h);
 		ALBEDO = mix(wet, dry, dryk);
-		ROUGHNESS = mix(0.05, 0.85, dryk);
-		SPECULAR = mix(0.9, 0.3, dryk);
+		ROUGHNESS = mix(0.12, 0.85, dryk);
+		SPECULAR = mix(0.45, 0.2, dryk);
 		float bump = (1.0 - dryk * 0.75) * 1.6;
 		vec3 n = normalize(vec3(-(hx - h) / e * 0.05 * bump * 8.0, -(hy - h) / e * 0.05 * bump * 8.0, 1.0));
 		NORMAL_MAP = n * 0.5 + 0.5;

@@ -20,8 +20,6 @@ var time_offset := 0.0   # только для отладки: «состари�
 
 func _ready() -> void:
 	instance = self
-	if not RenderingServer.global_shader_parameter_get_list().has(&"blood_time"):
-		RenderingServer.global_shader_parameter_add("blood_time", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://shaders/blood.gdshader")
 	var qm := QuadMesh.new()
@@ -123,7 +121,7 @@ func splash(pos: Vector3, normal: Vector3, shot_dir: Vector3 = Vector3.ZERO) -> 
 	# выходное отверстие: быстрый широкий веер на поверхности за целью
 	var exit := space.intersect_ray(PhysicsRayQueryParameters3D.create(pos + fwd * 0.4, pos + fwd * 7.0, 1))
 	if exit and exit.collider is StaticBody3D:
-		_spot(exit.position, exit.normal, fwd * 14.0, randf_range(0.14, 0.24))
+		_spot(exit.position, exit.normal, fwd * 14.0, randf_range(0.2, 0.34))
 	for i in 9:
 		var v: Vector3
 		if i < 4:   # назад / в стороны: медленнее
@@ -147,7 +145,7 @@ func _ballistic(space: PhysicsDirectSpaceState3D, from: Vector3, vel: Vector3) -
 		if hit:
 			if hit.collider is StaticBody3D:
 				var sp := nv.length()
-				_spot(hit.position, hit.normal, nv, randf_range(0.025, 0.1) * (0.7 + sp / 9.0))
+				_spot(hit.position, hit.normal, nv, randf_range(0.04, 0.15) * (0.7 + sp / 9.0))
 			return
 		p = np
 		v = nv
