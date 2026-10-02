@@ -1,0 +1,23 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/prop.gd" id="1_script"]
+[ext_resource type="Material" path="res://materials/prop_wood.tres" id="2_mat"]
+
+[sub_resource type="BoxShape3D" id="shape"]
+size = Vector3(0.2, 0.04, 2)
+
+[sub_resource type="BoxMesh" id="mesh"]
+material = ExtResource("2_mat")
+size = Vector3(0.2, 0.04, 2)
+
+[node name="Plank" type="RigidBody3D"]
+mass = 5.0
+script = ExtResource("1_script")
+surface = "wood"
+
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("shape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh")

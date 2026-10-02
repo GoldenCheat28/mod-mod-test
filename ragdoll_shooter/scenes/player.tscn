@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/grabber.gd" id="2_grabber"]
+[ext_resource type="PackedScene" path="res://scenes/weapon.tscn" id="3_weapon"]
+
+[sub_resource type="CapsuleShape3D" id="capsule"]
+radius = 0.32
+height = 1.8
+
+[node name="Player" type="CharacterBody3D"]
+floor_snap_length = 0.3
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("capsule")
+
+[node name="Head" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.62, 0)
+
+[node name="Camera3D" type="Camera3D" parent="Head"]
+current = true
+fov = 78.0
+near = 0.02
+
+[node name="Weapon" parent="Head/Camera3D" instance=ExtResource("3_weapon")]
+
+[node name="Grabber" type="Node" parent="."]
+script = ExtResource("2_grabber")

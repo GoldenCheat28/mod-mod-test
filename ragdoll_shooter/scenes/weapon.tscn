@@ -1,0 +1,97 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="metal"]
+albedo_color = Color(0.2, 0.205, 0.21, 1)
+metallic = 0.85
+roughness = 0.38
+
+[sub_resource type="StandardMaterial3D" id="polymer"]
+albedo_color = Color(0.24, 0.23, 0.21, 1)
+roughness = 0.75
+
+[sub_resource type="BoxMesh" id="receiver"]
+material = SubResource("metal")
+size = Vector3(0.05, 0.075, 0.32)
+
+[sub_resource type="CylinderMesh" id="barrel"]
+material = SubResource("metal")
+top_radius = 0.011
+bottom_radius = 0.011
+height = 0.25
+radial_segments = 12
+rings = 1
+
+[sub_resource type="BoxMesh" id="handguard"]
+material = SubResource("polymer")
+size = Vector3(0.056, 0.062, 0.18)
+
+[sub_resource type="BoxMesh" id="grip"]
+material = SubResource("polymer")
+size = Vector3(0.034, 0.1, 0.045)
+
+[sub_resource type="BoxMesh" id="mag"]
+material = SubResource("metal")
+size = Vector3(0.028, 0.13, 0.065)
+
+[sub_resource type="BoxMesh" id="sight"]
+material = SubResource("metal")
+size = Vector3(0.022, 0.026, 0.06)
+
+[sub_resource type="BoxMesh" id="stock"]
+material = SubResource("polymer")
+size = Vector3(0.04, 0.075, 0.2)
+
+[node name="Weapon" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="Model" type="Node3D" parent="."]
+
+[node name="Receiver" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.05)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("receiver")
+
+[node name="Barrel" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0.012, -0.33)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("barrel")
+
+[node name="Handguard" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.004, -0.27)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("handguard")
+
+[node name="Grip" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 0.9659, -0.2588, 0, 0.2588, 0.9659, 0, -0.075, 0.05)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("grip")
+
+[node name="Mag" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 0.9848, 0.1736, 0, -0.1736, 0.9848, 0, -0.09, -0.1)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("mag")
+
+[node name="Sight" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -0.03)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("sight")
+
+[node name="Stock" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.012, 0.2)
+layers = 4
+cast_shadow = 0
+mesh = SubResource("stock")
+
+[node name="Muzzle" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -0.46)
+
+[node name="Eject" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.03, 0.02, -0.06)

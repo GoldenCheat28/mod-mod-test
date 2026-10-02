@@ -1,0 +1,266 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="p_player"]
+[ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="p_hud"]
+[ext_resource type="PackedScene" path="res://scenes/bot.tscn" id="p_bot"]
+[ext_resource type="Script" path="res://scripts/bot_spawner.gd" id="s_spawner"]
+[ext_resource type="Material" path="res://materials/world_floor.tres" id="m_world_floor"]
+[ext_resource type="Material" path="res://materials/world_wall.tres" id="m_world_wall"]
+[ext_resource type="Material" path="res://materials/world_dark.tres" id="m_world_dark"]
+[ext_resource type="Material" path="res://materials/world_accent.tres" id="m_world_accent"]
+[ext_resource type="Material" path="res://materials/world_white.tres" id="m_world_white"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_small.tscn" id="pr_crate_small"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_large.tscn" id="pr_crate_large"]
+[ext_resource type="PackedScene" path="res://scenes/props/barrel.tscn" id="pr_barrel"]
+[ext_resource type="PackedScene" path="res://scenes/props/plank.tscn" id="pr_plank"]
+[ext_resource type="PackedScene" path="res://scenes/props/ball.tscn" id="pr_ball"]
+[ext_resource type="PackedScene" path="res://scenes/props/can.tscn" id="pr_can"]
+[ext_resource type="PackedScene" path="res://scenes/props/cinder_block.tscn" id="pr_cinder_block"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.32, 0.45, 0.62, 1)
+sky_horizon_color = Color(0.66, 0.69, 0.72, 1)
+ground_bottom_color = Color(0.2, 0.19, 0.18, 1)
+ground_horizon_color = Color(0.66, 0.69, 0.72, 1)
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 3
+ambient_light_energy = 0.8
+reflected_light_source = 2
+tonemap_mode = 4
+ssao_enabled = true
+ssao_radius = 1.2
+ssao_intensity = 1.6
+glow_enabled = true
+glow_intensity = 0.6
+glow_bloom = 0.05
+glow_hdr_threshold = 1.2
+fog_enabled = true
+fog_light_color = Color(0.6, 0.65, 0.72, 1)
+fog_density = 0.002
+
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.8192, 0, -0.5736, -0.452, 0.6157, -0.6455, 0.3531, 0.788, 0.5043, 0, 12, 0)
+light_energy = 1.3
+shadow_enabled = true
+directional_shadow_max_distance = 60.0
+
+[node name="ParticleFloor" type="GPUParticlesCollisionHeightField3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+size = Vector3(60, 10, 60)
+resolution = 2
+
+[node name="Level" type="CSGCombiner3D" parent="."]
+use_collision = true
+
+[node name="Floor" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+size = Vector3(60, 1, 60)
+material = ExtResource("m_world_floor")
+
+[node name="WallN" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, -30)
+size = Vector3(60, 6, 1)
+material = ExtResource("m_world_wall")
+
+[node name="WallS" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 30)
+size = Vector3(60, 6, 1)
+material = ExtResource("m_world_wall")
+
+[node name="WallE" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 3, 0)
+size = Vector3(1, 6, 60)
+material = ExtResource("m_world_wall")
+
+[node name="WallW" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 3, 0)
+size = Vector3(1, 6, 60)
+material = ExtResource("m_world_wall")
+
+[node name="BloodWall" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -15)
+size = Vector3(12, 4, 0.5)
+material = ExtResource("m_world_white")
+
+[node name="PillarL" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 2, -12)
+size = Vector3(0.8, 4, 0.8)
+material = ExtResource("m_world_dark")
+
+[node name="PillarR" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 2, -12)
+size = Vector3(0.8, 4, 0.8)
+material = ExtResource("m_world_dark")
+
+[node name="CoverL" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.6, -9)
+size = Vector3(2.5, 1.2, 0.3)
+material = ExtResource("m_world_dark")
+
+[node name="CoverR" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.6, -8.5)
+size = Vector3(2.5, 1.2, 0.3)
+material = ExtResource("m_world_dark")
+
+[node name="RoomW" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 1.6, -2)
+size = Vector3(0.3, 3.2, 8)
+material = ExtResource("m_world_wall")
+
+[node name="RoomN" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1.6, -6)
+size = Vector3(8, 3.2, 0.3)
+material = ExtResource("m_world_wall")
+
+[node name="RoomS1" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.5, 1.6, 2)
+size = Vector3(3, 3.2, 0.3)
+material = ExtResource("m_world_wall")
+
+[node name="RoomS2" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.5, 1.6, 2)
+size = Vector3(3, 3.2, 0.3)
+material = ExtResource("m_world_wall")
+
+[node name="RoomLintel" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 2.7, 2)
+size = Vector3(2, 1, 0.3)
+material = ExtResource("m_world_wall")
+
+[node name="RoomE" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 1.6, -2)
+size = Vector3(0.3, 3.2, 8)
+material = ExtResource("m_world_wall")
+
+[node name="RoomRoof" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 3.3, -2)
+size = Vector3(8.3, 0.2, 8.3)
+material = ExtResource("m_world_dark")
+
+[node name="Platform" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 1, -4)
+size = Vector3(6, 2, 6)
+material = ExtResource("m_world_accent")
+
+[node name="Ramp" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 0.9487, 0.3162, 0, -0.3162, 0.9487, 12, 0.858, 1.953)
+size = Vector3(3, 0.3, 6.325)
+material = ExtResource("m_world_accent")
+
+[node name="Jump05" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.25, -3)
+size = Vector3(1.2, 0.5, 1.2)
+material = ExtResource("m_world_dark")
+
+[node name="Jump10" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.4, 0.5, -3)
+size = Vector3(1.2, 1, 1.2)
+material = ExtResource("m_world_dark")
+
+[node name="Jump125" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.8, 0.625, -3)
+size = Vector3(1.2, 1.25, 1.2)
+material = ExtResource("m_world_dark")
+
+[node name="Player" parent="." instance=ExtResource("p_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 8)
+
+[node name="HUD" parent="." instance=ExtResource("p_hud")]
+
+[node name="Bots" type="Node3D" parent="."]
+script = ExtResource("s_spawner")
+
+[node name="Bot1" parent="Bots" instance=ExtResource("p_bot")]
+transform = Transform3D(1, 0, -0, 0, 1, 0, 0, 0, 1, -1.5, 0, -11)
+wander_radius = 4.0
+
+[node name="Bot2" parent="Bots" instance=ExtResource("p_bot")]
+transform = Transform3D(0.9397, 0, -0.342, 0, 1, 0, 0.342, 0, 0.9397, 2, 0, -12)
+wander_radius = 4.0
+
+[node name="Bot3" parent="Bots" instance=ExtResource("p_bot")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -8, 0, -2)
+wander_radius = 2.0
+
+[node name="Bot4" parent="Bots" instance=ExtResource("p_bot")]
+transform = Transform3D(-1, 0, -0, 0, 1, 0, 0, 0, -1, 12, 2, -4)
+wander_radius = 1.8
+
+[node name="Props" type="Node3D" parent="."]
+
+[node name="CrateSmall1" parent="Props" instance=ExtResource("pr_crate_small")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.25, 5)
+
+[node name="CrateSmall2" parent="Props" instance=ExtResource("pr_crate_small")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.75, 5)
+
+[node name="CrateSmall3" parent="Props" instance=ExtResource("pr_crate_small")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.45, 0.25, 5.1)
+
+[node name="CrateSmall4" parent="Props" instance=ExtResource("pr_crate_small")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.55, 0.25, 4.9)
+
+[node name="CrateLarge1" parent="Props" instance=ExtResource("pr_crate_large")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.5, 5)
+
+[node name="Can1" parent="Props" instance=ExtResource("pr_can")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 1.061, 4.85)
+
+[node name="Can2" parent="Props" instance=ExtResource("pr_can")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1.061, 4.85)
+
+[node name="Can3" parent="Props" instance=ExtResource("pr_can")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.2, 1.061, 4.85)
+
+[node name="Can4" parent="Props" instance=ExtResource("pr_can")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.9, 1.181, 4.85)
+
+[node name="Can5" parent="Props" instance=ExtResource("pr_can")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1, 1.181, 4.85)
+
+[node name="Barrel1" parent="Props" instance=ExtResource("pr_barrel")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.45, 4)
+
+[node name="Barrel2" parent="Props" instance=ExtResource("pr_barrel")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.7, 0.45, 4.7)
+
+[node name="Plank1" parent="Props" instance=ExtResource("pr_plank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.02, 3)
+
+[node name="Ball1" parent="Props" instance=ExtResource("pr_ball")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.18, 4)
+
+[node name="Ball2" parent="Props" instance=ExtResource("pr_ball")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.18, 4.6)
+
+[node name="CinderBlock1" parent="Props" instance=ExtResource("pr_cinder_block")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.1, 3)
+
+[node name="CinderBlock2" parent="Props" instance=ExtResource("pr_cinder_block")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.3, 3)
+
+[node name="CinderBlock3" parent="Props" instance=ExtResource("pr_cinder_block")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.45, 0.1, 3)
+
+[node name="Barrel3" parent="Props" instance=ExtResource("pr_barrel")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.45, -10)
+
+[node name="CrateSmall5" parent="Props" instance=ExtResource("pr_crate_small")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.25, -13)
+
+[node name="CrateSmall6" parent="Props" instance=ExtResource("pr_crate_small")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.75, -13)
+
+[node name="Can6" parent="Props" instance=ExtResource("pr_can")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 1.26, -9)

@@ -1,0 +1,28 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/prop.gd" id="1_script"]
+[ext_resource type="Material" path="res://materials/prop_rubber.tres" id="2_mat"]
+
+[sub_resource type="PhysicsMaterial" id="phys"]
+bounce = 0.65
+friction = 0.8
+
+[sub_resource type="SphereShape3D" id="shape"]
+radius = 0.18
+
+[sub_resource type="SphereMesh" id="mesh"]
+material = ExtResource("2_mat")
+radius = 0.18
+height = 0.36
+
+[node name="Ball" type="RigidBody3D"]
+mass = 1.5
+physics_material_override = SubResource("phys")
+script = ExtResource("1_script")
+surface = "rubber"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("shape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh")
