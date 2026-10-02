@@ -121,7 +121,7 @@ func splash(pos: Vector3, normal: Vector3, shot_dir: Vector3 = Vector3.ZERO) -> 
 	# выходное отверстие: быстрый широкий веер на поверхности за целью
 	var exit := space.intersect_ray(PhysicsRayQueryParameters3D.create(pos + fwd * 0.4, pos + fwd * 7.0, 1))
 	if exit and exit.collider is StaticBody3D:
-		_spot(exit.position, exit.normal, fwd * 14.0, randf_range(0.2, 0.34))
+		_spot(exit.position, exit.normal, fwd * 14.0, randf_range(0.16, 0.26))
 	for i in 9:
 		var v: Vector3
 		if i < 4:   # назад / в стороны: медленнее
@@ -145,7 +145,7 @@ func _ballistic(space: PhysicsDirectSpaceState3D, from: Vector3, vel: Vector3) -
 		if hit:
 			if hit.collider is StaticBody3D:
 				var sp := nv.length()
-				_spot(hit.position, hit.normal, nv, randf_range(0.04, 0.15) * (0.7 + sp / 9.0))
+				_spot(hit.position, hit.normal, nv, randf_range(0.03, 0.09) * (0.7 + sp / 9.0))
 			return
 		p = np
 		v = nv

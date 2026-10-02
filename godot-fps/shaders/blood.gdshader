@@ -38,12 +38,12 @@ float field(vec2 q, float age) {
 	float r = length(a);
 	float ang = atan(a.y, a.x);
 	float wob = 1.0 + 0.22 * sin(ang * 3.0 + seed * 6.2831) + 0.12 * sin(ang * 5.0 + seed * 17.0) + 0.08 * sin(ang * 9.0 + seed * 31.0);
-	float s = (ang / 6.2831853 + 0.5) * 22.0;
+	float s = (ang / 6.2831853 + 0.5) * 56.0;
 	float id = floor(s);
 	float f = fract(s);
 	float sp = h11(id + seed * 13.0);
-	float spikes = spike * sp * sp * pow(max(0.0, 1.0 - abs(f - 0.5) * 2.0), 3.0);
-	float edge = R * wob + R * spikes * 2.4;
+	float spikes = spike * sp * sp * pow(max(0.0, 1.0 - abs(f - 0.5) * 2.0), 7.0);
+	float edge = R * wob + R * spikes * 1.6;
 	float hgt = clamp((edge - r) / max(edge, 1e-4), 0.0, 1.0);
 	float h = pow(hgt, 0.6);
 
