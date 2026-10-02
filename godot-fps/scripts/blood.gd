@@ -16,6 +16,7 @@ var _pi := 0
 var _quads: Array[MeshInstance3D] = []
 var _qi := 0
 var _mat: ShaderMaterial
+var time_offset := 0.0   # только для отладки: «состарить» кровь
 
 func _ready() -> void:
 	instance = self
@@ -40,7 +41,7 @@ func _process(_d: float) -> void:
 	RenderingServer.global_shader_parameter_set("blood_time", _now())
 
 func _now() -> float:
-	return Time.get_ticks_msec() / 1000.0
+	return Time.get_ticks_msec() / 1000.0 + time_offset
 
 # ---------- частицы ----------
 func _build_particles() -> void:
