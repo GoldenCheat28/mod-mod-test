@@ -170,9 +170,9 @@ void blood_apply_wet(vec3 wpos, vec3 wnrm, float detail, vec3 vertex, vec3 geom_
 	float dry = pow(clamp(b.z * (0.75 + 0.5 * clot) + edge * b.z * 0.8, 0.0, 1.0), 0.7);
 	// Linear albedo: fresh blood is a deep red that is almost black where
 	// thick, brighter red at the thin edge where the light gets through.
-	vec3 wet_col = mix(vec3(0.075, 0.004, 0.003), vec3(0.02, 0.0009, 0.0007), deep);
+	vec3 wet_col = mix(vec3(0.26, 0.012, 0.01), vec3(0.11, 0.004, 0.004), deep);   // (brighter than the original: this level is dim)
 	wet_col *= mix(1.0, 0.5 + 1.0 * clot, deep);                     // clots
-	vec3 dry_col = mix(vec3(0.055, 0.017, 0.012), vec3(0.026, 0.009, 0.007), deep);
+	vec3 dry_col = mix(vec3(0.1, 0.03, 0.02), vec3(0.05, 0.016, 0.012), deep);
 	dry_col *= 0.8 + 0.45 * clot;
 	// A dark crust line where the pool's edge has dried.
 	float crust = smoothstep(0.1, 0.5, b.z) * edge * smoothstep(0.02, 0.2, thick);
