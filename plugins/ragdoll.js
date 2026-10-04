@@ -6022,7 +6022,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, spasm: 0.5,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, spasm: 0.5,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -6756,7 +6756,10 @@ function onSkeletonDown(event) {
 	if (sim && sim.playing) return;
 	const preview = previewOf(event);
 	if (!preview) return;
-	let best = null, best_d = 16;
+	if (drag) endSkeletonDrag();   // a drag whose release was never seen (let go outside the window...): it ends now
+	syncSkeletonView();            // the handles where the bones are now
+	if (!skeleton) return;
+	let best = null, best_d = 22;
 	skeleton.infos.forEach((i, k) => {
 		const s = screenPoint(skeleton.handles[k].position, preview), d = Math.hypot(s.x - event.clientX, s.y - event.clientY);
 		if (d < best_d) { best_d = d; best = i; }
@@ -6768,12 +6771,14 @@ function onSkeletonDown(event) {
 	const camera_dir = preview.camera.getWorldDirection(new THREE.Vector3());
 	drag = {info: best, preview, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(camera_dir, endWorld(best))};
 	const groups = bonesOf(skeleton.root);
-	Undo.initEdit({outliner: true, groups});
+	try { Undo.initEdit({outliner: true, groups}); } catch (err) { console.warn('[Ragdoll] pose undo', err); }
 	drag.groups = groups;
 	syncSkeletonView();
 }
 function onSkeletonMove(event) {
 	if (!drag) return;
+	// the button is no longer held (its release went elsewhere): the drag is over
+	if (event.buttons !== undefined && !(event.buttons & 1)) { endSkeletonDrag(); return; }
 	event.stopPropagation(); event.preventDefault();
 	const hit = new THREE.Vector3();
 	if (!rayFor(event, drag.preview).intersectPlane(drag.plane, hit)) return;
@@ -6784,11 +6789,16 @@ function onSkeletonMove(event) {
 function onSkeletonUp(event) {
 	if (!drag) return;
 	event.stopPropagation();
-	Undo.finishEdit('Pose skeleton', {outliner: true, groups: drag.groups});
-	markCustomPose(skeleton.root);
+	endSkeletonDrag();
+}
+// the end of a drag, whatever goes wrong on the way: the next handle can always be taken
+function endSkeletonDrag() {
+	const d = drag;
 	drag = null;
-	syncSkeletonView();
-	updatePanel(true);
+	if (!d) return;
+	try { Undo.finishEdit('Pose skeleton', {outliner: true, groups: d.groups}); } catch (err) { console.warn('[Ragdoll] pose undo', err); }
+	try { if (skeleton) markCustomPose(skeleton.root); } catch (err) { console.warn('[Ragdoll] pose', err); }
+	try { syncSkeletonView(); updatePanel(true); } catch (err) { console.warn('[Ragdoll] pose view', err); }
 }
 
 // ---- a library of poses ----
@@ -7268,7 +7278,7 @@ function toHand(root, side, drop, mass) {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({getCurrent: () => current, AnimationFollower, animatedGroupWorld, routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({skeletonEditing: {down: e => onSkeletonDown(e), move: e => onSkeletonMove(e), up: e => onSkeletonUp(e), set: v => { pose_edit = v; syncSkeletonView(true); }, get: () => ({skeleton, drag})}, getCurrent: () => current, AnimationFollower, animatedGroupWorld, routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -7276,7 +7286,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.9.5',
+	version: '0.9.6',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -7325,6 +7335,8 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		document.addEventListener('pointerdown', onSkeletonDown, true);
 		document.addEventListener('pointermove', onSkeletonMove, true);
 		document.addEventListener('pointerup', onSkeletonUp, true);
+		window.addEventListener('pointerup', onSkeletonUp, true);
+		window.addEventListener('blur', endSkeletonDrag);
 		poll = setInterval(() => { updatePanel(); syncShotLines(); syncRouteView(); if (!drag) syncSkeletonView(); }, 250);
 		Blockbench.on('update_selection', onSelection);
 		Blockbench.on('display_animation_frame', updateBloodPlayback);
@@ -7342,6 +7354,8 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		document.removeEventListener('pointerdown', onSkeletonDown, true);
 		document.removeEventListener('pointermove', onSkeletonMove, true);
 		document.removeEventListener('pointerup', onSkeletonUp, true);
+		window.removeEventListener('pointerup', onSkeletonUp, true);
+		window.removeEventListener('blur', endSkeletonDrag);
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook);
 		tool_patches.splice(0).forEach(undo => { try { undo(); } catch (err) { /* already gone */ } });
 		Blockbench.removeListener('update_selection', onSelection);
