@@ -80,7 +80,7 @@ const smooth = t => t * t * (3 - 2 * t);
  */
 function buildPath(a, b, opts) {
 	const segments = Math.max(2, opts.segments || 16);
-	const waypoints = orderWaypoints(a.center, opts.waypoints || []);
+	const waypoints = opts.keepOrder ? (opts.waypoints || []).map(w => w.clone()) : orderWaypoints(a.center, opts.waypoints || []);
 	const dist = a.center.distanceTo(b.center);
 	let points;
 	if (opts.mode == 'straight') {
@@ -265,7 +265,7 @@ function buildTube(loopA, loopB, path, sides, twist) {
 	return {rings, quads, sides: n, segments: M};
 }
 
-if (typeof __PIPE_EXPORT !== 'undefined') __PIPE_EXPORT({boundaryLoop, resampleLoop, buildPath, buildTube, orderWaypoints, avoidObstacles, openConnect, selectedFaceKeys, loopOf});
+if (typeof __PIPE_EXPORT !== 'undefined') __PIPE_EXPORT({boundaryLoop, resampleLoop, buildPath, buildTube, orderWaypoints, avoidObstacles, startConnect, saveConnect, cancelConnect, selectedFaceKeys, loopOf, getSession: () => session, pickPoint, onPointerDown, onPointerMove, onPointerUp, onKey, tick});
 if (typeof Plugin === 'undefined' || typeof Blockbench === 'undefined') return;
 
 // ---------------------------------------------------------------------------
@@ -278,26 +278,26 @@ const TEXTS = {
 		title: 'Connect faces', smoothing: 'Smoothing', smoothing_tip: 'How round the pipe bends. 0 = sharp, 1 = wide soft curves',
 		path: 'Path', path_curve: 'Smooth curve', path_straight: 'Straight', path_elbow: 'Elbows (right angles)',
 		segments: 'Polygons along the pipe', sides: 'Sides around', avoid: 'Go around other objects', remove_faces: 'Remove the chosen faces (open the holes)',
-		flip_a: 'Flip start direction', flip_b: 'Flip end direction', twist: 'Twist (steps)', shading: 'Smooth shading',
-		add_waypoint: 'Add waypoint', clear_waypoints: 'Remove waypoints', waypoints: 'Waypoints',
-		waypoint_hint: 'Waypoints bend the pipe through chosen places: press "Add waypoint" and drag the little cube with the Move tool, or select extra objects (cubes, groups…) together with the two meshes before opening this window.',
+		flip_a: 'Flip start direction', flip_b: 'Flip end direction', shading: 'Smooth shading',
+		add_point: 'Add point', add_point_tip: 'Adds a point on the path. Drag points with the mouse: Shift = only up / down, Alt = only along the ground',
+		delete_point: 'Delete point', delete_point_tip: 'Deletes the selected point (or press Delete)', clear_points: 'Remove all points',
+		save: 'Save', cancel: 'Cancel', points: 'Points', start: 'Start', end: 'End',
 		msg_select: 'Connect: select two meshes and one or more faces on each (face selection mode)',
 		msg_loop: 'Connect: the chosen faces have no open edge (select a part of the surface, not the whole closed shape)',
-		msg_done: 'Pipe created',
-		msg_waypoint_none: 'Open the Connect window first', waypoint_name: 'Pipe point',
+		msg_done: 'Pipe created', msg_busy: 'Finish the current connection first (Save or Cancel)',
 	},
 	ru: {
 		connect: 'Соединить грани…', connect_desc: 'Соединить выбранные грани двух мешей трубой',
 		title: 'Соединение граней', smoothing: 'Сглаживание', smoothing_tip: 'Насколько круто труба гнётся. 0 = резко, 1 = широкие мягкие дуги',
 		path: 'Путь', path_curve: 'Плавная кривая', path_straight: 'Прямо', path_elbow: 'Коленами (прямые углы)',
 		segments: 'Полигонов вдоль трубы', sides: 'Граней вокруг', avoid: 'Обходить другие объекты', remove_faces: 'Убрать выбранные грани (открыть отверстия)',
-		flip_a: 'Развернуть начало', flip_b: 'Развернуть конец', twist: 'Закрутка (шагов)', shading: 'Гладкое затенение',
-		add_waypoint: 'Добавить точку пути', clear_waypoints: 'Убрать точки пути', waypoints: 'Точки пути',
-		waypoint_hint: 'Точки пути заставляют трубу пройти через нужные места: нажмите «Добавить точку пути» и тащите кубик инструментом «Перемещение», либо выделите лишние объекты (кубы, группы…) вместе с двумя мешами до открытия окна.',
+		flip_a: 'Развернуть начало', flip_b: 'Развернуть конец', shading: 'Гладкое затенение',
+		add_point: 'Добавить точку', add_point_tip: 'Добавляет точку на пути. Точки тащатся мышью: Shift = только вверх / вниз, Alt = только по земле',
+		delete_point: 'Удалить точку', delete_point_tip: 'Удаляет выбранную точку (или клавиша Delete)', clear_points: 'Убрать все точки',
+		save: 'Сохранить', cancel: 'Отмена', points: 'Точки', start: 'Начало', end: 'Конец',
 		msg_select: 'Соединение: выделите два меша и по одной или нескольким граням на каждом (режим выбора граней)',
 		msg_loop: 'Соединение: у выбранных граней нет открытого края (выделите часть поверхности, а не всю замкнутую форму)',
-		msg_done: 'Труба создана',
-		msg_waypoint_none: 'Сначала откройте окно соединения', waypoint_name: 'Точка трубы',
+		msg_done: 'Труба создана', msg_busy: 'Сначала закончите текущее соединение (Сохранить или Отмена)',
 	},
 };
 const tr = key => {
@@ -332,171 +332,295 @@ function loopOf(mesh, faceKeys) {
 	if (!loop) return null;
 	// make the direction point out of the mesh (a closed shape: away from its middle)
 	const box = new THREE.Box3();
-	Object.values(mesh.vertices).forEach(v => box.expandByPoint(position2(M, v)));
+	Object.values(mesh.vertices).forEach(v => box.expandByPoint(new THREE.Vector3(...v).applyMatrix4(M)));
 	const away = loop.center.clone().sub(box.getCenter(new THREE.Vector3()));
 	if (away.dot(loop.normal) < 0) loop.normal.negate();
 	return loop;
 }
-const position2 = (M, v) => new THREE.Vector3(...v).applyMatrix4(M);
 
 // ---------------------------------------------------------------------------
-// The window
+// The connection in progress: points on a path, a curve through them, a side panel. Nothing blocks the 3D view.
 // ---------------------------------------------------------------------------
 
-let action = null, add_action = null, clear_action = null, open_dialog = null, session = null, style_node = null;
-
-const STYLE = `
-	.pipe_dialog { padding: 2px 0 4px; }
-	.pipe_dialog .pipe_row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 7px 0; cursor: pointer; }
-	.pipe_dialog .pipe_row select, .pipe_dialog .pipe_row input[type=number] { width: 52%; box-sizing: border-box; background: var(--color-back); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 3px; padding: 3px 6px; }
-	.pipe_dialog .pipe_slider { display: flex; align-items: center; gap: 10px; width: 52%; }
-	.pipe_dialog .pipe_slider input[type=range] { flex: 1; min-width: 0; width: 100%; }
-	.pipe_dialog .pipe_value { width: 34px; text-align: right; opacity: 0.8; }
-	.pipe_dialog .pipe_buttons { display: flex; gap: 8px; margin-top: 12px; }
-	.pipe_dialog .pipe_buttons button { flex: 1; padding: 6px 8px; }
-`;
-
+let action = null, add_action = null, clear_action = null, save_action = null, cancel_action = null, panel = null, style_node = null;
+let session = null, drag = null, poll = null;
 const centerOf = element => new THREE.Box3().setFromObject(element.mesh).getCenter(new THREE.Vector3());
+const DEFAULTS = {path: 'curve', smoothing: 0.5, segments: 16, sides: 8, avoid: false, shading: true, remove_faces: true, flip_a: false, flip_b: false};
 
-function openConnect() {
-	if (open_dialog) return;
+const previewCamera = () => (typeof Preview != 'undefined' && Preview.selected && Preview.selected.camera) || null;
+
+function startConnect() {
+	if (session) { Blockbench.showQuickMessage(tr('msg_busy'), 2500); return; }
 	const picked = meshesWithFaces();
 	if (picked.length != 2) { Blockbench.showQuickMessage(tr('msg_select'), 3500); return; }
 	const [pa, pb] = picked;
 	const loopA = loopOf(pa.mesh, pa.faces), loopB = loopOf(pb.mesh, pb.faces);
 	if (!loopA || !loopB) { Blockbench.showQuickMessage(tr('msg_loop'), 3500); return; }
-	// other selected objects are waypoints
+	// other selected objects start the path as points
 	const extras = Outliner.selected.filter(el => el.mesh && el !== pa.mesh && el !== pb.mesh);
-	const wasSelected = Outliner.selected.slice();
 	const obstacles = [...Cube.all, ...Mesh.all].filter(el => el.mesh && el.mesh.visible !== false && el !== pa.mesh && el !== pb.mesh && !extras.includes(el));
 	const texture = (() => { for (const fk of pa.faces) { const t = pa.mesh.faces[fk].texture; if (t !== undefined && t !== null) return t; } return false; })();
+	const radiusOf = loop => loop.points.reduce((sum, p) => sum + p.distanceTo(loop.center), 0) / loop.points.length;
+	session = {pa, pb, loopA, loopB, texture, obstacles, points: extras.map(centerOf), selected: -1, signature: '', path: null,
+		pipe_radius: Math.max(radiusOf(loopA), radiusOf(loopB)), line: null, sprites: [], ends: [], defaults: Object.assign({}, DEFAULTS, {sides: Math.max(loopA.keys.length, loopB.keys.length, 6)})};
+	if (panel && panel.inside_vue) panel.inside_vue.reset(session.defaults);
+	showPanel(true);
+	poll = setInterval(tick, 100);
+	tick();
+}
 
+function showPanel(visible) {
+	try {
+		if (typeof updateInterface == 'function') updateInterface();
+		if (visible && panel) { if (panel.toggle) panel.toggle(true); if (panel.slot == 'hidden' && panel.moveTo) panel.moveTo('right_bar'); }
+	} catch (err) { console.warn('[Connect]', err); }
+}
+
+const valuesNow = () => Object.assign({twist: 0}, session ? (panel && panel.inside_vue ? panel.inside_vue.f : session.defaults) : DEFAULTS);
+
+function currentPath(values) {
+	const a = {center: session.loopA.center, normal: session.loopA.normal.clone().multiplyScalar(values.flip_a ? -1 : 1), points: session.loopA.points};
+	const b = {center: session.loopB.center, normal: session.loopB.normal.clone().multiplyScalar(values.flip_b ? -1 : 1), points: session.loopB.points};
+	const bounds = () => session.obstacles.map(el => new THREE.Box3().setFromObject(el.mesh)).filter(box => !box.isEmpty());
+	const path = buildPath(a, b, {mode: values.path, smoothing: values.smoothing, segments: Math.max(8, Math.round(values.segments)), waypoints: session.points, keepOrder: true,
+		obstacles: values.avoid ? bounds() : null, clearance: session.pipe_radius + 1});
+	return {a, b, path};
+}
+
+// -- what is drawn in the 3D view: the curve, the points (flat icons), the start and the end --
+
+const point_icons = new Map();
+function pointIcon(label, color) {
+	const key = label + color;
+	if (point_icons.has(key)) return point_icons.get(key);
+	const size = 96, canvas = document.createElement('canvas');
+	canvas.width = canvas.height = size;
+	const c = canvas.getContext('2d');
+	c.fillStyle = 'rgba(16,18,22,0.88)'; c.beginPath(); c.arc(48, 48, 44, 0, Math.PI * 2); c.fill();
+	c.strokeStyle = color; c.lineWidth = 8; c.beginPath(); c.arc(48, 48, 41, 0, Math.PI * 2); c.stroke();
+	c.fillStyle = color; c.font = 'bold 44px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(label), 48, 52);
+	const texture = new THREE.CanvasTexture(canvas);
+	point_icons.set(key, texture);
+	return texture;
+}
+function makeSprite(label, color) {
+	const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: pointIcon(label, color), sizeAttenuation: false, depthTest: false, transparent: true}));
+	sprite.renderOrder = 1000;
+	scene.add(sprite);
+	return sprite;
+}
+function iconScale() {
+	const cam = previewCamera();
+	return cam && cam.isOrthographicCamera ? (cam.top - cam.bottom) / (cam.zoom || 1) * 0.03 : 0.036;
+}
+
+function syncHelpers() {
+	if (!session) return;
+	const scale = iconScale();
+	// start and end
+	if (!session.ends.length) session.ends = [makeSprite('S', '#6ee86e'), makeSprite('E', '#ff7a6a')];
+	session.ends[0].position.copy(session.loopA.center);
+	session.ends[1].position.copy(session.loopB.center);
+	session.ends.forEach(sp => sp.scale.setScalar(scale));
+	// numbered points
+	while (session.sprites.length > session.points.length) { const sp = session.sprites.pop(); scene.remove(sp); sp.material.dispose(); }
+	session.points.forEach((p, i) => {
+		const color = i == session.selected ? '#ffb347' : '#35d0ff';
+		if (!session.sprites[i]) session.sprites[i] = makeSprite(i + 1, color);
+		const sp = session.sprites[i];
+		if (sp.userData.color != color || sp.userData.n != i + 1) { sp.material.map = pointIcon(i + 1, color); sp.material.needsUpdate = true; sp.userData = {color, n: i + 1}; }
+		sp.position.copy(p);
+		sp.scale.setScalar(scale);
+	});
+	// the curve
+	if (session.line) { scene.remove(session.line); session.line.geometry.dispose(); session.line.material.dispose(); session.line = null; }
+	if (session.path) {
+		const curve = new THREE.CatmullRomCurve3(session.path.map(p => p.clone()));
+		session.line = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, session.path.length * 2), 0.28, 5, false), new THREE.MeshBasicMaterial({color: 0x35d0ff, depthTest: false, transparent: true, opacity: 0.9}));
+		session.line.renderOrder = 998;
+		scene.add(session.line);
+	}
+}
+
+function removeHelpers() {
+	if (!session) return;
+	[...session.sprites, ...session.ends].forEach(sp => { scene.remove(sp); sp.material.dispose(); });
+	if (session.line) { scene.remove(session.line); session.line.geometry.dispose(); session.line.material.dispose(); }
+}
+
+// called many times a second: redraw when the settings or the points changed
+function tick() {
+	if (!session) return;
+	const values = valuesNow();
+	const signature = JSON.stringify([values.path, values.smoothing, values.segments, values.avoid, values.flip_a, values.flip_b, session.points.map(p => p.toArray().map(n => +n.toFixed(2))), session.selected]);
+	if (signature != session.signature) {
+		session.signature = signature;
+		try { session.path = currentPath(values).path; } catch (err) { console.warn('[Connect]', err); }
+		syncHelpers();
+		if (panel && panel.inside_vue) { panel.inside_vue.count = session.points.length; panel.inside_vue.selected = session.selected; }
+	}
+}
+
+// -- points --
+
+function addPoint() {
+	if (!session) return;
+	const chain = [session.loopA.center, ...session.points, session.loopB.center];
+	let gap = 0, longest = -1;
+	chain.forEach((p, i) => { if (i < chain.length - 1) { const d = p.distanceTo(chain[i + 1]); if (d > longest) { longest = d; gap = i; } } });
+	const middle = chain[gap].clone().lerp(chain[gap + 1], 0.5);
+	// on the curve itself, near the middle of that gap
+	let at = middle;
+	if (session.path) { let best = Infinity; for (const p of session.path) { const d = p.distanceTo(middle); if (d < best) { best = d; at = p.clone(); } } }
+	session.points.splice(gap, 0, at);
+	session.selected = gap;
+	tick();
+}
+function deletePoint() {
+	if (!session || !session.points.length) return;
+	const i = session.selected >= 0 ? session.selected : session.points.length - 1;
+	session.points.splice(i, 1);
+	session.selected = -1;
+	tick();
+}
+function clearPoints() {
+	if (!session) return;
+	session.points = []; session.selected = -1;
+	tick();
+}
+
+// -- the mouse: points are picked and dragged in the 3D view (Blockbench never sees these clicks) --
+
+function screenOf(p, preview) {
+	const rect = preview.canvas.getBoundingClientRect(), v = p.clone().project(preview.camera);
+	if (v.z > 1 || v.z < -1) return null;
+	return {x: rect.left + (v.x * 0.5 + 0.5) * rect.width, y: rect.top + (-v.y * 0.5 + 0.5) * rect.height, rect};
+}
+
+// index of the point under the mouse (nearest, in pixels) or -1
+function pickPoint(event, preview) {
+	if (!session) return -1;
+	let best = -1, bestDistance = Infinity;
+	session.points.forEach((p, i) => {
+		const s = screenOf(p, preview);
+		if (!s) return;
+		const d = Math.hypot(event.clientX - s.x, event.clientY - s.y);
+		if (d <= 20 && d < bestDistance) { best = i; bestDistance = d; }
+	});
+	return best;
+}
+
+function previewAt(event) {
+	return ((typeof Preview != 'undefined' && Preview.all) || []).find(p => p.canvas && p.canvas === event.target) || null;
+}
+
+function rayOf(event, preview) {
+	const rect = preview.canvas.getBoundingClientRect();
+	const ndc = new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+	const ray = new THREE.Raycaster();
+	ray.setFromCamera(ndc, preview.camera);
+	return ray.ray;
+}
+
+function onPointerDown(event) {
+	if (!session || event.button !== 0 || event.__pipe) return;
+	const preview = previewAt(event);
+	if (!preview) return;
+	const i = pickPoint(event, preview);
+	if (i < 0) return;
+	event.__pipe = true;
+	event.preventDefault();
+	event.stopImmediatePropagation();
+	session.selected = i;
+	const origin = session.points[i].clone();
+	drag = {index: i, preview, origin, normal: preview.camera.getWorldDirection(new THREE.Vector3())};
+	tick();
+}
+
+function onPointerMove(event) {
+	if (!session || !drag || event.__pipe) return;
+	event.__pipe = true;
+	event.preventDefault();
+	event.stopImmediatePropagation();
+	const ray = rayOf(event, drag.preview), o = drag.origin;
+	const target = new THREE.Vector3();
+	if (event.shiftKey) {
+		// only up / down: the point of the vertical line through the start that is closest to the mouse ray
+		const u = ray.direction, v = new THREE.Vector3(0, 1, 0), w0 = ray.origin.clone().sub(o);
+		const a = u.dot(u), b = u.dot(v), c = v.dot(v), d = u.dot(w0), e = v.dot(w0), den = a * c - b * b;
+		const t = Math.abs(den) < 1e-6 ? 0 : (a * e - b * d) / den;
+		target.copy(o).addScaledVector(v, t);
+	} else {
+		// parallel to the screen, or along the ground with Alt
+		const plane = event.altKey ? new THREE.Plane(new THREE.Vector3(0, 1, 0), -o.y) : new THREE.Plane().setFromNormalAndCoplanarPoint(drag.normal, o);
+		if (!ray.intersectPlane(plane, target)) return;
+	}
+	session.points[drag.index].copy(target);
+	tick();
+}
+
+function onPointerUp(event) {
+	if (!drag) return;
+	drag = null;
+	if (event && event.__pipe !== true && session) { event.__pipe = true; event.preventDefault(); event.stopImmediatePropagation(); }
+}
+
+function onKey(event) {
+	if (!session) return;
+	const tag = event.target && event.target.tagName;
+	if (tag == 'INPUT' || tag == 'TEXTAREA' || tag == 'SELECT') return;
+	if (event.key == 'Delete' || event.key == 'Backspace') {
+		if (session.selected < 0) return;
+		event.preventDefault(); event.stopImmediatePropagation();
+		deletePoint();
+	} else if (event.key == 'Enter') {
+		event.preventDefault(); event.stopImmediatePropagation();
+		saveConnect();
+	} else if (event.key == 'Escape') {
+		event.preventDefault(); event.stopImmediatePropagation();
+		cancelConnect();
+	}
+}
+
+// -- ending --
+
+function endSession() {
+	clearInterval(poll); poll = null;
+	removeHelpers();
+	session = null; drag = null;
+	showPanel(false);
+}
+function cancelConnect() {
+	if (!session) return;
+	endSession();
+}
+
+// the pipe appears only now
+function saveConnect() {
+	if (!session) return;
+	const values = valuesNow();
+	let result;
+	try {
+		const {a, b, path} = currentPath(values);
+		result = buildTube(a, b, path, Math.round(values.sides), 0);
+	} catch (err) {
+		console.warn('[Connect]', err);
+		Blockbench.showQuickMessage(String(err.message || err), 3000);
+		return;
+	}
+	const {pa, pb, texture} = session;
 	Undo.initEdit({outliner: true, elements: [pa.mesh, pb.mesh], selection: true});
 	const pipe = new Mesh({name: 'Pipe', origin: [0, 0, 0], rotation: [0, 0, 0], vertices: []});
 	pipe.addTo('root').init();
-	const markers = [];
-	const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0x35d0ff, depthTest: false}));
-	line.renderOrder = 998;
-	scene.add(line);
-	const sidesGuess = Math.max(loopA.keys.length, loopB.keys.length, 6);
-	// how fat the pipe is: the walls must clear an obstacle, not just the middle line
-	const radiusOf = loop => loop.points.reduce((sum, p) => sum + p.distanceTo(loop.center), 0) / loop.points.length;
-	const pipeRadius = Math.max(radiusOf(loopA), radiusOf(loopB));
-	let last_signature = '', error_shown = false, current = null;
-
-	// a marker you deleted yourself (select it, press Delete) is simply gone from the way
-	const waypoints = () => [...markers.filter(m => Cube.all.includes(m)).map(m => centerOf(m)), ...extras.map(centerOf)];
-	const bounds = () => obstacles.map(el => new THREE.Box3().setFromObject(el.mesh)).filter(b => !b.isEmpty());
-
-	function rebuild(form) {
-		try {
-			const a = {center: loopA.center, normal: loopA.normal.clone().multiplyScalar(form.flip_a ? -1 : 1), points: loopA.points};
-			const b = {center: loopB.center, normal: loopB.normal.clone().multiplyScalar(form.flip_b ? -1 : 1), points: loopB.points};
-			const path = buildPath(a, b, {mode: form.path, smoothing: form.smoothing, segments: Math.round(form.segments), waypoints: waypoints(),
-				obstacles: form.avoid ? bounds() : null, clearance: pipeRadius + 1});
-			const tube = buildTube(a, b, path, Math.round(form.sides), Math.round(form.twist || 0));
-			writePipe(pipe, tube, texture, !!form.shading);
-			line.geometry.dispose();
-			line.geometry = new THREE.BufferGeometry().setFromPoints(path);
-			current = {path, tube};
-			error_shown = false;
-		} catch (err) {
-			console.warn('[Connect]', err);
-			if (!error_shown) { error_shown = true; Blockbench.showQuickMessage(String(err.message || err), 2500); }
-		}
+	writePipe(pipe, result, texture, !!values.shading);
+	if (values.remove_faces) {
+		pa.faces.forEach(fk => { delete pa.mesh.faces[fk]; });
+		pb.faces.forEach(fk => { delete pb.mesh.faces[fk]; });
+		Canvas.updateView({elements: [pa.mesh, pb.mesh], element_aspects: {geometry: true, faces: true, uv: true}});
 	}
-	const signature = form => JSON.stringify([form, waypoints().map(p => p.toArray().map(n => n.toFixed(2)))]);
-
-	function addMarker() {
-		const at = current ? current.path[Math.floor(current.path.length / 2)] : loopA.center.clone().lerp(loopB.center, 0.5);
-		const m = new Cube({name: tr('waypoint_name') + ' ' + (markers.length + 1), from: [at.x - 2, at.y - 2, at.z - 2], to: [at.x + 2, at.y + 2, at.z + 2], color: 4}).addTo('root').init();
-		markers.push(m);
-		Canvas.updateView({elements: [m], element_aspects: {geometry: true, transform: true}});
-		// ready to drag: the new point is selected and the Move tool is on
-		try { m.select(); if (typeof BarItems != 'undefined' && BarItems.move_tool) BarItems.move_tool.select(); } catch (err) { /* selecting is only a convenience */ }
-		last_signature = '';
-	}
-	function clearMarkers() {
-		markers.splice(0).forEach(m => m.remove());
-		last_signature = '';
-	}
-	function cleanup() {
-		clearInterval(session && session.poll);
-		clearMarkers();
-		scene.remove(line);
-		line.geometry.dispose();
-		open_dialog = null; session = null;
-	}
-
-	// the window is our own small component: a form row of Blockbench would show the smoothing without a slider track
-	const state = {path: 'curve', smoothing: 0.5, segments: 16, sides: sidesGuess, avoid: false, shading: true, remove_faces: true, flip_a: false, flip_b: false};
-	const getValues = () => Object.assign({twist: 0}, dialog && dialog.content_vue ? dialog.content_vue.f : state);
-	const options = {
-		id: 'pipe_connect_dialog', title: tr('title'), width: 460, darken: false,
-		cancel_on_click_outside: false,   // only Confirm or the cross close it: you work in the 3D view with the window open
-		component: {
-			data() { return {f: Object.assign({}, state)}; },
-			methods: {
-				t(key) { return tr(key); },
-				add() { addMarker(); },
-				clear() { clearMarkers(); },
-			},
-			template: `
-				<div class="pipe_dialog">
-					<label class="pipe_row">{{ t('path') }}
-						<select v-model="f.path">
-							<option value="curve">{{ t('path_curve') }}</option>
-							<option value="straight">{{ t('path_straight') }}</option>
-							<option value="elbow">{{ t('path_elbow') }}</option>
-						</select>
-					</label>
-					<label class="pipe_row" :title="t('smoothing_tip')">{{ t('smoothing') }}
-						<span class="pipe_slider"><input type="range" min="0" max="1" step="0.05" v-model.number="f.smoothing"><span class="pipe_value">{{ f.smoothing }}</span></span>
-					</label>
-					<label class="pipe_row">{{ t('segments') }} <input type="number" min="2" max="128" step="1" v-model.number="f.segments"></label>
-					<label class="pipe_row">{{ t('sides') }} <input type="number" min="3" max="96" step="1" v-model.number="f.sides"></label>
-					<label class="pipe_row">{{ t('avoid') }} <input type="checkbox" v-model="f.avoid"></label>
-					<label class="pipe_row">{{ t('shading') }} <input type="checkbox" v-model="f.shading"></label>
-					<label class="pipe_row">{{ t('remove_faces') }} <input type="checkbox" v-model="f.remove_faces"></label>
-					<label class="pipe_row">{{ t('flip_a') }} <input type="checkbox" v-model="f.flip_a"></label>
-					<label class="pipe_row">{{ t('flip_b') }} <input type="checkbox" v-model="f.flip_b"></label>
-					<div class="pipe_buttons">
-						<button @click="add()">{{ t('add_waypoint') }}</button>
-						<button @click="clear()">{{ t('clear_waypoints') }}</button>
-					</div>
-				</div>`,
-		},
-		onConfirm() {
-			const values = getValues();
-			rebuild(values);
-			const result = current;
-			cleanup();
-			if (!result) { pipe.remove(); Undo.cancelEdit(false); return; }
-			if (values.remove_faces) {
-				pa.faces.forEach(fk => { delete pa.mesh.faces[fk]; });
-				pb.faces.forEach(fk => { delete pb.mesh.faces[fk]; });
-				Canvas.updateView({elements: [pa.mesh, pb.mesh], element_aspects: {geometry: true, faces: true, uv: true}});
-			}
-			Undo.finishEdit('Connect faces', {outliner: true, elements: [pa.mesh, pb.mesh, pipe], selection: true});
-			Blockbench.showQuickMessage(tr('msg_done'), 1500);
-		},
-		onCancel() {
-			cleanup();
-			pipe.remove();
-			Undo.cancelEdit(false);
-			if (typeof updateSelection == 'function') updateSelection();
-		},
-	};
-	const dialog = new Dialog(options);
-	open_dialog = dialog;
-	session = {poll: null, addMarker, clearMarkers};
-	dialog.show();
-	rebuild(getValues());
-	session.poll = setInterval(() => {
-		if (!open_dialog) return;
-		const values = getValues(), sig = signature(values);
-		if (sig != last_signature) { last_signature = sig; rebuild(values); }
-	}, 120);
+	Undo.finishEdit('Connect faces', {outliner: true, elements: [pa.mesh, pb.mesh, pipe], selection: true});
+	endSession();
+	Blockbench.showQuickMessage(tr('msg_done'), 1500);
 }
 
 // the mesh of the pipe: rings of points joined by quads
@@ -524,45 +648,134 @@ function writePipe(mesh, tube, texture, smooth) {
 	Canvas.updateView({elements: [mesh], element_aspects: {geometry: true, uv: true, faces: true}});
 }
 
+// ---------------------------------------------------------------------------
+// Side panel (only while connecting)
+// ---------------------------------------------------------------------------
+
+function panelComponent() {
+	return {
+		data() { return {f: Object.assign({}, DEFAULTS), count: 0, selected: -1}; },
+		methods: {
+			t(key) { return tr(key); },
+			reset(values) { this.f = Object.assign({}, values); this.count = 0; this.selected = -1; },
+			add() { addPoint(); },
+			remove() { deletePoint(); },
+			clear() { clearPoints(); },
+			save() { saveConnect(); },
+			cancel() { cancelConnect(); },
+		},
+		template: `
+			<div class="pipe_panel">
+				<div class="pipe_buttons">
+					<button @click="save()" class="pipe_primary">{{ t('save') }}</button>
+					<button @click="cancel()">{{ t('cancel') }}</button>
+				</div>
+				<div class="pipe_points">
+					<div class="pipe_caption">{{ t('points') }}: {{ count }}</div>
+					<div class="pipe_buttons">
+						<button @click="add()" :title="t('add_point_tip')">{{ t('add_point') }}</button>
+						<button @click="remove()" :disabled="!count" :title="t('delete_point_tip')">{{ t('delete_point') }}</button>
+					</div>
+					<button v-if="count > 1" @click="clear()" class="pipe_full">{{ t('clear_points') }}</button>
+				</div>
+				<label class="pipe_row">{{ t('path') }}
+					<select v-model="f.path">
+						<option value="curve">{{ t('path_curve') }}</option>
+						<option value="straight">{{ t('path_straight') }}</option>
+						<option value="elbow">{{ t('path_elbow') }}</option>
+					</select>
+				</label>
+				<label class="pipe_row" :title="t('smoothing_tip')">{{ t('smoothing') }}
+					<span class="pipe_slider"><input type="range" min="0" max="1" step="0.05" v-model.number="f.smoothing"><span class="pipe_value">{{ f.smoothing }}</span></span>
+				</label>
+				<label class="pipe_row">{{ t('segments') }} <input type="number" min="2" max="128" step="1" v-model.number="f.segments"></label>
+				<label class="pipe_row">{{ t('sides') }} <input type="number" min="3" max="96" step="1" v-model.number="f.sides"></label>
+				<label class="pipe_row">{{ t('avoid') }} <input type="checkbox" v-model="f.avoid"></label>
+				<label class="pipe_row">{{ t('shading') }} <input type="checkbox" v-model="f.shading"></label>
+				<label class="pipe_row">{{ t('remove_faces') }} <input type="checkbox" v-model="f.remove_faces"></label>
+				<label class="pipe_row">{{ t('flip_a') }} <input type="checkbox" v-model="f.flip_a"></label>
+				<label class="pipe_row">{{ t('flip_b') }} <input type="checkbox" v-model="f.flip_b"></label>
+			</div>`,
+	};
+}
+
+const STYLE = `
+	.pipe_panel { padding: 6px 10px 12px; font-size: 0.92em; }
+	.pipe_panel .pipe_row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; cursor: pointer; }
+	.pipe_panel .pipe_row select, .pipe_panel .pipe_row input[type=number] { width: 52%; box-sizing: border-box; background: var(--color-back); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 3px; padding: 3px 6px; }
+	.pipe_panel .pipe_slider { display: flex; align-items: center; gap: 8px; width: 52%; }
+	.pipe_panel .pipe_slider input[type=range] { flex: 1; min-width: 0; width: 100%; }
+	.pipe_panel .pipe_value { width: 32px; text-align: right; opacity: 0.8; }
+	.pipe_panel .pipe_buttons { display: flex; gap: 6px; margin: 4px 0; }
+	.pipe_panel .pipe_buttons button { flex: 1; padding: 5px 6px; min-width: 0; }
+	.pipe_panel .pipe_primary { font-weight: bold; }
+	.pipe_panel .pipe_points { margin: 8px 0; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-back); }
+	.pipe_panel .pipe_caption { font-size: 0.85em; opacity: 0.75; margin-bottom: 4px; text-transform: uppercase; }
+	.pipe_panel .pipe_full { width: 100%; padding: 4px 6px; margin-top: 2px; }
+`;
+
 Plugin.register('pipe', {
 	title: 'Connect',
 	author: 'Claude',
-	description: 'Join faces of two meshes with a pipe: smoothing, path, waypoints, going around obstacles.',
-	about: 'In face selection mode pick one or more faces on a mesh and on another mesh, right click and choose **Connect faces…**. A window with a live preview opens: **Smoothing** sets how round the pipe bends, **Path** picks smooth curve, straight or elbows, **Add waypoint** drops a little cube you drag with the Move tool to lead the pipe through a place (extra objects selected together with the meshes work as waypoints too), **Go around other objects** keeps it out of other cubes and meshes. The pipe starts exactly on the edges of the chosen faces, so square, round or odd openings all fit.',
+	description: 'Join faces of two meshes with a pipe: a path of points you drag in the 3D view, smoothing, going around obstacles.',
+	about: 'In face selection mode pick one or more faces on a mesh and on another mesh, right click and choose **Connect faces…**. A panel opens on the side and does not block the 3D view. The start and the end are joined by a curve: press **Add point** and drag the numbered points with the mouse (Shift = only up / down, Alt = only along the ground) to lead the curve where you want. **Smoothing**, the path type (curve, straight, elbows) and **Go around other objects** change the curve. Nothing is built until you press **Save**: then the pipe appears along the curve, starting exactly on the edges of the chosen faces.',
 	icon: 'cable',
-	version: '0.1.0',
+	version: '0.2.0',
 	variant: 'both',
 	min_version: '4.8.0',
 	tags: ['Modeling'],
 	onload() {
 		style_node = Blockbench.addCSS(STYLE);
-		action = new Action('pipe_connect', {
-			name: tr('connect'),
-			description: tr('connect_desc'),
+		panel = new Panel('pipe_connect', {
+			name: tr('title'),
 			icon: 'cable',
-			category: 'edit',
+			condition: () => !!session,
+			growable: true,
+			resizable: true,
+			min_height: 200,
+			default_position: {slot: 'right_bar', float_position: [0, 0], float_size: [320, 480], height: 480},
+			component: panelComponent(),
+		});
+		action = new Action('pipe_connect', {
+			name: tr('connect'), description: tr('connect_desc'), icon: 'cable', category: 'edit',
 			condition: () => Modes.edit && Mesh.selected.length >= 2,
-			click() { openConnect(); },
+			click() { startConnect(); },
 		});
 		add_action = new Action('pipe_add_waypoint', {
-			name: tr('add_waypoint'), icon: 'add_location_alt', category: 'edit',
-			condition: () => !!open_dialog,
-			click() { if (session) session.addMarker(); else Blockbench.showQuickMessage(tr('msg_waypoint_none'), 2000); },
+			name: tr('add_point'), icon: 'add_location_alt', category: 'edit',
+			condition: () => !!session, click() { addPoint(); },
 		});
 		clear_action = new Action('pipe_clear_waypoints', {
-			name: tr('clear_waypoints'), icon: 'wrong_location', category: 'edit',
-			condition: () => !!open_dialog,
-			click() { if (session) session.clearMarkers(); },
+			name: tr('clear_points'), icon: 'wrong_location', category: 'edit',
+			condition: () => !!session, click() { clearPoints(); },
+		});
+		save_action = new Action('pipe_save', {
+			name: tr('save') + ' (' + tr('title') + ')', icon: 'check', category: 'edit',
+			condition: () => !!session, click() { saveConnect(); },
+		});
+		cancel_action = new Action('pipe_cancel', {
+			name: tr('cancel') + ' (' + tr('title') + ')', icon: 'close', category: 'edit',
+			condition: () => !!session, click() { cancelConnect(); },
 		});
 		Mesh.prototype.menu.addAction(action);
-		try { MenuBar.addAction(add_action, 'edit'); MenuBar.addAction(clear_action, 'edit'); } catch (err) { /* the buttons of the window do the same */ }
+		// the same as the panel buttons, in the Edit menu and in the action search (Ctrl+K)
+		try { [add_action, clear_action, save_action, cancel_action].forEach(a => MenuBar.addAction(a, 'edit')); } catch (err) { /* the panel has the buttons */ }
+		for (const name of ['pointerdown', 'mousedown']) document.addEventListener(name, onPointerDown, true);
+		for (const name of ['pointermove', 'mousemove']) document.addEventListener(name, onPointerMove, true);
+		for (const name of ['pointerup', 'mouseup']) document.addEventListener(name, onPointerUp, true);
+		document.addEventListener('keydown', onKey, true);
 	},
 	onunload() {
-		if (open_dialog) open_dialog.cancel();
+		cancelConnect();
+		for (const name of ['pointerdown', 'mousedown']) document.removeEventListener(name, onPointerDown, true);
+		for (const name of ['pointermove', 'mousemove']) document.removeEventListener(name, onPointerMove, true);
+		for (const name of ['pointerup', 'mouseup']) document.removeEventListener(name, onPointerUp, true);
+		document.removeEventListener('keydown', onKey, true);
 		Mesh.prototype.menu.removeAction(action);
-		try { MenuBar.removeAction('edit.pipe_add_waypoint'); MenuBar.removeAction('edit.pipe_clear_waypoints'); } catch (err) { /* not there */ }
-		[action, add_action, clear_action].forEach(a => a && a.delete());
-		action = add_action = clear_action = null;
+		try { ['pipe_add_waypoint', 'pipe_clear_waypoints', 'pipe_save', 'pipe_cancel'].forEach(id => MenuBar.removeAction('edit.' + id)); } catch (err) { /* not there */ }
+		[action, add_action, clear_action, save_action, cancel_action].forEach(a => a && a.delete());
+		action = add_action = clear_action = save_action = cancel_action = null;
+		if (panel) panel.delete();
 		if (style_node) style_node.delete();
 	},
 });
