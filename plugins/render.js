@@ -4544,6 +4544,26 @@ const TEXTS = {
 		cam_bloom: 'Glow (bloom) strength', cam_motion: 'Motion blur', motion_blur: 'Motion blur (camera)', cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
 		cam_focus: 'Focus', cam_focus_pick: 'Focus on selected', cam_focus_clear: 'Clear', cam_focus_blur: 'Background blur', cam_focus_none: 'nothing',
 		cam_hint: 'A camera is an empty group looking along its -Z axis. Turn it with Rotate, move it with Move; the effects apply in the Render view while you look through it.',
+		rt: 'Ray tracing', rt_rays: 'Rays per pixel', rt_distance: 'Ray length (px)', rt_bounce: 'Bounce light (colour bleeding)', rt_ao: 'Occlusion (shade in corners)',
+		rt_shadows: 'Contact shadows (sun)', rt_accumulate: 'Clean up while standing still',
+		rt_hint: 'Rays are traced through what the camera sees: light bounces off nearby surfaces and colours them, corners get darker, small objects cast sharp contact shadows. While nothing moves the frames add up and the noise goes away. What is off screen or hidden behind something cannot be hit.',
+		fog: 'Volumetric fog', fog_density: 'Density', fog_color: 'Fog colour', fog_brightness: 'Fog brightness (sky)', fog_base: 'Fog level (height, px)',
+		fog_height: 'Thinning with height (px)', fog_noise: 'Clumps', fog_noise_size: 'Clump size (px)', fog_wind: 'Wind (px/s)', fog_wind_dir: 'Wind direction',
+		fog_light: 'Light in the fog', fog_anisotropy: 'Glow toward the light', fog_distance: 'Range (px)', fog_quality: 'Quality (steps)', fog_shafts: 'Light shafts (sun shadows)',
+		fog_hint: 'Fog lit by the sky, the sun and every light (a glow around lamps, flickering with them). With sun shadows on, objects cut light shafts into it. The wind moves the clumps by animation time.',
+		particles_title: 'Particles', act_particles: 'Particles…', act_particles_desc: 'Make the selected object give off particles (smoke, sparks, snow…) and open the Particles panel',
+		act_add_particles: 'Add particles', act_add_particles_desc: 'Add a particle emitter (an empty group) at the current view',
+		pt_hint_none: 'Select an object with particles.', pt_remove: 'Remove', pt_restart: 'Start again', pt_enabled: 'On',
+		pt_amount: 'Amount and time', pt_count: 'Count (at once)', pt_lifetime: 'Lifetime (s)', pt_life_jitter: 'Lifetime spread', pt_fade_in: 'Appearing (s)', pt_fade_out: 'Disappearing (s)',
+		pt_prewarm: 'Already full at the start', pt_prewarm_tip: 'Off: the particles start coming out at time 0 of the animation (or when switched on)',
+		pt_look: 'Look', pt_color: 'Colour at birth', pt_color_end: 'Colour at the end', pt_size: 'Size at birth', pt_size_end: 'Size at the end', pt_size_jitter: 'Size spread',
+		pt_spin: 'Spin', pt_glow: 'Glow (bloom in the Render view)', pt_additive: 'Add light (fire, sparks)', pt_additive_tip: 'The particles brighten what is behind them instead of covering it',
+		pt_motion: 'Motion', pt_direction: 'Direction', pd_up: 'Up', pd_down: 'Down', pd_sideways: 'Sideways (around)', pd_all: 'Every way', pd_custom: 'Own direction',
+		pt_yaw: 'Turn', pt_pitch: 'Tilt', pt_local: 'Turn with the object', pt_spread: 'Spread (cone)', pt_speed: 'Speed (px/s)', pt_speed_jitter: 'Speed spread',
+		pt_gravity: 'Gravity', pt_gravity_tip: 'Positive pulls down, negative lifts (smoke, steam)', pt_drag: 'Air drag', pt_shape: 'Come out of', ps_point: 'The centre', ps_box: 'The whole object (its volume)',
+		pt_follow: 'Move with the object', pt_follow_tip: 'On: all particles move along when the object moves. Off: they stay where they came out (a trail)',
+		pt_hint: 'The particles are worked out from the time: in the Animate tab they follow the timeline (scrub it back and they go back too) and a video renders them exactly the same.',
+		ptx_dot: 'Soft dot', ptx_smoke: 'Smoke', ptx_spark: 'Spark', ptx_fire: 'Flame', ptx_snow: 'Snowflake', ptx_drop: 'Drop', ptx_star: 'Star', ptx_square: 'Square',
 		msg_select_one: 'Select an object first',
 	},
 	ru: {
@@ -4587,6 +4607,26 @@ const TEXTS = {
 		cam_bloom: 'Сила свечения (bloom)', cam_motion: 'Размытие в движении', motion_blur: 'Размытие в движении (камера)', cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
 		cam_focus: 'Фокус', cam_focus_pick: 'Фокус на выделенном', cam_focus_clear: 'Сбросить', cam_focus_blur: 'Размытие фона', cam_focus_none: 'ничего',
 		cam_hint: 'Камера — пустая группа, смотрящая вдоль своей оси -Z. Поворачивайте «Вращением», двигайте «Перемещением»; эффекты работают в Рендер-виде, пока вы смотрите через неё.',
+		rt: 'Трассировка лучей', rt_rays: 'Лучей на пиксель', rt_distance: 'Длина луча (px)', rt_bounce: 'Отражённый свет (переносит цвет)', rt_ao: 'Затенение в углах',
+		rt_shadows: 'Контактные тени (солнце)', rt_accumulate: 'Очищать шум, пока всё стоит',
+		rt_hint: 'Лучи идут по тому, что видит камера: свет отражается от соседних поверхностей и окрашивает их, углы темнеют, мелкие предметы дают чёткие контактные тени. Пока ничего не двигается, кадры складываются и шум уходит. То, что за кадром или скрыто за другим объектом, лучи не находят.',
+		fog: 'Объёмный туман', fog_density: 'Плотность', fog_color: 'Цвет тумана', fog_brightness: 'Яркость тумана (небо)', fog_base: 'Уровень тумана (высота, px)',
+		fog_height: 'Редеет с высотой (px)', fog_noise: 'Клочья', fog_noise_size: 'Размер клочьев (px)', fog_wind: 'Ветер (px/с)', fog_wind_dir: 'Направление ветра',
+		fog_light: 'Свет в тумане', fog_anisotropy: 'Сияние к источнику', fog_distance: 'Дальность (px)', fog_quality: 'Качество (шагов)', fog_shafts: 'Лучи света (тени солнца)',
+		fog_hint: 'Туман освещается небом, солнцем и каждым источником света (ореол вокруг ламп, мерцает вместе с ними). Если у солнца включены тени, объекты прорезают в тумане лучи света. Ветер двигает клочья по времени анимации.',
+		particles_title: 'Частицы', act_particles: 'Частицы…', act_particles_desc: 'Выделенный объект начинает испускать частицы (дым, искры, снег…), открывается панель «Частицы»',
+		act_add_particles: 'Добавить частицы', act_add_particles_desc: 'Добавить источник частиц (пустая группа) в текущем ракурсе',
+		pt_hint_none: 'Выделите объект с частицами.', pt_remove: 'Убрать', pt_restart: 'Запустить заново', pt_enabled: 'Включены',
+		pt_amount: 'Количество и время', pt_count: 'Количество (одновременно)', pt_lifetime: 'Время жизни (с)', pt_life_jitter: 'Разброс времени жизни', pt_fade_in: 'Появление (с)', pt_fade_out: 'Исчезновение (с)',
+		pt_prewarm: 'Сразу заполнено', pt_prewarm_tip: 'Выкл: частицы начинают вылетать с момента 0 анимации (или с момента включения)',
+		pt_look: 'Вид', pt_color: 'Цвет при появлении', pt_color_end: 'Цвет в конце', pt_size: 'Размер при появлении', pt_size_end: 'Размер в конце', pt_size_jitter: 'Разброс размера',
+		pt_spin: 'Вращение', pt_glow: 'Свечение (bloom в Рендер-виде)', pt_additive: 'Светящиеся (огонь, искры)', pt_additive_tip: 'Частицы осветляют то, что за ними, а не закрывают его',
+		pt_motion: 'Движение', pt_direction: 'Направление', pd_up: 'Вверх', pd_down: 'Вниз', pd_sideways: 'В стороны (по кругу)', pd_all: 'Во все стороны', pd_custom: 'Своё направление',
+		pt_yaw: 'Поворот', pt_pitch: 'Наклон', pt_local: 'Поворачивать с объектом', pt_spread: 'Разброс (конус)', pt_speed: 'Скорость (px/с)', pt_speed_jitter: 'Разброс скорости',
+		pt_gravity: 'Гравитация', pt_gravity_tip: 'Плюс тянет вниз, минус поднимает (дым, пар)', pt_drag: 'Сопротивление воздуха', pt_shape: 'Откуда вылетают', ps_point: 'Из центра', ps_box: 'Из всего объекта (его объёма)',
+		pt_follow: 'Двигаются вместе с объектом', pt_follow_tip: 'Вкл: все частицы смещаются вместе с объектом. Выкл: остаются там, где вылетели (шлейф)',
+		pt_hint: 'Частицы рассчитываются по времени: во вкладке «Анимация» они идут по таймлайну (перемотали назад — частицы тоже вернулись), а в видео получаются точно такими же.',
+		ptx_dot: 'Мягкая точка', ptx_smoke: 'Дым', ptx_spark: 'Искра', ptx_fire: 'Пламя', ptx_snow: 'Снежинка', ptx_drop: 'Капля', ptx_star: 'Звезда', ptx_square: 'Квадрат',
 		msg_select_one: 'Сначала выделите объект',
 	},
 };
@@ -4604,6 +4644,9 @@ const DEFAULT_SETTINGS = {
 	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true,
 	exposure: 1, ao: true, ao_strength: 0.8, ao_radius: 4, ssr: false, ssr_strength: 0.6,
 	bloom: true, bloom_strength: 0.35, bloom_threshold: 1.2, bloom_radius: 0.6, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, motion_blur: 0, vignette: 0.25,
+	rt: false, rt_rays: 6, rt_distance: 40, rt_bounce: 1, rt_ao: 0.7, rt_shadows: 0.6, rt_accumulate: true,
+	fog: false, fog_density: 0.4, fog_color: '#c9d3df', fog_brightness: 0.35, fog_base: 0, fog_height: 30, fog_noise: 0.5, fog_noise_size: 40,
+	fog_wind: 6, fog_wind_dir: 30, fog_light: 1, fog_anisotropy: 0.55, fog_distance: 600, fog_quality: 40, fog_shafts: true,
 	sky_mode: 'off', sky_top: '#2f6fd6', sky_horizon: '#bcd8ff', sky_ground: '#6b5a48', sky_sun: true, sky_clouds: 0.4, sky_image: '', sky_image_name: '', sky_rotation: 0,
 	};
 const DEFAULT_MATERIAL = {
@@ -5140,15 +5183,7 @@ class ChainedEffect extends THREE.Pass {
 		this.inner.renderToScreen = false;
 		// these passes replace materials (normals, metalness): hide what must stay invisible (Blockbench's hidden helper
 		// planes, lines, points, sprites), otherwise it suddenly shows up in the occlusion / reflection layers
-		const hidden = [];
-		scene.traverseVisible(o => {
-			if (o.isLine || o.isPoints || o.isSprite) hidden.push(o);
-			else if (o.isMesh) {
-				const m = o.material, list = Array.isArray(m) ? m : [m];
-				if (!list.length || list.every(x => !x || x.visible === false || x.colorWrite === false)) hidden.push(o);
-			}
-		});
-		hidden.forEach(o => { o.visible = false; });
+		const hidden = hideForPasses(scene);
 		const background = scene.background;
 		scene.background = null;   // the sky would end up in the occlusion / reflection layers
 		try {
@@ -5252,15 +5287,7 @@ class MotionBlurPass extends THREE.Pass {
 			return;
 		}
 		this.needsSwap = true;
-		const hidden = [];
-		this.scene.traverseVisible(o => {
-			if (o.isLine || o.isPoints || o.isSprite) hidden.push(o);
-			else if (o.isMesh) {
-				const m = o.material, list = Array.isArray(m) ? m : [m];
-				if (!list.length || list.every(x => !x || x.visible === false || x.colorWrite === false)) hidden.push(o);
-			}
-		});
-		hidden.forEach(o => { o.visible = false; });
+		const hidden = hideForPasses(this.scene);
 		const background = this.scene.background, override = this.scene.overrideMaterial;
 		this.scene.background = null;
 		this.scene.overrideMaterial = this.depthMaterial;
@@ -5285,6 +5312,428 @@ class MotionBlurPass extends THREE.Pass {
 		renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
 		this.fsQuad.render(renderer);
 		this.prev.copy(this.vp);
+	}
+}
+
+// what the extra passes must not see: Blockbench's helpers (lines, points, sprites, invisible planes) and the particles
+function hideForPasses(sc) {
+	const hidden = [];
+	sc.traverseVisible(o => {
+		if (o.isLine || o.isPoints || o.isSprite || o.userData.render_no_fx) hidden.push(o);
+		else if (o.isMesh) {
+			const m = o.material, list = Array.isArray(m) ? m : [m];
+			if (!list.length || list.every(x => !x || x.visible === false || x.colorWrite === false)) hidden.push(o);
+		}
+	});
+	hidden.forEach(o => { o.visible = false; });
+	return hidden;
+}
+
+const FULLSCREEN_VERTEX = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+// view space position from the stored distance, and back to the screen (perspective and orthographic cameras)
+const VIEW_SPACE_GLSL = `
+	uniform mat4 proj; uniform float ortho;
+	vec3 viewPos(vec2 uv, float z) {
+		vec2 ndc = uv * 2.0 - 1.0;
+		if (ortho > 0.5) return vec3((ndc - vec2(proj[3][0], proj[3][1])) / vec2(proj[0][0], proj[1][1]), -z);
+		return vec3((ndc + vec2(proj[2][0], proj[2][1])) * z / vec2(proj[0][0], proj[1][1]), -z);
+	}
+	vec2 toScreen(vec3 p) { vec4 c = proj * vec4(p, 1.0); return c.xy / c.w * 0.5 + 0.5; }
+	float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+	vec3 safe3(vec3 c) { c = clamp(c, vec3(0.0), vec3(3000.0)); if (!(c.r > -1.0 && c.g > -1.0 && c.b > -1.0)) c = vec3(0.0); return c; }
+`;
+
+// What the camera sees as geometry: the surface direction (view space) in rgb and the distance from the camera in alpha
+// (0 = nothing there, the sky). Rendered once a frame and shared by the ray tracing and the fog.
+class SceneBuffer {
+	constructor(renderer, w, h) {
+		const float = renderer.capabilities.isWebGL2 ? renderer.extensions.has('EXT_color_buffer_float') : renderer.extensions.has('OES_texture_float');
+		this.target = new THREE.WebGLRenderTarget(w, h, {type: float ? THREE.FloatType : THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true});
+		this.material = new THREE.ShaderMaterial({
+			vertexShader: `varying vec3 vN; varying float vZ;
+				void main() { vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }`,
+			fragmentShader: `varying vec3 vN; varying float vZ;
+				void main() { vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0); gl_FragColor = vec4(n, max(vZ, 0.001)); }`,
+			side: THREE.DoubleSide, blending: THREE.NoBlending,
+		});
+	}
+	setSize(w, h) { this.target.setSize(w, h); }
+	dispose() { this.target.dispose(); this.material.dispose(); }
+	render(renderer, sc, camera) {
+		const hidden = hideForPasses(sc);
+		const background = sc.background, override = sc.overrideMaterial;
+		const clear = renderer.getClearColor(new THREE.Color()), clear_alpha = renderer.getClearAlpha();
+		sc.background = null;
+		sc.overrideMaterial = this.material;
+		try {
+			renderer.setRenderTarget(this.target);
+			renderer.setClearColor(0x000000, 0);
+			renderer.clear();
+			renderer.render(sc, camera);
+		} finally {
+			renderer.setClearColor(clear, clear_alpha);
+			sc.overrideMaterial = override;
+			sc.background = background;
+			hidden.forEach(o => { o.visible = true; });
+		}
+	}
+}
+
+// a blur that stays on its surface (does not bleed over edges in depth or across corners): removes the noise of the rays
+const BilateralShader = {
+	uniforms: {tInput: {value: null}, tGeo: {value: null}, step: {value: new THREE.Vector2()}},
+	vertexShader: FULLSCREEN_VERTEX,
+	fragmentShader: `uniform sampler2D tInput; uniform sampler2D tGeo; uniform vec2 step; varying vec2 vUv;
+		void main() {
+			vec4 g0 = texture2D(tGeo, vUv);
+			float z0 = g0.a > 0.0 ? g0.a : 100000.0;
+			vec4 sum = vec4(0.0); float total = 0.0;
+			for (int i = -5; i <= 5; i++) {
+				vec2 uv = vUv + step * float(i);
+				vec4 g = texture2D(tGeo, uv);
+				float z = g.a > 0.0 ? g.a : 100000.0;
+				float w = exp(-float(i * i) / 12.0) * exp(-abs(z - z0) / (0.04 * z0 + 0.5));
+				if (g.a > 0.0 && g0.a > 0.0) w *= pow(max(dot(g.xyz, g0.xyz), 0.0), 6.0);
+				sum += texture2D(tInput, uv) * w; total += w;
+			}
+			gl_FragColor = sum / max(total, 1e-5);
+		}`,
+};
+
+class BilateralBlur {
+	constructor(w, h) {
+		this.tmp = new THREE.WebGLRenderTarget(w, h, {type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter});
+		this.material = new THREE.ShaderMaterial(Object.assign({}, BilateralShader, {uniforms: THREE.UniformsUtils.clone(BilateralShader.uniforms), depthTest: false, depthWrite: false}));
+		this.quad = new THREE.FullScreenQuad(this.material);
+		this.w = w; this.h = h;
+	}
+	setSize(w, h) { this.tmp.setSize(w, h); this.w = w; this.h = h; }
+	dispose() { this.tmp.dispose(); this.material.dispose(); }
+	// target -> blurred back into target
+	run(renderer, target, geo, spread) {
+		const u = this.material.uniforms;
+		u.tGeo.value = geo;
+		u.tInput.value = target.texture; u.step.value.set(spread / this.w, 0);
+		renderer.setRenderTarget(this.tmp); this.quad.render(renderer);
+		u.tInput.value = this.tmp.texture; u.step.value.set(0, spread / this.h);
+		renderer.setRenderTarget(target); this.quad.render(renderer);
+	}
+}
+
+// Ray tracing (in screen space). From every visible point rays go out over the half sphere above the surface and are marched
+// through what the camera sees. A ray that hits something brings back the light of that surface (bounce light, colour bleeding)
+// and counts as blocked (ambient occlusion); a ray toward the sun that hits something makes a contact shadow. The noise of the
+// few rays is smoothed by a blur that stays on the surface, and while the camera and the animation stand still the frames are
+// added up, so the picture gets cleaner by itself. Only what is on the screen can be hit (like every screen space effect).
+class RayTracePass extends THREE.Pass {
+	constructor(camera, buffer, w, h) {
+		super();
+		this.camera = camera;
+		this.buffer = buffer;
+		this.settings = {rays: 6, distance: 40, bounce: 1, ao: 0.7, shadows: 0.6, accumulate: true};
+		this.sun_dir = new THREE.Vector3(0, 1, 0);
+		this.offline = false;
+		this.reset = false;
+		const opts = {type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false};
+		this.trace = new THREE.WebGLRenderTarget(w, h, opts);
+		this.history = [new THREE.WebGLRenderTarget(w, h, opts), new THREE.WebGLRenderTarget(w, h, opts)];
+		this.blur = new BilateralBlur(w, h);
+		this.frames = 0;
+		this.frame_index = 0;
+		this.prev = new THREE.Matrix4();
+		this.traceMaterial = new THREE.ShaderMaterial({
+			uniforms: {tColor: {value: null}, tGeo: {value: null}, proj: {value: new THREE.Matrix4()}, ortho: {value: 0}, frame: {value: 0}, rays: {value: 6},
+				dist: {value: 40}, aoStrength: {value: 0.7}, shadowStrength: {value: 0.6}, sunDir: {value: new THREE.Vector3()}},
+			vertexShader: FULLSCREEN_VERTEX,
+			fragmentShader: VIEW_SPACE_GLSL + `
+				uniform sampler2D tColor; uniform sampler2D tGeo; uniform float frame; uniform float rays; uniform float dist;
+				uniform float aoStrength; uniform float shadowStrength; uniform vec3 sunDir; varying vec2 vUv;
+				const int MAX_RAYS = 24; const int STEPS = 16;
+				void main() {
+					vec4 g = texture2D(tGeo, vUv);
+					if (g.a <= 0.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+					vec3 N = normalize(g.xyz), P = viewPos(vUv, g.a);
+					float noise = fract(ign(gl_FragCoord.xy) + frame * 0.61803398);
+					vec3 T = normalize(abs(N.y) < 0.95 ? cross(N, vec3(0.0, 1.0, 0.0)) : cross(N, vec3(1.0, 0.0, 0.0))), B = cross(N, T);
+					float bias = max(0.03, g.a * 0.0015);
+					vec3 start = P + N * bias;
+					vec3 gi = vec3(0.0); float occ = 0.0;
+					for (int i = 0; i < MAX_RAYS; i++) {
+						if (float(i) >= rays) break;
+						// cosine weighted direction over the half sphere (a different set every frame)
+						float u1 = fract(noise + (float(i) + 0.5) / rays);
+						float u2 = fract(ign(gl_FragCoord.yx + float(i) * 7.31) + frame * 0.7548776);
+						float r = sqrt(u1), phi = 6.2831853 * u2;
+						vec3 dir = normalize(T * (r * cos(phi)) + B * (r * sin(phi)) + N * sqrt(max(0.0, 1.0 - u1)));
+						float jitter = fract(noise * 5.37 + float(i) * 0.379);
+						for (int j = 0; j < STEPS; j++) {
+							float s = (float(j) + jitter) / float(STEPS);
+							float t = dist * s * s + bias;
+							vec3 Q = start + dir * t;
+							vec2 uv = toScreen(Q);
+							if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || Q.z > -0.01) break;
+							vec4 h = texture2D(tGeo, uv);
+							if (h.a <= 0.0) continue;
+							float behind = -Q.z - h.a;
+							if (behind > 0.02 && behind < max(1.5, t * 0.6)) {
+								float near = 1.0 - s;
+								occ += near;
+								float facing = clamp(dot(normalize(h.xyz), -dir) * 1.5 + 0.2, 0.0, 1.0);
+								gi += safe3(texture2D(tColor, uv).rgb) * facing;
+								break;
+							}
+						}
+					}
+					gi /= rays;
+					float ao = 1.0 - clamp(occ / rays * 2.0, 0.0, 1.0);
+					// contact shadow: march toward the sun
+					float lit = 1.0;
+					if (shadowStrength > 0.0 && dot(N, sunDir) > 0.02) {
+						for (int j = 0; j < 14; j++) {
+							float t = dist * 0.6 * (float(j) + noise) / 14.0 + bias;
+							vec3 Q = start + sunDir * t;
+							vec2 uv = toScreen(Q);
+							if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || Q.z > -0.01) break;
+							vec4 h = texture2D(tGeo, uv);
+							if (h.a <= 0.0) continue;
+							float behind = -Q.z - h.a;
+							if (behind > 0.05 && behind < max(2.0, t * 0.5)) { lit = 0.0; break; }
+						}
+					}
+					gl_FragColor = vec4(gi, mix(1.0, ao, aoStrength) * mix(1.0, lit, shadowStrength * 0.75));
+				}`,
+			depthTest: false, depthWrite: false,
+		});
+		this.accumMaterial = new THREE.ShaderMaterial({
+			uniforms: {tCurrent: {value: null}, tHistory: {value: null}, weight: {value: 1}},
+			vertexShader: FULLSCREEN_VERTEX,
+			fragmentShader: `uniform sampler2D tCurrent; uniform sampler2D tHistory; uniform float weight; varying vec2 vUv;
+				void main() { gl_FragColor = mix(texture2D(tHistory, vUv), texture2D(tCurrent, vUv), weight); }`,
+			depthTest: false, depthWrite: false,
+		});
+		this.compositeMaterial = new THREE.ShaderMaterial({
+			uniforms: {tColor: {value: null}, tRT: {value: null}, bounce: {value: 1}},
+			vertexShader: FULLSCREEN_VERTEX,
+			fragmentShader: `uniform sampler2D tColor; uniform sampler2D tRT; uniform float bounce; varying vec2 vUv;
+				void main() {
+					vec4 src = texture2D(tColor, vUv);
+					vec4 r = texture2D(tRT, vUv);
+					vec3 c = src.rgb;
+					// the colour of the surface itself, roughly: the lit colour with its brightness taken out
+					float m = max(max(c.r, c.g), c.b);
+					vec3 albedo = clamp(c / max(m, 0.35), 0.0, 1.0) * 0.75;
+					gl_FragColor = vec4(c * r.a + r.rgb * albedo * bounce, src.a);
+				}`,
+			depthTest: false, depthWrite: false,
+		});
+		this.quad = new THREE.FullScreenQuad(null);
+	}
+	setSize(w, h) {
+		this.trace.setSize(w, h);
+		this.history.forEach(t => t.setSize(w, h));
+		this.blur.setSize(w, h);
+		this.frames = 0;
+	}
+	dispose() {
+		this.trace.dispose(); this.history.forEach(t => t.dispose()); this.blur.dispose();
+		this.traceMaterial.dispose(); this.accumMaterial.dispose(); this.compositeMaterial.dispose();
+	}
+	render(renderer, writeBuffer, readBuffer) {
+		const s = this.settings, camera = this.camera;
+		camera.updateMatrixWorld(true);
+		const vp = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+		let moved = this.reset;
+		for (let i = 0; i < 16 && !moved; i++) if (Math.abs(vp.elements[i] - this.prev.elements[i]) > 1e-6) moved = true;
+		this.prev.copy(vp);
+		this.reset = false;
+		this.frame_index = (this.frame_index + 1) % 4096;
+		const u = this.traceMaterial.uniforms;
+		u.tColor.value = readBuffer.texture;
+		u.tGeo.value = this.buffer.target.texture;
+		u.proj.value.copy(camera.projectionMatrix);
+		u.ortho.value = camera.isOrthographicCamera ? 1 : 0;
+		u.frame.value = this.frame_index;
+		u.rays.value = Math.max(1, Math.min(24, Math.round(s.rays * (this.offline ? 2 : 1))));
+		u.dist.value = s.distance;
+		u.aoStrength.value = s.ao;
+		u.shadowStrength.value = s.shadows;
+		u.sunDir.value.copy(this.sun_dir).transformDirection(camera.matrixWorldInverse);
+		renderer.setRenderTarget(this.trace);
+		this.quad.material = this.traceMaterial;
+		this.quad.render(renderer);
+		this.blur.run(renderer, this.trace, this.buffer.target.texture, 1.5);
+		// adding up the frames while nothing moves
+		const accumulate = s.accumulate && !this.offline;
+		this.frames = accumulate && !moved ? Math.min(this.frames + 1, 24) : 1;
+		const [hist, next] = this.history;
+		this.accumMaterial.uniforms.tCurrent.value = this.trace.texture;
+		this.accumMaterial.uniforms.tHistory.value = hist.texture;
+		this.accumMaterial.uniforms.weight.value = 1 / this.frames;
+		renderer.setRenderTarget(next);
+		this.quad.material = this.accumMaterial;
+		this.quad.render(renderer);
+		this.history = [next, hist];
+		const c = this.compositeMaterial.uniforms;
+		c.tColor.value = readBuffer.texture;
+		c.tRT.value = next.texture;
+		c.bounce.value = s.bounce;
+		renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+		this.quad.material = this.compositeMaterial;
+		this.quad.render(renderer);
+	}
+}
+
+// Volumetric fog: for every pixel the way from the camera to the surface is walked in steps through a fog that thins out with
+// height and drifts with the wind (3D noise). At every step the fog is lit by the sky, by the sun (with the sun's shadow map:
+// light shafts behind objects) and by the lights (a glow around every lamp, flickering with it).
+class VolumetricFogPass extends THREE.Pass {
+	constructor(camera, buffer, w, h) {
+		super();
+		this.camera = camera;
+		this.buffer = buffer;
+		this.fog = new THREE.WebGLRenderTarget(w, h, {type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false});
+		this.blur = new BilateralBlur(w, h);
+		this.lights = [];
+		this.sun = null;
+		this.time = 0;
+		this.s = null;
+		const arr = n => Array.from({length: n}, () => new THREE.Vector3());
+		this.marchMaterial = new THREE.ShaderMaterial({
+			uniforms: {
+				tGeo: {value: null}, proj: {value: new THREE.Matrix4()}, ortho: {value: 0}, camWorld: {value: new THREE.Matrix4()}, camPos: {value: new THREE.Vector3()},
+				time: {value: 0}, density: {value: 0.3}, fogColor: {value: new THREE.Color()}, ambient: {value: 0.5}, base: {value: 0}, height: {value: 40},
+				noiseAmount: {value: 0.5}, noiseSize: {value: 40}, wind: {value: new THREE.Vector3()}, lightAmount: {value: 1}, aniso: {value: 0.5},
+				maxDist: {value: 400}, steps: {value: 32},
+				sunDir: {value: new THREE.Vector3(0, 1, 0)}, sunColor: {value: new THREE.Color()}, sunShadowMap: {value: null}, sunShadowMatrix: {value: new THREE.Matrix4()},
+				hasShadow: {value: 0}, shadowBias: {value: 0},
+				lPos: {value: arr(8)}, lCol: {value: arr(8)}, lRad: {value: new Array(8).fill(1)}, nLights: {value: 0},
+			},
+			vertexShader: FULLSCREEN_VERTEX,
+			fragmentShader: '#include <packing>\n' + VIEW_SPACE_GLSL + `
+				uniform sampler2D tGeo; uniform mat4 camWorld; uniform vec3 camPos; uniform float time; uniform float density; uniform vec3 fogColor;
+				uniform float ambient; uniform float base; uniform float height; uniform float noiseAmount; uniform float noiseSize; uniform vec3 wind;
+				uniform float lightAmount; uniform float aniso; uniform float maxDist; uniform float steps;
+				uniform vec3 sunDir; uniform vec3 sunColor; uniform sampler2D sunShadowMap; uniform mat4 sunShadowMatrix; uniform float hasShadow; uniform float shadowBias;
+				uniform vec3 lPos[8]; uniform vec3 lCol[8]; uniform float lRad[8]; uniform int nLights;
+				varying vec2 vUv;
+				float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+				float vnoise(vec3 x) {
+					vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+					return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
+						mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+				}
+				float densityAt(vec3 X) {
+					float d = density * exp(-max(0.0, X.y - base) / max(height, 0.5));
+					if (noiseAmount > 0.0) {
+						vec3 q = (X - wind * time) / max(noiseSize, 1.0);
+						float n = vnoise(q) * 0.55 + vnoise(q * 2.03 + 11.7) * 0.3 + vnoise(q * 4.11 + 3.1) * 0.15;
+						d *= mix(1.0, smoothstep(0.25, 0.75, n) * 2.0, noiseAmount);
+					}
+					return d;
+				}
+				float phase(float c) { float g = aniso; return (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-4), 1.5); }
+				float sunVisible(vec3 X) {
+					if (hasShadow < 0.5) return 1.0;
+					vec4 sc = sunShadowMatrix * vec4(X, 1.0);
+					sc.xyz /= sc.w;
+					if (sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0 || sc.z > 1.0) return 1.0;
+					return step(sc.z + shadowBias - 0.004, unpackRGBAToDepth(texture2D(sunShadowMap, sc.xy)));
+				}
+				void main() {
+					vec4 g = texture2D(tGeo, vUv);
+					vec3 Pv = viewPos(vUv, g.a > 0.0 ? g.a : maxDist);
+					vec3 Pw = (camWorld * vec4(Pv, 1.0)).xyz;
+					vec3 O = ortho > 0.5 ? (camWorld * vec4(Pv.xy, 0.0, 1.0)).xyz : camPos;
+					vec3 rd = normalize(Pw - O);
+					float L = min(length(Pw - O), maxDist);
+					float stepLen = L / steps;
+					float jitter = ign(gl_FragCoord.xy);
+					float sunPhase = phase(dot(rd, sunDir));
+					float T = 1.0; vec3 scat = vec3(0.0);
+					for (int i = 0; i < 128; i++) {
+						if (float(i) >= steps) break;
+						vec3 X = O + rd * ((float(i) + jitter) * stepLen);
+						float d = densityAt(X);
+						if (d < 1e-5) continue;
+						vec3 light = vec3(ambient) + sunColor * (lightAmount * sunPhase * sunVisible(X));
+						for (int k = 0; k < 8; k++) {
+							if (k >= nLights) break;
+							vec3 dl = lPos[k] - X;
+							float dist = length(dl);
+							float a = clamp(1.0 - dist / lRad[k], 0.0, 1.0);
+							light += lCol[k] * (lightAmount * a * a * phase(dot(rd, dl / max(dist, 1e-3))));
+						}
+						float tr = exp(-d * 0.01 * stepLen);
+						scat += T * fogColor * light * (1.0 - tr);
+						T *= tr;
+						if (T < 0.003) break;
+					}
+					gl_FragColor = vec4(scat, T);
+				}`,
+			depthTest: false, depthWrite: false,
+		});
+		this.compositeMaterial = new THREE.ShaderMaterial({
+			uniforms: {tColor: {value: null}, tFog: {value: null}},
+			vertexShader: FULLSCREEN_VERTEX,
+			fragmentShader: `uniform sampler2D tColor; uniform sampler2D tFog; varying vec2 vUv;
+				void main() { vec4 src = texture2D(tColor, vUv); vec4 f = texture2D(tFog, vUv); gl_FragColor = vec4(src.rgb * f.a + f.rgb, src.a); }`,
+			depthTest: false, depthWrite: false,
+		});
+		this.quad = new THREE.FullScreenQuad(null);
+	}
+	setSize(w, h) { this.fog.setSize(w, h); this.blur.setSize(w, h); }
+	dispose() { this.fog.dispose(); this.blur.dispose(); this.marchMaterial.dispose(); this.compositeMaterial.dispose(); }
+	render(renderer, writeBuffer, readBuffer) {
+		const s = this.s, camera = this.camera, u = this.marchMaterial.uniforms;
+		if (!s) { this.needsSwap = false; return; }
+		this.needsSwap = true;
+		camera.updateMatrixWorld(true);
+		u.tGeo.value = this.buffer.target.texture;
+		u.proj.value.copy(camera.projectionMatrix);
+		u.ortho.value = camera.isOrthographicCamera ? 1 : 0;
+		u.camWorld.value.copy(camera.matrixWorld);
+		u.camPos.value.setFromMatrixPosition(camera.matrixWorld);
+		u.time.value = this.time;
+		u.density.value = s.fog_density;
+		u.fogColor.value.set(s.fog_color).convertSRGBToLinear();
+		u.ambient.value = s.fog_brightness;
+		u.base.value = s.fog_base;
+		u.height.value = s.fog_height;
+		u.noiseAmount.value = s.fog_noise;
+		u.noiseSize.value = s.fog_noise_size;
+		const wa = s.fog_wind_dir * Math.PI / 180;
+		u.wind.value.set(Math.sin(wa), 0, Math.cos(wa)).multiplyScalar(s.fog_wind);
+		u.lightAmount.value = s.fog_light;
+		u.aniso.value = Math.max(-0.9, Math.min(0.9, s.fog_anisotropy));
+		u.maxDist.value = Math.min(s.fog_distance, camera.far || s.fog_distance);
+		u.steps.value = Math.max(8, Math.min(128, Math.round(s.fog_quality)));
+		const sun = this.sun;
+		if (sun) {
+			u.sunDir.value.copy(sun.position).sub(sun.target.position).normalize();
+			u.sunColor.value.copy(sun.color).multiplyScalar(sun.intensity);
+			const map = sun.shadow && sun.shadow.map;
+			const shadowed = !!(s.fog_shafts && sun.castShadow && map && map.texture);
+			u.hasShadow.value = shadowed ? 1 : 0;
+			if (shadowed) { u.sunShadowMap.value = map.texture; u.sunShadowMatrix.value.copy(sun.shadow.matrix); u.shadowBias.value = sun.shadow.bias; }
+		} else u.sunColor.value.setRGB(0, 0, 0);
+		const n = Math.min(8, this.lights.length);
+		for (let i = 0; i < n; i++) {
+			const l = this.lights[i];
+			u.lPos.value[i].copy(l.position);
+			u.lCol.value[i].set(l.color.r * l.intensity, l.color.g * l.intensity, l.color.b * l.intensity);
+			u.lRad.value[i] = Math.max(1, l.distance);
+		}
+		u.nLights.value = n;
+		renderer.setRenderTarget(this.fog);
+		this.quad.material = this.marchMaterial;
+		this.quad.render(renderer);
+		this.blur.run(renderer, this.fog, this.buffer.target.texture, 1);
+		const c = this.compositeMaterial.uniforms;
+		c.tColor.value = readBuffer.texture;
+		c.tFog.value = this.fog.texture;
+		renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+		this.quad.material = this.compositeMaterial;
+		this.quad.render(renderer);
 	}
 }
 
@@ -5367,6 +5816,12 @@ function buildPipeline(preview) {
 	p.render = new THREE.RenderPass(scene, camera);
 	composer.addPass(p.render);
 
+	if (s.rt || s.fog) p.gbuf = new SceneBuffer(renderer, w, h);
+	if (s.rt) {
+		p.rt = new RayTracePass(camera, p.gbuf, w, h);
+		composer.addPass(p.rt);
+	}
+
 	if (s.ao) {
 		const ssao = new THREE.SSAOPass(scene, camera, w, h);
 		ssao.output = THREE.SSAOPass.OUTPUT.Blur;
@@ -5380,6 +5835,10 @@ function buildPipeline(preview) {
 		p.ssr = new ChainedEffect(ssr, 'over');
 		composer.addPass(p.ssr);
 	}
+	if (s.fog) {
+		p.fog = new VolumetricFogPass(camera, p.gbuf, w, h);
+		composer.addPass(p.fog);
+	}
 	if (motionAmount() > 0) {
 		p.mb = new MotionBlurPass(scene, camera, w, h);
 		composer.addPass(p.mb);
@@ -5392,9 +5851,9 @@ function buildPipeline(preview) {
 	p.dof = new THREE.BokehPass(scene, camera, {focus: s.dof_focus, aperture: 0.00002, maxblur: 0.01, width: w, height: h});
 		const bokeh_render = p.dof.render.bind(p.dof);
 		p.dof.render = (...args) => {   // the sky must not end up in the depth picture
-			const background = scene.background;
+			const background = scene.background, hidden = hideForPasses(scene);
 			scene.background = null;
-			try { bokeh_render(...args); } finally { scene.background = background; }
+			try { bokeh_render(...args); } finally { scene.background = background; hidden.forEach(o => { o.visible = true; }); }
 		};
 		composer.addPass(p.dof);
 	}
@@ -5410,13 +5869,14 @@ function buildPipeline(preview) {
 function disposePipeline(p) {
 	if (!p) return;
 	p.composer.passes.forEach(pass => { if (pass.dispose) pass.dispose(); });
+	if (p.gbuf) p.gbuf.dispose();
 	p.composer.renderTarget1.dispose();
 	p.composer.renderTarget2.dispose();
 }
 
 function structureKey(preview) {
 	const s = settingsOf();
-	return [preview.camera.uuid, s.ao, s.ssr, motionAmount() > 0, bloomAmount() > 0, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
+	return [preview.camera.uuid, s.rt, s.fog, s.ao, s.ssr, motionAmount() > 0, bloomAmount() > 0, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
 }
 
 function pipelineFor(preview) {
@@ -5432,8 +5892,24 @@ function pipelineFor(preview) {
 	if (size.x != p.w || size.y != p.h) {
 		p.w = size.x; p.h = size.y;
 		p.composer.setSize(size.x / preview.renderer.getPixelRatio(), size.y / preview.renderer.getPixelRatio());
+		if (p.gbuf) p.gbuf.setSize(size.x, size.y);
 	}
 	const s = settingsOf();
+	if (p.rt) {
+		Object.assign(p.rt.settings, {rays: s.rt_rays, distance: s.rt_distance, bounce: s.rt_bounce, ao: s.rt_ao, shadows: s.shadows ? s.rt_shadows : 0, accumulate: s.rt_accumulate});
+		p.rt.offline = !!preview.offline;
+		if (rig) p.rt.sun_dir.copy(rig.sun.position).sub(rig.sun.target.position).normalize();
+		// something moved (animation, physics, editing) or the settings changed: start adding up again
+		const stamp = sceneSignature() + '|' + JSON.stringify(Project.render_settings || {});
+		if (stamp !== p.rt_stamp) p.rt.reset = true;
+		p.rt_stamp = stamp;
+	}
+	if (p.fog) {
+		p.fog.s = s;
+		p.fog.time = lightClock();
+		p.fog.sun = rig ? rig.sun : null;
+		p.fog.lights = rig ? [...rig.lights.values()].filter(l => l.visible !== false && l.intensity > 0) : [];
+	}
 	if (p.ao) {
 		p.ao.strength = s.ao_strength;
 		p.ao.inner.kernelRadius = s.ao_radius;
@@ -5470,9 +5946,23 @@ function pipelineFor(preview) {
 	return p;
 }
 
+// a number that changes whenever anything in the scene moves or changes shape (or a light changes)
+function sceneSignature() {
+	let sig = 0, i = 1;
+	for (const el of [...Cube.all, ...Mesh.all]) {
+		const m = el.mesh;
+		if (!m) continue;
+		const e = m.matrixWorld.elements, pos = m.geometry && m.geometry.attributes.position;
+		sig += (e[0] * 1.3 + e[5] * 1.7 + e[10] * 2.3 + e[1] * 0.7 + e[12] * 0.11 + e[13] * 0.13 + e[14] * 0.17 + (pos ? pos.version : 0) + (m.visible ? 0 : 5)) * (1 + (i++ % 97) * 0.01);
+	}
+	if (rig) rig.lights.forEach(l => { sig += l.intensity * 3.1 + l.position.x * 0.19 + l.position.y * 0.23 + l.position.z * 0.29; });
+	return sig.toFixed(5);
+}
+
 const original_render = Preview.prototype.render;
 function renderWithEffects() {
 syncActiveCamera(this);
+if (Project) updateParticles(this.camera);
 if (!enabled || !Project) return original_render.call(this);
 	try {
 		this.controls.update();
@@ -5501,6 +5991,7 @@ if (!enabled || !Project) return original_render.call(this);
 		}
 		const pipe = pipelineFor(this);
 		if (pipe.ssr) pipe.ssr.inner.maxDistance = camera.far;
+		if (pipe.gbuf) pipe.gbuf.render(r, scene, camera);
 		pipe.composer.render();
 		if (camera.far != saved_far) { camera.far = saved_far; camera.updateProjectionMatrix(); }
 		r.shadowMap.enabled = saved.shadow; r.shadowMap.type = saved.type; r.toneMapping = saved.tone; r.outputEncoding = saved.enc;
@@ -5660,6 +6151,10 @@ function helperIcon(kind) {
 			c.beginPath(); c.moveTo(64 + Math.cos(a) * r1, 54 + Math.sin(a) * r1); c.lineTo(64 + Math.cos(a) * r2, 54 + Math.sin(a) * r2); c.stroke();
 		}
 		c.strokeStyle = '#ffd24a'; c.beginPath(); c.arc(64, 64, 58, 0, Math.PI * 2); c.stroke();
+	} else if (kind == 'particles') {
+		c.fillStyle = '#7ee0c0';
+		for (const [x, y, r] of [[64, 40, 12], [42, 62, 9], [84, 66, 10], [58, 86, 7], [80, 92, 5], [36, 88, 5], [92, 40, 6]]) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
+		c.strokeStyle = '#7ee0c0'; c.lineWidth = 6; c.beginPath(); c.arc(64, 64, 58, 0, Math.PI * 2); c.stroke();
 	} else {
 		c.strokeStyle = c.fillStyle = '#6aa8ff';
 		c.lineWidth = 6;
@@ -5699,15 +6194,18 @@ function frustumGeometry(fov) {
 
 function syncEditorHelpers() {
 	if (!Project) return clearEditorHelpers();
-	const groups = [...lightGroups(), ...cameraGroups()].filter(g => g.mesh);
+	// an empty group that gives off particles gets an icon too (otherwise it could not be clicked in the viewport)
+	const kindOf = g => isLight(g) ? 'light' : isCamera(g) ? 'camera' : 'particles';
+	const emitting = Group.all.filter(g => hasParticles(g) && !isLight(g) && !isCamera(g) && !g.children.length);
+	const groups = [...lightGroups(), ...cameraGroups(), ...emitting].filter(g => g.mesh);
 	for (const uuid of [...editor_helpers.keys()]) {
 		const g = groups.find(x => x.uuid == uuid);
-		if (!g || editor_helpers.get(uuid).kind != (isLight(g) ? 'light' : 'camera')) removeEditorHelper(uuid);
+		if (!g || editor_helpers.get(uuid).kind != kindOf(g)) removeEditorHelper(uuid);
 	}
 	const preview = typeof Preview != 'undefined' && Preview.selected, cam = preview && preview.camera;
 	const active = activeCameraGroup();
 	for (const g of groups) {
-		const kind = isLight(g) ? 'light' : 'camera';
+		const kind = kindOf(g);
 		let h = editor_helpers.get(g.uuid);
 		if (!h) {
 			const object = new THREE.Object3D();
@@ -5718,7 +6216,7 @@ function syncEditorHelpers() {
 			if (kind == 'light') {
 				h.wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 20, 12)), new THREE.LineBasicMaterial({transparent: true, opacity: 0.35, depthWrite: false}));
 				object.add(h.wire);
-			} else {
+			} else if (kind == 'camera') {
 				h.frustum = new THREE.LineSegments(frustumGeometry(50), new THREE.LineBasicMaterial({color: 0x6aa8ff, transparent: true, opacity: 0.9, depthTest: false}));
 				h.frustum.renderOrder = 999;
 				object.add(h.frustum);
@@ -5735,7 +6233,7 @@ function syncEditorHelpers() {
 			h.wire.visible = !!g.selected;
 			h.wire.scale.setScalar(Math.max(0.01, d.radius));
 			h.wire.material.color.set(d.color);
-		} else {
+		} else if (kind == 'camera') {
 			const d = cameraOf(g);
 			h.frustum.quaternion.copy(g.mesh.getWorldQuaternion(new THREE.Quaternion()));
 			if (h.fov != d.fov) { h.frustum.geometry.dispose(); h.frustum.geometry = frustumGeometry(d.fov); h.fov = d.fov; }
@@ -5862,6 +6360,495 @@ function syncLights() {
 		if (light.dispose) light.dispose();
 		rig.lights.delete(uuid);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Particles: any cube, mesh or group can give off particles (smoke, sparks, snow, dust...). The settings live on the object
+// (saved in the project); the Particles panel on the right edits the selected one.
+// Every particle is worked out from the time alone (when it was born, where the object was then, its own random numbers),
+// so the same moment of an animation always looks the same: scrubbing the timeline and a video give the very same picture.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_PARTICLES = {
+	enabled: true, count: 150, lifetime: 2, life_jitter: 0.3, fade_in: 0.2, fade_out: 0.8, prewarm: true,
+	texture: 'smoke', image: '', image_name: '',
+	direction: 'up', yaw: 0, pitch: 45, local: false, spread: 20, speed: 25, speed_jitter: 0.3, gravity: 0, drag: 0.3,
+	shape: 'point', follow: false,
+	size: 4, size_end: 12, size_jitter: 0.3, spin: 0.5, color: '#ffffff', color_end: '#9a9a9a', opacity: 0.8, glow: 0, additive: false,
+};
+const PARTICLE_TEXTURES = ['dot', 'smoke', 'spark', 'fire', 'snow', 'drop', 'star', 'square'];
+const particlesOf = node => Object.assign({}, DEFAULT_PARTICLES, node.render_particles || {});
+const hasParticles = node => !!node && hasData(node.render_particles);
+const particleNodes = () => [...Cube.all, ...Mesh.all, ...Group.all].filter(hasParticles);
+
+// the built in particle pictures (white, coloured by the particle colour)
+const particle_textures = new Map();
+function builtinParticleTexture(kind) {
+	if (particle_textures.has(kind)) return particle_textures.get(kind);
+	const S = 128, canvas = document.createElement('canvas');
+	canvas.width = canvas.height = S;
+	const c = canvas.getContext('2d');
+	const radial = (x, y, r, stops) => { const g = c.createRadialGradient(x, y, 0, x, y, r); stops.forEach(([o, col]) => g.addColorStop(o, col)); return g; };
+	let seed = 7;
+	const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+	c.fillStyle = '#fff'; c.strokeStyle = '#fff';
+	if (kind == 'dot') {
+		c.fillStyle = radial(64, 64, 62, [[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.8)'], [1, 'rgba(255,255,255,0)']]);
+		c.fillRect(0, 0, S, S);
+	} else if (kind == 'smoke') {
+		for (let i = 0; i < 16; i++) {
+			const a = rnd() * Math.PI * 2, d = rnd() * 26, x = 64 + Math.cos(a) * d, y = 64 + Math.sin(a) * d, r = 22 + rnd() * 18;
+			c.fillStyle = radial(x, y, r, [[0, 'rgba(255,255,255,0.32)'], [1, 'rgba(255,255,255,0)']]);
+			c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+		}
+	} else if (kind == 'spark') {
+		c.fillStyle = radial(64, 64, 20, [[0, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
+		c.fillRect(0, 0, S, S);
+		c.lineCap = 'round';
+		for (const [w, a] of [[5, 0.9], [2.5, 0.5]]) {
+			c.globalAlpha = a; c.lineWidth = w;
+			c.beginPath(); c.moveTo(64, 6); c.lineTo(64, 122); c.moveTo(6, 64); c.lineTo(122, 64); c.stroke();
+		}
+		c.globalAlpha = 1;
+	} else if (kind == 'fire') {
+		c.save(); c.translate(64, 70); c.scale(1, 1.5);
+		c.fillStyle = radial(0, 0, 40, [[0, 'rgba(255,255,255,1)'], [0.4, 'rgba(255,255,255,0.7)'], [1, 'rgba(255,255,255,0)']]);
+		c.beginPath(); c.arc(0, 0, 40, 0, Math.PI * 2); c.fill();
+		c.restore();
+	} else if (kind == 'snow') {
+		c.lineCap = 'round'; c.lineWidth = 6;
+		for (let i = 0; i < 6; i++) {
+			const a = i * Math.PI / 3, x = 64 + Math.cos(a) * 52, y = 64 + Math.sin(a) * 52;
+			c.beginPath(); c.moveTo(64, 64); c.lineTo(x, y); c.stroke();
+			for (const f of [0.55, 0.8]) {
+				const bx = 64 + Math.cos(a) * 52 * f, by = 64 + Math.sin(a) * 52 * f;
+				for (const s of [-1, 1]) { c.beginPath(); c.moveTo(bx, by); c.lineTo(bx + Math.cos(a + s * 0.8) * 14, by + Math.sin(a + s * 0.8) * 14); c.stroke(); }
+			}
+		}
+	} else if (kind == 'drop') {
+		c.fillStyle = radial(64, 80, 38, [[0, 'rgba(255,255,255,1)'], [0.8, 'rgba(255,255,255,0.85)'], [1, 'rgba(255,255,255,0)']]);
+		c.beginPath(); c.moveTo(64, 8); c.bezierCurveTo(70, 40, 100, 58, 100, 82); c.arc(64, 82, 36, 0, Math.PI); c.bezierCurveTo(28, 58, 58, 40, 64, 8); c.fill();
+	} else if (kind == 'star') {
+		c.beginPath();
+		for (let i = 0; i < 10; i++) { const r = i % 2 ? 22 : 58, a = -Math.PI / 2 + i * Math.PI / 5; c.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); }
+		c.closePath(); c.fill();
+	} else {
+		c.fillRect(8, 8, 112, 112);
+	}
+	const t = new THREE.CanvasTexture(canvas);
+	particle_textures.set(kind, t);
+	return t;
+}
+// a picture of the project, or one loaded from a file
+function particleTexture(d) {
+	if (d.texture == 'image' && d.image) {
+		const key = 'pimg:' + d.image.length + d.image.slice(-48);
+		if (!particle_textures.has(key)) particle_textures.set(key, new THREE.TextureLoader().load(d.image));
+		return particle_textures.get(key);
+	}
+	if (d.texture && d.texture.startsWith('tex:')) {
+		const t = textureFor({kind: 'texture', uuid: d.texture.slice(4)}, false);
+		if (t) return t;
+	}
+	return builtinParticleTexture(PARTICLE_TEXTURES.includes(d.texture) ? d.texture : 'dot');
+}
+
+const ParticleShader = {
+	vertexShader: `
+		attribute vec3 iPos; attribute vec4 iColor; attribute vec2 iSizeRot;
+		uniform float linearOut; varying vec2 vUv; varying vec4 vColor;
+		void main() {
+			vUv = uv;
+			vColor = iColor;
+			if (linearOut > 0.5) vColor.rgb = pow(vColor.rgb, vec3(2.2));
+			vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
+			float c = cos(iSizeRot.y), s = sin(iSizeRot.y);
+			mv.xy += mat2(c, s, -s, c) * position.xy * iSizeRot.x;
+			gl_Position = projectionMatrix * mv;
+		}`,
+	fragmentShader: `
+		uniform sampler2D map; uniform float glow; uniform float additive; uniform float linearOut; varying vec2 vUv; varying vec4 vColor;
+		void main() {
+			vec4 t = texture2D(map, vUv);
+			if (linearOut > 0.5) t.rgb = pow(t.rgb, vec3(2.2));
+			float a = t.a * vColor.a;
+			if (a < 0.003) discard;
+			vec3 col = t.rgb * vColor.rgb * (1.0 + glow);
+			gl_FragColor = additive > 0.5 ? vec4(col * a, 1.0) : vec4(col, a);
+		}`,
+};
+
+// a small random number of particle k of an emitter (always the same for the same k)
+function prand(seed, k, i) {
+	let h = Math.imul(k | 0, 374761393) ^ Math.imul(i + 1, 668265263) ^ Math.imul(seed | 0, 1274126177);
+	h = Math.imul(h ^ (h >>> 13), 1274126177);
+	h ^= h >>> 16;
+	return (h >>> 0) / 4294967296;
+}
+
+const emitters = new Map();   // node uuid -> state
+function emitterFor(node) {
+	let e = emitters.get(node.uuid);
+	if (e) return e;
+	const geometry = new THREE.InstancedBufferGeometry();
+	const quad = new THREE.PlaneGeometry(1, 1);
+	geometry.index = quad.index;
+	geometry.setAttribute('position', quad.attributes.position);
+	geometry.setAttribute('uv', quad.attributes.uv);
+	const material = new THREE.ShaderMaterial({
+		uniforms: {map: {value: null}, glow: {value: 0}, additive: {value: 0}, linearOut: {value: 0}},
+		vertexShader: ParticleShader.vertexShader, fragmentShader: ParticleShader.fragmentShader,
+		transparent: true, depthWrite: false, side: THREE.DoubleSide,
+	});
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.frustumCulled = false;
+	mesh.renderOrder = 10;
+	mesh.userData.render_no_fx = true;
+	mesh.name = 'render_particles';
+	scene.add(mesh);
+	let seed = 0;
+	for (let i = 0; i < node.uuid.length; i++) seed = Math.imul(seed ^ node.uuid.charCodeAt(i), 16777619);
+	e = {mesh, geometry, material, capacity: 0, history: [], seed, epoch: null, last_t: null};
+	emitters.set(node.uuid, e);
+	return e;
+}
+function removeEmitter(uuid) {
+	const e = emitters.get(uuid);
+	if (!e) return;
+	scene.remove(e.mesh);
+	e.geometry.dispose();
+	e.material.dispose();
+	emitters.delete(uuid);
+}
+function clearEmitters() { [...emitters.keys()].forEach(removeEmitter); }
+
+function ensureCapacity(e, n) {
+	if (n <= e.capacity) return;
+	const cap = Math.ceil(n * 1.25 + 16);
+	e.pos = new Float32Array(cap * 3); e.col = new Float32Array(cap * 4); e.sr = new Float32Array(cap * 2);
+	e.geometry.setAttribute('iPos', new THREE.InstancedBufferAttribute(e.pos, 3).setUsage(THREE.DynamicDrawUsage));
+	e.geometry.setAttribute('iColor', new THREE.InstancedBufferAttribute(e.col, 4).setUsage(THREE.DynamicDrawUsage));
+	e.geometry.setAttribute('iSizeRot', new THREE.InstancedBufferAttribute(e.sr, 2).setUsage(THREE.DynamicDrawUsage));
+	e.capacity = cap;
+}
+
+// where the object is (and how it is turned) at a time: from what was seen while the time ran
+function poseAt(e, t) {
+	const h = e.history;
+	if (!h.length) return null;
+	if (t <= h[0].t) return h[0];
+	if (t >= h[h.length - 1].t) return h[h.length - 1];
+	let lo = 0, hi = h.length - 1;
+	while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (h[mid].t <= t) lo = mid; else hi = mid; }
+	const a = h[lo], b = h[hi], f = (t - a.t) / Math.max(1e-6, b.t - a.t);
+	return {t, p: a.p.clone().lerp(b.p, f), q: a.q.clone().slerp(b.q, f), size: a.size};
+}
+
+const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _c0 = new THREE.Color(), _c1 = new THREE.Color();
+function baseDirection(d, r1, r2, out) {
+	switch (d.direction) {
+		case 'down': return out.set(0, -1, 0);
+		case 'sideways': { const a = r1 * Math.PI * 2; return out.set(Math.cos(a), 0, Math.sin(a)); }
+		case 'all': { const z = r1 * 2 - 1, a = r2 * Math.PI * 2, r = Math.sqrt(1 - z * z); return out.set(r * Math.cos(a), z, r * Math.sin(a)); }
+		case 'custom': {
+			const yaw = d.yaw * Math.PI / 180, pitch = d.pitch * Math.PI / 180;
+			return out.set(Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw));
+		}
+		default: return out.set(0, 1, 0);
+	}
+}
+// a direction turned away from "dir" by up to "spread" degrees, evenly over the cone
+function spreadDirection(dir, spread, r1, r2, out) {
+	const cosMax = Math.cos(Math.min(180, Math.max(0, spread)) * Math.PI / 180);
+	const z = 1 - r1 * (1 - cosMax), a = r2 * Math.PI * 2, r = Math.sqrt(Math.max(0, 1 - z * z));
+	const t = Math.abs(dir.y) < 0.95 ? new THREE.Vector3(0, 1, 0).cross(dir).normalize() : new THREE.Vector3(1, 0, 0).cross(dir).normalize();
+	const b = dir.clone().cross(t);
+	return out.copy(dir).multiplyScalar(z).addScaledVector(t, r * Math.cos(a)).addScaledVector(b, r * Math.sin(a)).normalize();
+}
+
+function updateEmitter(node, e, t, camera) {
+	const d = particlesOf(node);
+	const mesh = node.mesh;
+	const visible = d.enabled && mesh && node.visibility !== false && d.count > 0;
+	e.mesh.visible = !!visible;
+	if (!visible) return;
+	// the object now
+	mesh.updateMatrixWorld(true);
+	const box = new THREE.Box3().setFromObject(mesh);
+	const p = box.isEmpty() ? mesh.getWorldPosition(new THREE.Vector3()) : box.getCenter(new THREE.Vector3());
+	if (node instanceof Group && !node.children.some(c => c.mesh)) mesh.getWorldPosition(p);
+	const size = box.isEmpty() ? new THREE.Vector3() : box.getSize(new THREE.Vector3());
+	const q = mesh.getWorldQuaternion(new THREE.Quaternion());
+	const life = Math.max(0.05, d.lifetime), max_life = life * (1 + Math.max(0, d.life_jitter));
+	// the history of where it was (a step back in time forgets what came after)
+	if (e.last_t !== null && t < e.last_t - 1e-6) e.history = e.history.filter(h => h.t <= t);
+	const last = e.history[e.history.length - 1];
+	if (!last || t > last.t + 1e-6) e.history.push({t, p, q, size});
+	else if (Math.abs(t - last.t) <= 1e-6) Object.assign(last, {p, q, size});
+	while (e.history.length > 2 && e.history[1].t < t - max_life - 0.5) e.history.shift();
+	if (e.history.length > 4000) e.history.splice(0, e.history.length - 4000);
+	// a new start: when it was switched on, or the time jumped back before it
+	const anim = lightClockIsAnimation();
+	if (e.epoch === null || e.last_t === null || t < e.epoch) e.epoch = anim ? 0 : t;
+	e.last_t = t;
+	const start = d.prewarm ? -Infinity : e.epoch;
+
+	const rate = d.count / life;
+	const k0 = Math.max(Math.ceil((t - max_life) * rate), start === -Infinity ? -Infinity : Math.ceil(start * rate));
+	const k1 = Math.floor(t * rate);
+	ensureCapacity(e, Math.max(0, k1 - k0 + 1));
+	_c0.set(d.color); _c1.set(d.color_end);
+	const g = -d.gravity, drag = Math.max(0, d.drag);
+	const list = [];
+	for (let k = k0; k <= k1; k++) {
+		const born = k / rate, r = i => prand(e.seed, k, i);
+		const L = life * (1 + d.life_jitter * (r(0) * 2 - 1));
+		const age = t - born;
+		if (age < 0 || age >= L) continue;
+		const pose = d.follow ? {p, q, size} : (poseAt(e, born) || {p, q, size});
+		// where it starts
+		const pos = new THREE.Vector3();
+		if (d.shape == 'box') pos.set((r(1) - 0.5) * pose.size.x, (r(2) - 0.5) * pose.size.y, (r(3) - 0.5) * pose.size.z);
+		pos.add(pose.p);
+		// which way and how fast
+		baseDirection(d, r(4), r(5), _dir);
+		if (d.local) _dir.applyQuaternion(pose.q);
+		spreadDirection(_dir.normalize(), d.direction == 'all' || d.direction == 'sideways' ? Math.min(d.spread, 90) : d.spread, r(6), r(7), _v);
+		const speed = d.speed * (1 + d.speed_jitter * (r(8) * 2 - 1));
+		// flight with air drag and gravity (worked out exactly for the age, no stepping)
+		let along, fall;
+		if (drag > 1e-4) {
+			const ek = Math.exp(-drag * age);
+			along = (1 - ek) / drag;
+			fall = (age - along) / drag;
+		} else { along = age; fall = 0.5 * age * age; }
+		pos.addScaledVector(_v, speed * along);
+		pos.y += g * fall;
+		const f = age / L;
+		const alpha = d.opacity * Math.min(1, d.fade_in > 0 ? age / d.fade_in : 1) * Math.min(1, d.fade_out > 0 ? (L - age) / d.fade_out : 1);
+		const sz = (d.size + (d.size_end - d.size) * f) * (1 + d.size_jitter * (r(9) * 2 - 1));
+		const rot = r(10) * Math.PI * 2 + d.spin * age * (r(11) * 2 - 1) * 2;
+		list.push({pos, alpha, sz, rot, f});
+	}
+	// far ones first, so the near ones are drawn over them
+	if (!d.additive && camera) {
+		const cp = camera.getWorldPosition(new THREE.Vector3()), dir = camera.getWorldDirection(new THREE.Vector3());
+		list.forEach(o => { o.depth = _v.copy(o.pos).sub(cp).dot(dir); });
+		list.sort((a, b) => b.depth - a.depth);
+	}
+	ensureCapacity(e, list.length);
+	list.forEach((o, i) => {
+		e.pos[i * 3] = o.pos.x; e.pos[i * 3 + 1] = o.pos.y; e.pos[i * 3 + 2] = o.pos.z;
+		e.col[i * 4] = _c0.r + (_c1.r - _c0.r) * o.f; e.col[i * 4 + 1] = _c0.g + (_c1.g - _c0.g) * o.f; e.col[i * 4 + 2] = _c0.b + (_c1.b - _c0.b) * o.f; e.col[i * 4 + 3] = Math.max(0, o.alpha);
+		e.sr[i * 2] = Math.max(0.01, o.sz); e.sr[i * 2 + 1] = o.rot;
+	});
+	e.geometry.instanceCount = list.length;
+	for (const name of ['iPos', 'iColor', 'iSizeRot']) e.geometry.attributes[name].needsUpdate = true;
+	const m = e.material;
+	m.uniforms.map.value = particleTexture(d);
+	m.uniforms.glow.value = d.glow;
+	m.uniforms.additive.value = d.additive ? 1 : 0;
+	m.uniforms.linearOut.value = enabled ? 1 : 0;   // the Render view works in linear light
+	const blending = d.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
+	if (m.blending != blending) { m.blending = blending; m.needsUpdate = true; }
+	e.mesh.visible = list.length > 0;
+}
+
+const lightClockIsAnimation = () => video_clock !== null || !!(typeof Modes != 'undefined' && Modes.animate && typeof Animation != 'undefined' && Animation.selected);
+
+let particles_frame = -1;
+function updateParticles(camera) {
+	if (!Project) { clearEmitters(); return; }
+	const nodes = particleNodes();
+	const seen = new Set();
+	const t = lightClock();
+	for (const node of nodes) {
+		seen.add(node.uuid);
+		try { updateEmitter(node, emitterFor(node), t, camera); } catch (err) { console.warn('[Render view] particles', err); }
+	}
+	for (const uuid of [...emitters.keys()]) if (!seen.has(uuid)) removeEmitter(uuid);
+}
+
+// --- the Particles panel ----------------------------------------------------------
+
+// the selected object that has particles (or, for the Add button, any selected object)
+function selectedParticleNode(any) {
+	if (!Project) return null;
+	const list = [...(Outliner.selected || []), ...((Group.multi_selected && Group.multi_selected.length) ? Group.multi_selected : (Group.first_selected ? [Group.first_selected] : []))];
+	return list.find(hasParticles) || (any ? list.find(n => n instanceof Cube || n instanceof Mesh || n instanceof Group) || null : null);
+}
+
+function undoAspects(node) { return node instanceof Group ? {outliner: true, groups: [node]} : {elements: [node]}; }
+
+function addParticlesTo(node) {
+	if (!node) { Blockbench.showQuickMessage(tr('msg_select_one'), 2000); return; }
+	if (!hasParticles(node)) {
+		Undo.initEdit(undoAspects(node));
+		node.render_particles = Object.assign({}, DEFAULT_PARTICLES);
+		Undo.finishEdit('Add particles', undoAspects(node));
+		Project.saved = false;
+	}
+	refreshParticlePanel(true);
+}
+
+function spawnParticleGroup() {
+	if (!Project) return;
+	const preview = Preview.selected;
+	Undo.initEdit({outliner: true, groups: [], selection: true});
+	let origin = new THREE.Vector3(0, 16, 0);
+	if (preview && preview.controls) origin = Project.model_3d.worldToLocal(preview.controls.target.clone());
+	const group = new Group({name: tr('particles_title'), origin: origin.toArray().map(n => Math.round(n * 100) / 100), color: 5}).init();
+	group.render_particles = Object.assign({}, DEFAULT_PARTICLES);
+	group.addTo();
+	group.select();
+	Undo.finishEdit('Add particles', {outliner: true, groups: [group], selection: true});
+	Project.saved = false;
+	refreshParticlePanel(true);
+}
+
+let particle_panel = null, particle_panel_shown = false, particle_editing = null;
+function refreshParticlePanel(force) {
+	const show = !!selectedParticleNode(false);
+	if (show != particle_panel_shown || force) {
+		particle_panel_shown = show;
+		try { if (typeof updateInterfacePanels == 'function') updateInterfacePanels(); else if (typeof updateInterface == 'function') updateInterface(); } catch (err) { /* the interface is busy */ }
+	}
+	if (particle_panel && particle_panel.inside_vue) particle_panel.inside_vue.loadSel();
+}
+
+function particlePanelComponent() {
+	return {
+		data() { return {uuid: '', name: '', p: null, textures: [], builtins: PARTICLE_TEXTURES}; },
+		mounted() { this.loadSel(); },
+		methods: {
+			t(key) { return tr(key); },
+			loadSel() {
+				const node = selectedParticleNode(false);
+				this.uuid = node ? node.uuid : '';
+				this.name = node ? node.name : '';
+				this.p = node ? particlesOf(node) : null;
+				this.textures = Project ? Texture.all.map(t => ({id: 'tex:' + t.uuid, name: t.name})) : [];
+			},
+			node() { return this.uuid ? findNode(this.uuid) : null; },
+			live() {
+				const node = this.node();
+				if (!node) return;
+				if (!particle_editing) { Undo.initEdit(undoAspects(node)); particle_editing = node; }
+				node.render_particles = Object.assign({}, this.p);
+				Project.saved = false;
+			},
+			done() {
+				if (!particle_editing) return;
+				Undo.finishEdit('Edit particles', undoAspects(particle_editing));
+				particle_editing = null;
+			},
+			change() { this.live(); this.done(); },
+			remove() {
+				const node = this.node();
+				if (!node) return;
+				Undo.initEdit(undoAspects(node));
+				node.render_particles = null;
+				Undo.finishEdit('Remove particles', undoAspects(node));
+				Project.saved = false;
+				refreshParticlePanel(true);
+			},
+			restart() {
+				const e = emitters.get(this.uuid);
+				if (e) { e.epoch = null; e.history = []; }
+			},
+			pickTexture() {
+				if (this.p.texture != 'load') return this.change();
+				const input = document.createElement('input');
+				input.type = 'file';
+				input.accept = 'image/*';
+				input.onchange = () => {
+					const file = input.files[0];
+					if (!file) { this.loadSel(); return; }
+					const reader = new FileReader();
+					reader.onload = () => {
+						const img = new Image();
+						img.onload = () => {
+							const k = Math.min(1, 256 / Math.max(img.width, img.height));
+							const c = document.createElement('canvas');
+							c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+							c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+							this.p.image = c.toDataURL('image/png');
+							this.p.image_name = file.name;
+							this.p.texture = 'image';
+							this.change();
+						};
+						img.src = reader.result;
+					};
+					reader.readAsDataURL(file);
+				};
+				input.click();
+			},
+		},
+		template: `
+			<div class="render_panel" style="padding: 4px 8px 10px;">
+				<div v-if="!p" class="render_hint">{{ t('pt_hint_none') }}</div>
+				<template v-else>
+					<div class="render_row"><b>{{ name }}</b><span><button @click="restart()" :title="t('pt_restart')"><i class="material-icons" style="font-size: 16px;">replay</i></button> <button @click="remove()">{{ t('pt_remove') }}</button></span></div>
+					<label class="render_row">{{ t('pt_enabled') }} <input type="checkbox" v-model="p.enabled" @change="change()"></label>
+
+					<div class="render_cap">{{ t('pt_amount') }}</div>
+					<div class="render_slider"><span class="label">{{ t('pt_count') }}</span><input type="range" min="1" max="3000" step="1" v-model.number="p.count" @input="live()" @change="done()"><span>{{ p.count }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_lifetime') }}</span><input type="range" min="0.1" max="20" step="0.1" v-model.number="p.lifetime" @input="live()" @change="done()"><span>{{ p.lifetime }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_life_jitter') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="p.life_jitter" @input="live()" @change="done()"><span>{{ p.life_jitter }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_fade_in') }}</span><input type="range" min="0" max="5" step="0.05" v-model.number="p.fade_in" @input="live()" @change="done()"><span>{{ p.fade_in }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_fade_out') }}</span><input type="range" min="0" max="10" step="0.05" v-model.number="p.fade_out" @input="live()" @change="done()"><span>{{ p.fade_out }}</span></div>
+					<label class="render_row" :title="t('pt_prewarm_tip')">{{ t('pt_prewarm') }} <input type="checkbox" v-model="p.prewarm" @change="change()"></label>
+
+					<div class="render_cap">{{ t('pt_look') }}</div>
+					<label class="render_row">{{ t('texture') }}
+						<select v-model="p.texture" @change="pickTexture()">
+							<option v-for="k in builtins" :value="k">{{ t('ptx_' + k) }}</option>
+							<option v-for="x in textures" :value="x.id">{{ x.name }}</option>
+							<option v-if="p.image" value="image">{{ p.image_name || t('loaded_image') }}</option>
+							<option value="load">{{ t('load_image') }}</option>
+						</select>
+					</label>
+					<label class="render_row">{{ t('pt_color') }} <input type="color" v-model="p.color" @input="live()" @change="done()"></label>
+					<label class="render_row">{{ t('pt_color_end') }} <input type="color" v-model="p.color_end" @input="live()" @change="done()"></label>
+					<div class="render_slider"><span class="label">{{ t('opacity') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="p.opacity" @input="live()" @change="done()"><span>{{ p.opacity }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_size') }}</span><input type="range" min="0.2" max="80" step="0.1" v-model.number="p.size" @input="live()" @change="done()"><span>{{ p.size }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_size_end') }}</span><input type="range" min="0" max="160" step="0.1" v-model.number="p.size_end" @input="live()" @change="done()"><span>{{ p.size_end }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_size_jitter') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="p.size_jitter" @input="live()" @change="done()"><span>{{ p.size_jitter }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_spin') }}</span><input type="range" min="0" max="10" step="0.1" v-model.number="p.spin" @input="live()" @change="done()"><span>{{ p.spin }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_glow') }}</span><input type="range" min="0" max="20" step="0.1" v-model.number="p.glow" @input="live()" @change="done()"><span>{{ p.glow }}</span></div>
+					<label class="render_row" :title="t('pt_additive_tip')">{{ t('pt_additive') }} <input type="checkbox" v-model="p.additive" @change="change()"></label>
+
+					<div class="render_cap">{{ t('pt_motion') }}</div>
+					<label class="render_row">{{ t('pt_direction') }}
+						<select v-model="p.direction" @change="change()">
+							<option value="up">{{ t('pd_up') }}</option>
+							<option value="down">{{ t('pd_down') }}</option>
+							<option value="sideways">{{ t('pd_sideways') }}</option>
+							<option value="all">{{ t('pd_all') }}</option>
+							<option value="custom">{{ t('pd_custom') }}</option>
+						</select>
+					</label>
+					<template v-if="p.direction == 'custom'">
+						<div class="render_slider"><span class="label">{{ t('pt_yaw') }}</span><input type="range" min="-180" max="180" step="1" v-model.number="p.yaw" @input="live()" @change="done()"><span>{{ p.yaw }}°</span></div>
+						<div class="render_slider"><span class="label">{{ t('pt_pitch') }}</span><input type="range" min="-90" max="90" step="1" v-model.number="p.pitch" @input="live()" @change="done()"><span>{{ p.pitch }}°</span></div>
+					</template>
+					<label class="render_row">{{ t('pt_local') }} <input type="checkbox" v-model="p.local" @change="change()"></label>
+					<div class="render_slider"><span class="label">{{ t('pt_spread') }}</span><input type="range" min="0" max="180" step="1" v-model.number="p.spread" @input="live()" @change="done()"><span>{{ p.spread }}°</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_speed') }}</span><input type="range" min="0" max="300" step="0.5" v-model.number="p.speed" @input="live()" @change="done()"><span>{{ p.speed }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_speed_jitter') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="p.speed_jitter" @input="live()" @change="done()"><span>{{ p.speed_jitter }}</span></div>
+					<div class="render_slider" :title="t('pt_gravity_tip')"><span class="label">{{ t('pt_gravity') }}</span><input type="range" min="-200" max="400" step="1" v-model.number="p.gravity" @input="live()" @change="done()"><span>{{ p.gravity }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('pt_drag') }}</span><input type="range" min="0" max="5" step="0.05" v-model.number="p.drag" @input="live()" @change="done()"><span>{{ p.drag }}</span></div>
+					<label class="render_row">{{ t('pt_shape') }}
+						<select v-model="p.shape" @change="change()">
+							<option value="point">{{ t('ps_point') }}</option>
+							<option value="box">{{ t('ps_box') }}</option>
+						</select>
+					</label>
+					<label class="render_row" :title="t('pt_follow_tip')">{{ t('pt_follow') }} <input type="checkbox" v-model="p.follow" @change="change()"></label>
+					<div class="render_hint">{{ t('pt_hint') }}</div>
+				</template>
+			</div>`,
+	};
 }
 
 // --- settings windows (right click a camera / light group) --------------------------
@@ -6330,7 +7317,7 @@ function openMaterials() {
 // ---------------------------------------------------------------------------
 
 let panel = null, toggle = null, materials_action = null, video_action = null, properties = [], style_node = null;
-let editing_group = null, add_light_action = null, add_camera_action = null, poll = null;
+let editing_group = null, add_light_action = null, add_camera_action = null, poll = null, add_particles_action = null, particles_action = null;
 
 function panelComponent() {
 	return {
@@ -6496,6 +7483,38 @@ function panelComponent() {
 				<label class="render_row">{{ t('fxaa') }} <input type="checkbox" v-model="fxaa" @change="save()"></label>
 				<div class="render_slider"><span class="label">{{ t('motion_blur') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="motion_blur" @input="save()"><span>{{ motion_blur }}</span></div>
 					<div class="render_slider"><span class="label">{{ t('vignette') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="vignette" @input="save()"><span>{{ vignette }}</span></div>
+
+					<h3>{{ t('rt') }}</h3>
+					<label class="render_row">{{ t('rt') }} <input type="checkbox" v-model="rt" @change="save()"></label>
+					<template v-if="rt">
+						<div class="render_slider"><span class="label">{{ t('rt_rays') }}</span><input type="range" min="1" max="24" step="1" v-model.number="rt_rays" @input="save()"><span>{{ rt_rays }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('rt_distance') }}</span><input type="range" min="4" max="200" step="1" v-model.number="rt_distance" @input="save()"><span>{{ rt_distance }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('rt_bounce') }}</span><input type="range" min="0" max="4" step="0.05" v-model.number="rt_bounce" @input="save()"><span>{{ rt_bounce }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('rt_ao') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="rt_ao" @input="save()"><span>{{ rt_ao }}</span></div>
+						<div class="render_slider" v-if="shadows"><span class="label">{{ t('rt_shadows') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="rt_shadows" @input="save()"><span>{{ rt_shadows }}</span></div>
+						<label class="render_row">{{ t('rt_accumulate') }} <input type="checkbox" v-model="rt_accumulate" @change="save()"></label>
+						<div class="render_hint">{{ t('rt_hint') }}</div>
+					</template>
+
+					<h3>{{ t('fog') }}</h3>
+					<label class="render_row">{{ t('fog') }} <input type="checkbox" v-model="fog" @change="save()"></label>
+					<template v-if="fog">
+						<div class="render_slider"><span class="label">{{ t('fog_density') }}</span><input type="range" min="0" max="3" step="0.02" v-model.number="fog_density" @input="save()"><span>{{ fog_density }}</span></div>
+						<label class="render_row">{{ t('fog_color') }} <input type="color" v-model="fog_color" @input="save()"></label>
+						<div class="render_slider"><span class="label">{{ t('fog_brightness') }}</span><input type="range" min="0" max="3" step="0.05" v-model.number="fog_brightness" @input="save()"><span>{{ fog_brightness }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_light') }}</span><input type="range" min="0" max="5" step="0.05" v-model.number="fog_light" @input="save()"><span>{{ fog_light }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_anisotropy') }}</span><input type="range" min="0" max="0.9" step="0.05" v-model.number="fog_anisotropy" @input="save()"><span>{{ fog_anisotropy }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_base') }}</span><input type="range" min="-100" max="300" step="1" v-model.number="fog_base" @input="save()"><span>{{ fog_base }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_height') }}</span><input type="range" min="1" max="500" step="1" v-model.number="fog_height" @input="save()"><span>{{ fog_height }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_noise') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="fog_noise" @input="save()"><span>{{ fog_noise }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_noise_size') }}</span><input type="range" min="4" max="300" step="1" v-model.number="fog_noise_size" @input="save()"><span>{{ fog_noise_size }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_wind') }}</span><input type="range" min="0" max="100" step="0.5" v-model.number="fog_wind" @input="save()"><span>{{ fog_wind }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_wind_dir') }}</span><input type="range" min="-180" max="180" step="1" v-model.number="fog_wind_dir" @input="save()"><span>{{ fog_wind_dir }}°</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_distance') }}</span><input type="range" min="50" max="3000" step="10" v-model.number="fog_distance" @input="save()"><span>{{ fog_distance }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('fog_quality') }}</span><input type="range" min="8" max="128" step="1" v-model.number="fog_quality" @input="save()"><span>{{ fog_quality }}</span></div>
+						<label class="render_row" v-if="shadows">{{ t('fog_shafts') }} <input type="checkbox" v-model="fog_shafts" @change="save()"></label>
+						<div class="render_hint">{{ t('fog_hint') }}</div>
+					</template>
 
 					<h3>{{ t('lights') }}</h3>
 					<button @click="spawn('light')" class="render_btn">{{ t('add_light') }}</button>
@@ -6819,7 +7838,7 @@ const STYLE = `
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
-if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, limitBrightness, MotionBlurPass, muxMp4, renderVideo});
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, limitBrightness, MotionBlurPass, muxMp4, renderVideo, updateParticles, particlePanelComponent, panelComponent, addParticlesTo, emitters, setVideoClock: t => { video_clock = t; }});
 
 Plugin.register('render', {
 	title: 'Render view',
@@ -6827,7 +7846,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.7.0',
+	version: '0.8.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -6839,6 +7858,9 @@ Plugin.register('render', {
 		properties.push(new Property(Group, 'object', 'render_light', {default: null}));
 		properties.push(new Property(Group, 'object', 'render_camera', {default: null}));
 		properties.push(new Property(ModelProject, 'string', 'render_active_camera', {default: ''}));
+		properties.push(new Property(Cube, 'object', 'render_particles', {default: null}));
+		properties.push(new Property(Mesh, 'object', 'render_particles', {default: null}));
+		properties.push(new Property(Group, 'object', 'render_particles', {default: null}));
 		style_node = Blockbench.addCSS(STYLE);
 		Preview.prototype.render = renderWithEffects;
 		toggle = new Toggle('render_view', {
@@ -6871,13 +7893,35 @@ Plugin.register('render', {
 			name: tr('act_add_camera'), description: tr('act_add_camera_desc'), icon: 'videocam', category: 'edit',
 			condition: () => !!Project, click() { spawnGroup('camera'); },
 		});
-		injectAddActions([add_light_action, add_camera_action]);
-		patchMenusOpening([add_light_action, add_camera_action]);
+		add_particles_action = new Action('add_render_particles', {
+			name: tr('act_add_particles'), description: tr('act_add_particles_desc'), icon: 'grain', category: 'edit',
+			condition: () => !!Project, click() { spawnParticleGroup(); },
+		});
+		particles_action = new Action('render_particles', {
+			name: tr('act_particles'), description: tr('act_particles_desc'), icon: 'grain', category: 'edit',
+			condition: () => !!Project && !!selectedParticleNode(true),
+			click() { addParticlesTo(selectedParticleNode(true)); },
+		});
+		injectAddActions([add_light_action, add_camera_action, add_particles_action]);
+		patchMenusOpening([add_light_action, add_camera_action, add_particles_action]);
 		addGroupMenuActions();
 		if (!injected.length) {
 			// no Add menu found: they are still in the Edit menu and in the action search (Ctrl+K)
-			try { MenuBar.addAction(add_light_action, 'edit'); MenuBar.addAction(add_camera_action, 'edit'); } catch (err) { console.warn('[Render view]', err); }
+			try { MenuBar.addAction(add_light_action, 'edit'); MenuBar.addAction(add_camera_action, 'edit'); MenuBar.addAction(add_particles_action, 'edit'); } catch (err) { console.warn('[Render view]', err); }
 		}
+		// "Particles…" in the right click menu of cubes, meshes and groups, and in the Edit menu
+		for (const type of [Cube, Mesh, Group]) { try { type.prototype.menu.addAction(particles_action); } catch (err) { console.warn('[Render view] particles menu', err); } }
+		try { MenuBar.addAction(particles_action, 'edit'); } catch (err) { console.warn('[Render view]', err); }
+		particle_panel = new Panel('render_particles', {
+			name: tr('particles_title'),
+			icon: 'grain',
+			condition: () => !!Project && !!selectedParticleNode(false),
+			growable: true,
+			resizable: true,
+			min_height: 200,
+			default_position: {slot: 'right_bar', float_position: [0, 0], float_size: [300, 520], height: 520},
+			component: particlePanelComponent(),
+		});
 		panel = new Panel('render_view', {
 			name: tr('panel'),
 			icon: 'photo_camera',
@@ -6917,12 +7961,20 @@ Plugin.register('render', {
 		removeAddActions();
 		removeGroupMenuActions();
 		if (open_settings) open_settings.cancel();
-		for (const [action, path] of [[add_light_action, 'edit.add_render_light'], [add_camera_action, 'edit.add_render_camera']]) {
+		clearEmitters();
+		if (particle_panel) { particle_panel.delete(); particle_panel = null; }
+		if (particles_action) {
+			for (const type of [Cube, Mesh, Group]) { try { type.prototype.menu.removeAction(particles_action); } catch (err) { /* menu already gone */ } }
+			try { MenuBar.removeAction('edit.render_particles'); } catch (err) { /* it was never there */ }
+			particles_action.delete();
+			particles_action = null;
+		}
+		for (const [action, path] of [[add_light_action, 'edit.add_render_light'], [add_camera_action, 'edit.add_render_camera'], [add_particles_action, 'edit.add_render_particles']]) {
 			if (!action) continue;
 			try { MenuBar.removeAction(path); } catch (err) { /* it was never in the Edit menu */ }
 			action.delete();
 		}
-		add_light_action = null; add_camera_action = null;
+		add_light_action = null; add_camera_action = null; add_particles_action = null;
 		if (materials_dialog) { materials_dialog.close && materials_dialog.close(); materials_dialog = null; }
 		if (panel) panel.delete();
 		if (toggle) { MenuBar.removeAction('view.render_view'); toggle.delete(); }
@@ -6938,6 +7990,7 @@ Plugin.register('render', {
 
 function onSelection() {
 	syncEditorHelpers();
+	refreshParticlePanel(false);
 	if (panel && panel.inside_vue) panel.inside_vue.loadSel();
 }
 
@@ -6948,6 +8001,8 @@ function onProject() {
 	for (const p of pipelines.values()) disposePipeline(p);
 	pipelines.clear();
 	restoreMaterials();
+	clearEmitters();
+	refreshParticlePanel(true);
 }
 
 // for testing from the console
