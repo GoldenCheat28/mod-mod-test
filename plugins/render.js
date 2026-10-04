@@ -4534,6 +4534,7 @@ const TEXTS = {
 		cam_lens: 'Lens', cam_distortion: 'Corner distortion', cam_distortion_tip: 'Negative = pincushion, positive = barrel (fisheye)', cam_chroma: 'Chromatic aberration',
 		vid_action: 'Render video (MP4)…', vid_action_desc: 'The animation seen through a camera, with every effect, as an MP4 file', vid_title: 'Render video',
 		vid_camera: 'Camera', vid_view: 'The current view', vid_size: 'Size', vid_vertical: 'vertical', vid_fps: 'Frames per second', vid_start: 'From (seconds)', vid_end: 'To (seconds)',
+		vid_effects: 'Effects', vid_fx_all: 'All on (AO, reflections, bloom, motion blur…)', vid_fx_project: 'As set in the Render panel',
 		vid_quality: 'Quality', vid_q_draft: 'Draft (small file)', vid_q_normal: 'Normal', vid_q_high: 'High', vid_q_max: 'Maximum (large file)',
 		vid_hint: 'Every frame is made one by one, so the video has exactly this frame rate however heavy the scene is (a slow computer only needs more time). Skybox, bloom, motion blur, depth of field and the camera lens effects are included. The animation is the one selected in the Animate tab.',
 		vid_cancel: 'Cancel', vid_busy: 'A video is already being rendered', vid_frame: 'Frame', vid_fps_render: 'frames/s', vid_s_frame: 's per frame', vid_left: 'left about', vid_sec: 's',
@@ -4574,6 +4575,7 @@ const TEXTS = {
 		cam_lens: 'Объектив', cam_distortion: 'Искажение углов', cam_distortion_tip: 'Минус = подушка, плюс = бочка (рыбий глаз)', cam_chroma: 'Хроматическая аберрация',
 		vid_action: 'Рендер видео (MP4)…', vid_action_desc: 'Анимация от лица камеры со всеми эффектами в файл MP4', vid_title: 'Рендер видео',
 		vid_camera: 'Камера', vid_view: 'Текущий вид', vid_size: 'Размер', vid_vertical: 'вертикальное', vid_fps: 'Кадров в секунду', vid_start: 'С (секунды)', vid_end: 'До (секунды)',
+		vid_effects: 'Эффекты', vid_fx_all: 'Все включены (AO, отражения, свечение, размытие…)', vid_fx_project: 'Как в панели Render',
 		vid_quality: 'Качество', vid_q_draft: 'Черновик (маленький файл)', vid_q_normal: 'Обычное', vid_q_high: 'Высокое', vid_q_max: 'Максимум (большой файл)',
 		vid_hint: 'Каждый кадр делается отдельно, поэтому в видео ровно столько кадров в секунду, сколько выбрано, как бы тяжела ни была сцена (на слабом компьютере просто дольше). Скайбокс, свечение, размытие в движении, глубина резкости и эффекты объектива камеры включены. Берётся анимация, выбранная на вкладке «Анимация».',
 		vid_cancel: 'Отмена', vid_busy: 'Видео уже рендерится', vid_frame: 'Кадр', vid_fps_render: 'кадров/с', vid_s_frame: 'с на кадр', vid_left: 'осталось около', vid_sec: 'с',
@@ -6510,6 +6512,7 @@ async function renderVideo(o) {
 	const job = video_job = {cancel: false};
 	const was_enabled = enabled;
 	const saved_camera = Project.render_active_camera;
+	const saved_settings = Project.render_settings, saved_camera_data = o.camera ? o.camera.render_camera : null;
 	const saved_time = Timeline.time;
 	const saved_selected = Preview.selected;
 	let renderer = null, preview = null, status = null, bar = null;
@@ -6528,6 +6531,12 @@ async function renderVideo(o) {
 	try {
 		if (!was_enabled) setEnabled(true);
 		Project.render_active_camera = o.camera ? o.camera.uuid : '';
+		if (o.effects == 'all') {
+			// every effect on for this video only (the project's own settings come back afterwards)
+			Project.render_settings = Object.assign({}, settingsOf(), {ao: true, ssr: true, bloom: true, fxaa: true, shadows: true});
+			if (o.camera) { const d = cameraOf(o.camera); o.camera.render_camera = Object.assign({}, d, {motion_blur: d.motion_blur > 0 ? d.motion_blur : 0.5}); }
+			else Project.render_settings.motion_blur = Math.max(0.5, Project.render_settings.motion_blur || 0);
+		}
 		if (typeof Transformer != 'undefined' && Transformer.visible) { hidden.push(Transformer); Transformer.visible = false; }
 		scene.traverse(obj => { if (obj.visible && (obj.isLine || obj.isPoints || obj.isSprite)) { hidden.push(obj); obj.visible = false; } });
 
@@ -6607,6 +6616,8 @@ async function renderVideo(o) {
 		if (rig && renderer) { const sk = rig.skies.get(renderer); if (sk) { if (sk.env) sk.env.dispose(); if (sk.bg) sk.bg.dispose(); rig.skies.delete(renderer); } }
 		if (renderer) renderer.dispose();
 		Project.render_active_camera = saved_camera;
+		Project.render_settings = saved_settings;
+		if (o.camera) o.camera.render_camera = saved_camera_data;
 		if (Animation.selected) { Timeline.setTime(saved_time); Animator.preview(); }
 		if (!was_enabled) setEnabled(false);
 		dialog.close();
@@ -6630,6 +6641,7 @@ function openVideoDialog(preset_camera) {
 			fps: {label: tr('vid_fps'), type: 'select', options: {24: '24', 30: '30', 60: '60'}, value: '30'},
 			start: {label: tr('vid_start'), type: 'number', value: 0, min: 0, step: 0.1},
 			end: {label: tr('vid_end'), type: 'number', value: Math.round(length * 100) / 100 || 3, min: 0.1, step: 0.1},
+			effects: {label: tr('vid_effects'), type: 'select', options: {all: tr('vid_fx_all'), project: tr('vid_fx_project')}, value: 'all'},
 			quality: {label: tr('vid_quality'), type: 'select', options: {draft: tr('vid_q_draft'), normal: tr('vid_q_normal'), high: tr('vid_q_high'), max: tr('vid_q_max')}, value: 'high'},
 			hint: {type: 'info', text: tr('vid_hint')},
 		},
@@ -6637,7 +6649,7 @@ function openVideoDialog(preset_camera) {
 			const [w, h] = VIDEO_SIZES[v.size] || [1920, 1080];
 			const camera = v.camera ? Group.all.find(g => g.uuid == v.camera) : null;
 			const start = Math.max(0, Number(v.start) || 0), end = Math.max(start + 0.05, Number(v.end) || length);
-			renderVideo({camera, width: w, height: h, fps: parseInt(v.fps) || 30, start, end, quality: v.quality});
+			renderVideo({camera, width: w, height: h, fps: parseInt(v.fps) || 30, start, end, quality: v.quality, effects: v.effects});
 		},
 	}).show();
 }
@@ -6681,7 +6693,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.4.0',
+	version: '0.4.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
