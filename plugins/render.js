@@ -4532,7 +4532,7 @@ const TEXTS = {
 		cameras: 'Cameras', add_camera: '+ Camera', camera_title: 'Camera', camera_selected: 'Selected camera',
 		cam_look: 'Look through this camera', cam_looking: 'Looking through it (click to leave)', cam_fov: 'Field of view',
 		cam_lens: 'Lens', cam_distortion: 'Corner distortion', cam_distortion_tip: 'Negative = pincushion, positive = barrel (fisheye)', cam_chroma: 'Chromatic aberration',
-		cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
+		cam_motion: 'Motion blur', motion_blur: 'Motion blur (camera)', cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
 		cam_focus: 'Focus', cam_focus_pick: 'Focus on selected', cam_focus_clear: 'Clear', cam_focus_blur: 'Background blur', cam_focus_none: 'nothing',
 		cam_hint: 'A camera is an empty group looking along its -Z axis. Turn it with Rotate, move it with Move; the effects apply in the Render view while you look through it.',
 		msg_select_one: 'Select an object first',
@@ -4566,7 +4566,7 @@ const TEXTS = {
 		cameras: 'Камеры', add_camera: '+ Камера', camera_title: 'Камера', camera_selected: 'Выбранная камера',
 		cam_look: 'Смотреть через эту камеру', cam_looking: 'Смотрим через неё (нажмите, чтобы выйти)', cam_fov: 'Угол обзора',
 		cam_lens: 'Объектив', cam_distortion: 'Искажение углов', cam_distortion_tip: 'Минус = подушка, плюс = бочка (рыбий глаз)', cam_chroma: 'Хроматическая аберрация',
-		cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
+		cam_motion: 'Размытие в движении', motion_blur: 'Размытие в движении (камера)', cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
 		cam_focus: 'Фокус', cam_focus_pick: 'Фокус на выделенном', cam_focus_clear: 'Сбросить', cam_focus_blur: 'Размытие фона', cam_focus_none: 'ничего',
 		cam_hint: 'Камера — пустая группа, смотрящая вдоль своей оси -Z. Поворачивайте «Вращением», двигайте «Перемещением»; эффекты работают в Рендер-виде, пока вы смотрите через неё.',
 		msg_select_one: 'Сначала выделите объект',
@@ -4585,7 +4585,7 @@ const DEFAULT_SETTINGS = {
 	sun_azimuth: 40, sun_elevation: 50, sun_strength: 1.6, sun_color: '#fff3e0', shadows: true, shadow_softness: 1,
 	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true,
 	exposure: 1, ao: true, ao_strength: 0.8, ao_radius: 4, ssr: false, ssr_strength: 0.6,
-	bloom: true, bloom_strength: 0.35, bloom_threshold: 1.2, bloom_radius: 0.6, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, vignette: 0.25,
+	bloom: true, bloom_strength: 0.35, bloom_threshold: 1.2, bloom_radius: 0.6, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, motion_blur: 0, vignette: 0.25,
 	sky_mode: 'off', sky_top: '#2f6fd6', sky_horizon: '#bcd8ff', sky_ground: '#6b5a48', sky_sun: true, sky_clouds: 0.4, sky_image: '', sky_image_name: '', sky_rotation: 0,
 	};
 const DEFAULT_MATERIAL = {
@@ -5120,6 +5120,116 @@ class ChainedEffect extends THREE.Pass {
 	}
 }
 
+// Motion blur of the camera: every pixel is smeared along the way it travelled on the screen since the last frame.
+// The way is found from the depth of the scene and the camera of the previous frame. Soft: a long way is eased out (never
+// a hard streak), the taps are spread with noise and weighted like a bell, so there are no steps and no banding.
+class MotionBlurPass extends THREE.Pass {
+	constructor(scene, camera, w, h) {
+		super();
+		this.scene = scene;
+		this.camera = camera;
+		this.amount = 0.5;
+		this.depthTarget = new THREE.WebGLRenderTarget(w, h, {minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat});
+		this.depthMaterial = new THREE.MeshDepthMaterial();
+		this.depthMaterial.depthPacking = THREE.RGBADepthPacking;
+		this.depthMaterial.blending = THREE.NoBlending;
+		this.vp = new THREE.Matrix4();
+		this.prev = new THREE.Matrix4();
+		this.has_prev = false;
+		this.last_time = 0;
+		this.max_gap = 250;   // ms
+		this.material = new THREE.ShaderMaterial({
+			uniforms: {tDiffuse: {value: null}, tDepth: {value: null}, invVP: {value: new THREE.Matrix4()}, prevVP: {value: new THREE.Matrix4()}, amount: {value: 0.5}},
+			vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+			fragmentShader: `
+				uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform mat4 invVP; uniform mat4 prevVP; uniform float amount;
+				varying vec2 vUv;
+				const float UnpackDownscale = 255. / 256.;
+				const vec3 PackFactors = vec3(256. * 256. * 256., 256. * 256., 256.);
+				const vec4 UnpackFactors = UnpackDownscale / vec4(PackFactors, 1.);
+				const int TAPS = 24;
+				void main() {
+					float depth = dot(texture2D(tDepth, vUv), UnpackFactors);
+					vec4 clip = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+					vec4 world = invVP * clip;
+					world /= world.w;
+					vec4 before = prevVP * world;
+					vec2 uvBefore = before.xy / before.w * 0.5 + 0.5;
+					vec2 v = (vUv - uvBefore) * amount * 0.75;
+					float len = length(v);
+					if (len < 0.0004) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+					// a long way is eased out: it approaches the limit smoothly instead of being cut off
+					float limit = 0.07;
+					v *= limit * (1.0 - exp(-len / limit)) / len;
+					float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+					vec4 sum = vec4(0.0);
+					float total = 0.0;
+					for (int i = 0; i < TAPS; i++) {
+						float t = (float(i) + noise) / float(TAPS) - 0.5;
+						float w = 0.5 + 0.5 * cos(t * 6.2831853);
+						sum += texture2D(tDiffuse, clamp(vUv + v * t, vec2(0.001), vec2(0.999))) * w;
+						total += w;
+					}
+					gl_FragColor = sum / total;
+				}`,
+			depthTest: false, depthWrite: false,
+		});
+		this.fsQuad = new THREE.FullScreenQuad(this.material);
+	}
+	setSize(w, h) { this.depthTarget.setSize(w, h); }
+	dispose() { this.depthTarget.dispose(); this.depthMaterial.dispose(); this.material.dispose(); }
+	render(renderer, writeBuffer, readBuffer) {
+		const camera = this.camera, now = performance.now();
+		camera.updateMatrixWorld(true);
+		this.vp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+		// the camera of the last frame; after a pause there is no "last frame" to compare with
+		if (!this.has_prev || now - this.last_time > this.max_gap) this.prev.copy(this.vp);
+		let moved = 0;
+		for (let i = 0; i < 16; i++) moved = Math.max(moved, Math.abs(this.vp.elements[i] - this.prev.elements[i]));
+		this.last_time = now;
+		this.has_prev = true;
+		if (moved < 1e-5 || this.amount <= 0) {   // standing still: nothing to do, the picture goes on untouched
+			this.needsSwap = false;
+			this.prev.copy(this.vp);
+			return;
+		}
+		this.needsSwap = true;
+		const hidden = [];
+		this.scene.traverseVisible(o => {
+			if (o.isLine || o.isPoints || o.isSprite) hidden.push(o);
+			else if (o.isMesh) {
+				const m = o.material, list = Array.isArray(m) ? m : [m];
+				if (!list.length || list.every(x => !x || x.visible === false || x.colorWrite === false)) hidden.push(o);
+			}
+		});
+		hidden.forEach(o => { o.visible = false; });
+		const background = this.scene.background, override = this.scene.overrideMaterial;
+		this.scene.background = null;
+		this.scene.overrideMaterial = this.depthMaterial;
+		renderer.setRenderTarget(this.depthTarget);
+		const clear = renderer.getClearColor(new THREE.Color()), clear_alpha = renderer.getClearAlpha();
+		renderer.setClearColor(0xffffff, 1);
+		renderer.clear();
+		try {
+			renderer.render(this.scene, camera);
+		} finally {
+			renderer.setClearColor(clear, clear_alpha);
+			this.scene.overrideMaterial = override;
+			this.scene.background = background;
+			hidden.forEach(o => { o.visible = true; });
+		}
+		const u = this.material.uniforms;
+		u.tDiffuse.value = readBuffer.texture;
+		u.tDepth.value = this.depthTarget.texture;
+		u.invVP.value.copy(this.vp).invert();
+		u.prevVP.value.copy(this.prev);
+		u.amount.value = this.amount;
+		renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+		this.fsQuad.render(renderer);
+		this.prev.copy(this.vp);
+	}
+}
+
 // last step: lens (distortion, chromatic aberration), exposure, filmic tone mapping (ACES), color look, vignette, grain
 // and conversion to screen colors
 const FinalShader = {
@@ -5193,6 +5303,10 @@ function buildPipeline(preview) {
 		p.ssr = new ChainedEffect(ssr, 'over');
 		composer.addPass(p.ssr);
 	}
+	if (motionAmount() > 0) {
+		p.mb = new MotionBlurPass(scene, camera, w, h);
+		composer.addPass(p.mb);
+	}
 	if (s.bloom) {
 		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength * 0.35, s.bloom_radius, s.bloom_threshold);
 		composer.addPass(p.bloom);
@@ -5225,7 +5339,7 @@ function disposePipeline(p) {
 
 function structureKey(preview) {
 	const s = settingsOf();
-	return [preview.camera.uuid, s.ao, s.ssr, s.bloom, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
+	return [preview.camera.uuid, s.ao, s.ssr, motionAmount() > 0, s.bloom, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
 }
 
 function pipelineFor(preview) {
@@ -5254,6 +5368,7 @@ function pipelineFor(preview) {
 		p.ssr.inner.selects = selectsForSSR();
 		p.ssr.inner.thickness = 1.5;
 	}
+	if (p.mb) p.mb.amount = motionAmount();
 	if (p.bloom) { p.bloom.strength = s.bloom_strength * 0.35; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
 	const cam = activeCameraData();   // the camera we look through adds its own look
 	if (p.dof) {
@@ -5347,7 +5462,7 @@ function invalidate() {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false};
-const DEFAULT_CAMERA = {fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
+const DEFAULT_CAMERA = {motion_blur: 0.5, fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
 const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {});
 const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
 // a group named "Camera" is a camera even when it came from Blockbench itself (it has no data of ours yet)
@@ -5381,6 +5496,7 @@ function focusDepth(camera, uuid) {
 	const dir = camera.getWorldDirection(new THREE.Vector3());
 	return Math.max(1, nodeCenter(node).sub(camera.getWorldPosition(new THREE.Vector3())).dot(dir));
 }
+const motionAmount = () => { const cam = activeCameraData(); return Math.max(0, cam ? cam.motion_blur : settingsOf().motion_blur); };
 const wantsFocus = cam => !!(cam && cam.focus && findNode(cam.focus));
 
 // --- spawning -------------------------------------------------------------
@@ -5653,6 +5769,7 @@ function openSettings(group, kind) {
 		saturation: {label: tr('cam_saturation'), type: 'range', value: d.saturation, min: 0, max: 2, step: 0.02},
 		contrast: {label: tr('cam_contrast'), type: 'range', value: d.contrast, min: 0.5, max: 1.6, step: 0.02},
 		temperature: {label: tr('cam_temperature'), type: 'range', value: d.temperature, min: -1, max: 1, step: 0.02},
+		motion_blur: {label: tr('cam_motion'), type: 'range', value: d.motion_blur, min: 0, max: 1, step: 0.05},
 		focus_info: {type: 'info', text: tr('cam_focus')},
 		focus: {label: tr('cam_focus'), type: 'select', options, value: d.focus || ''},
 		focus_blur: {label: tr('cam_focus_blur'), type: 'range', value: d.focus_blur, min: 0, max: 1, step: 0.05},
@@ -6244,7 +6361,8 @@ function panelComponent() {
 					<div class="render_slider"><span class="label">{{ t('dof_blur') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="dof_blur" @input="save()"><span>{{ dof_blur }}</span></div>
 				</template>
 				<label class="render_row">{{ t('fxaa') }} <input type="checkbox" v-model="fxaa" @change="save()"></label>
-				<div class="render_slider"><span class="label">{{ t('vignette') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="vignette" @input="save()"><span>{{ vignette }}</span></div>
+				<div class="render_slider"><span class="label">{{ t('motion_blur') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="motion_blur" @input="save()"><span>{{ motion_blur }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('vignette') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="vignette" @input="save()"><span>{{ vignette }}</span></div>
 
 					<h3>{{ t('lights') }}</h3>
 					<button @click="spawn('light')" class="render_btn">{{ t('add_light') }}</button>
@@ -6271,6 +6389,7 @@ function panelComponent() {
 						<div class="render_slider"><span class="label">{{ t('cam_grain') }}</span><input type="range" min="0" max="1" step="0.02" v-model.number="cam.grain" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.grain }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_saturation') }}</span><input type="range" min="0" max="2" step="0.02" v-model.number="cam.saturation" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.saturation }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_contrast') }}</span><input type="range" min="0.5" max="1.6" step="0.02" v-model.number="cam.contrast" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.contrast }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_motion') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="cam.motion_blur" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.motion_blur }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_temperature') }}</span><input type="range" min="-1" max="1" step="0.02" v-model.number="cam.temperature" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.temperature }}</span></div>
 						<div class="render_cap">{{ t('cam_focus') }}</div>
 						<div class="render_row"><span>{{ focus_name || t('cam_focus_none') }}</span><span><button @click="focusSelected()">{{ t('cam_focus_pick') }}</button> <button v-if="cam.focus" @click="clearFocus()">{{ t('cam_focus_clear') }}</button></span></div>
@@ -6312,15 +6431,15 @@ const STYLE = `
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
-if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf});
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, MotionBlurPass});
 
 Plugin.register('render', {
 	title: 'Render view',
 	author: 'Claude',
-	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
+	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.9',
+	version: '0.3.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
