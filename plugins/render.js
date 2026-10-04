@@ -4532,6 +4532,12 @@ const TEXTS = {
 		cameras: 'Cameras', add_camera: '+ Camera', camera_title: 'Camera', camera_selected: 'Selected camera',
 		cam_look: 'Look through this camera', cam_looking: 'Looking through it (click to leave)', cam_fov: 'Field of view',
 		cam_lens: 'Lens', cam_distortion: 'Corner distortion', cam_distortion_tip: 'Negative = pincushion, positive = barrel (fisheye)', cam_chroma: 'Chromatic aberration',
+		vid_action: 'Render video (MP4)…', vid_action_desc: 'The animation seen through a camera, with every effect, as an MP4 file', vid_title: 'Render video',
+		vid_camera: 'Camera', vid_view: 'The current view', vid_size: 'Size', vid_vertical: 'vertical', vid_fps: 'Frames per second', vid_start: 'From (seconds)', vid_end: 'To (seconds)',
+		vid_quality: 'Quality', vid_q_draft: 'Draft (small file)', vid_q_normal: 'Normal', vid_q_high: 'High', vid_q_max: 'Maximum (large file)',
+		vid_hint: 'Every frame is made one by one, so the video has exactly this frame rate however heavy the scene is (a slow computer only needs more time). Skybox, bloom, motion blur, depth of field and the camera lens effects are included. The animation is the one selected in the Animate tab.',
+		vid_cancel: 'Cancel', vid_busy: 'A video is already being rendered', vid_frame: 'Frame', vid_fps_render: 'frames/s', vid_s_frame: 's per frame', vid_left: 'left about', vid_sec: 's',
+		vid_done: 'Video saved', vid_error: 'Video failed', vid_no_encoder: 'This Blockbench cannot encode video (no H.264 or VP9 encoder found). Update Blockbench or use a screen recorder.',
 		cam_motion: 'Motion blur', motion_blur: 'Motion blur (camera)', cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
 		cam_focus: 'Focus', cam_focus_pick: 'Focus on selected', cam_focus_clear: 'Clear', cam_focus_blur: 'Background blur', cam_focus_none: 'nothing',
 		cam_hint: 'A camera is an empty group looking along its -Z axis. Turn it with Rotate, move it with Move; the effects apply in the Render view while you look through it.',
@@ -4566,6 +4572,12 @@ const TEXTS = {
 		cameras: 'Камеры', add_camera: '+ Камера', camera_title: 'Камера', camera_selected: 'Выбранная камера',
 		cam_look: 'Смотреть через эту камеру', cam_looking: 'Смотрим через неё (нажмите, чтобы выйти)', cam_fov: 'Угол обзора',
 		cam_lens: 'Объектив', cam_distortion: 'Искажение углов', cam_distortion_tip: 'Минус = подушка, плюс = бочка (рыбий глаз)', cam_chroma: 'Хроматическая аберрация',
+		vid_action: 'Рендер видео (MP4)…', vid_action_desc: 'Анимация от лица камеры со всеми эффектами в файл MP4', vid_title: 'Рендер видео',
+		vid_camera: 'Камера', vid_view: 'Текущий вид', vid_size: 'Размер', vid_vertical: 'вертикальное', vid_fps: 'Кадров в секунду', vid_start: 'С (секунды)', vid_end: 'До (секунды)',
+		vid_quality: 'Качество', vid_q_draft: 'Черновик (маленький файл)', vid_q_normal: 'Обычное', vid_q_high: 'Высокое', vid_q_max: 'Максимум (большой файл)',
+		vid_hint: 'Каждый кадр делается отдельно, поэтому в видео ровно столько кадров в секунду, сколько выбрано, как бы тяжела ни была сцена (на слабом компьютере просто дольше). Скайбокс, свечение, размытие в движении, глубина резкости и эффекты объектива камеры включены. Берётся анимация, выбранная на вкладке «Анимация».',
+		vid_cancel: 'Отмена', vid_busy: 'Видео уже рендерится', vid_frame: 'Кадр', vid_fps_render: 'кадров/с', vid_s_frame: 'с на кадр', vid_left: 'осталось около', vid_sec: 'с',
+		vid_done: 'Видео сохранено', vid_error: 'Видео не получилось', vid_no_encoder: 'Этот Blockbench не умеет кодировать видео (нет кодировщика H.264 или VP9). Обновите Blockbench или запишите экран.',
 		cam_motion: 'Размытие в движении', motion_blur: 'Размытие в движении (камера)', cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
 		cam_focus: 'Фокус', cam_focus_pick: 'Фокус на выделенном', cam_focus_clear: 'Сбросить', cam_focus_blur: 'Размытие фона', cam_focus_none: 'ничего',
 		cam_hint: 'Камера — пустая группа, смотрящая вдоль своей оси -Z. Поворачивайте «Вращением», двигайте «Перемещением»; эффекты работают в Рендер-виде, пока вы смотрите через неё.',
@@ -4964,20 +4976,20 @@ function buildRig(renderer) {
 	const env = pmrem.fromEquirectangular(sky).texture;
 	sky.dispose();
 	pmrem.dispose();
-	return {group, sun, hemi, floor, env, renderer, key: '', bg: null, saved_bg: scene.background, lights: new Map()};
+	// the sky lives on the graphics card of one viewport: every viewport (the camera preview, a video render) gets its own copy
+	return {group, sun, hemi, floor, renderer, skies: new Map([[renderer, {env, bg: null, key: ''}]]), saved_bg: scene.background, lights: new Map()};
 }
 
 function disposeRig() {
 	if (!rig) return;
 	scene.remove(rig.group);
 	scene.background = rig.saved_bg;
-	if (rig.env) rig.env.dispose();
-	if (rig.bg) rig.bg.dispose();
+	rig.skies.forEach(sk => { if (sk.env) sk.env.dispose(); if (sk.bg) sk.bg.dispose(); });
 	rig.lights.forEach(l => l.dispose && l.dispose());
 	rig = null;
 }
 
-function updateRig() {
+function updateRig(renderer) {
 	const s = settingsOf();
 	const box = modelBox();
 	const center = box.getCenter(new THREE.Vector3());
@@ -5011,26 +5023,28 @@ function updateRig() {
 	}
 	floor.material.userData.render_plugin = true;
 	// a new sky only when its settings change
+	let sk = rig.skies.get(renderer);
+	if (!sk) { sk = {env: null, bg: null, key: ''}; rig.skies.set(renderer, sk); }
 	const key = s.sky_mode == 'off' ? 'flat|' + s.sky_color + s.ground_color : 'sky|' + skyKey(s);
-	if (key != rig.key) {
-	rig.key = key;
+	if (key != sk.key || !sk.env) {
+	sk.key = key;
 	const panorama = skyEquirect(s);   // null when off, or while a panorama image is still loading
-	if (!panorama && s.sky_mode != 'off') rig.key = '';   // try again next frame
-	const pmrem = new THREE.PMREMGenerator(rig.renderer);
+	if (!panorama && s.sky_mode != 'off') sk.key = '';   // try again next frame
+	const pmrem = new THREE.PMREMGenerator(renderer);
 	const sky = panorama || skyTexture(s.sky_color, s.ground_color);
-	if (rig.env) rig.env.dispose();
-	rig.env = pmrem.fromEquirectangular(sky).texture;
-	if (rig.bg) { rig.bg.dispose(); rig.bg = null; }
+	if (sk.env) sk.env.dispose();
+	sk.env = pmrem.fromEquirectangular(sky).texture;
+	if (sk.bg) { sk.bg.dispose(); sk.bg = null; }
 	if (panorama) {
 		// a sharp copy for the background (the sky light above is the blurry one)
-		rig.bg = new THREE.WebGLCubeRenderTarget(1024).fromEquirectangularTexture(rig.renderer, panorama);
-		rig.bg.texture.minFilter = THREE.LinearMipmapLinearFilter;
+		sk.bg = new THREE.WebGLCubeRenderTarget(1024).fromEquirectangularTexture(renderer, panorama);
+		sk.bg.texture.minFilter = THREE.LinearMipmapLinearFilter;
 	}
 	sky.dispose();
 	pmrem.dispose();
 	}
-	scene.environment = rig.env;
-	scene.background = rig.bg ? rig.bg.texture : rig.saved_bg;
+	scene.environment = sk.env;
+	scene.background = sk.bg ? sk.bg.texture : rig.saved_bg;
 	syncLights();
 	if (rig.sky_strength !== s.sky_strength) {
 		rig.sky_strength = s.sky_strength;
@@ -5368,7 +5382,7 @@ function pipelineFor(preview) {
 		p.ssr.inner.selects = selectsForSSR();
 		p.ssr.inner.thickness = 1.5;
 	}
-	if (p.mb) p.mb.amount = motionAmount();
+	if (p.mb) { p.mb.amount = motionAmount(); p.mb.max_gap = preview.offline ? Infinity : 250; }
 	if (p.bloom) { p.bloom.strength = s.bloom_strength * 0.35; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
 	const cam = activeCameraData();   // the camera we look through adds its own look
 	if (p.dof) {
@@ -5400,12 +5414,12 @@ if (!enabled || !Project) return original_render.call(this);
 	try {
 		this.controls.update();
 		applyMaterials();
-		if (!rig || rig.renderer !== this.renderer) {
+		if (!rig) {
 		disposeRig();
 		rig = buildRig(this.renderer);
 			scene.add(rig.group);
 		}
-		updateRig();
+		updateRig(this.renderer);
 		const r = this.renderer;
 		const saved = {shadow: r.shadowMap.enabled, type: r.shadowMap.type, tone: r.toneMapping, enc: r.outputEncoding};
 		r.shadowMap.enabled = true;
@@ -6198,7 +6212,7 @@ function openMaterials() {
 // Render panel (light and effects)
 // ---------------------------------------------------------------------------
 
-let panel = null, toggle = null, materials_action = null, properties = [], style_node = null;
+let panel = null, toggle = null, materials_action = null, video_action = null, properties = [], style_node = null;
 let editing_group = null, add_light_action = null, add_camera_action = null, poll = null;
 
 function panelComponent() {
@@ -6247,6 +6261,7 @@ function panelComponent() {
 			liveLight() { this.liveEdit(this.light_uuid, 'render_light', this.light); },
 			liveCamera() { this.liveEdit(this.cam_uuid, 'render_camera', this.cam); },
 			spawn(kind) { spawnGroup(kind); },
+			video() { openVideoDialog(); },
 			lookThrough() {
 				const g = Group.all.find(x => x.uuid == this.cam_uuid);
 				if (!g) return;
@@ -6296,7 +6311,8 @@ function panelComponent() {
 		},
 		template: `
 			<div class="render_panel" style="padding: 4px 8px 10px;">
-				<button @click="materials()" style="width: 100%; margin-bottom: 8px;">{{ t('materials') }}</button>
+				<button @click="materials()" style="width: 100%; margin-bottom: 4px;">{{ t('materials') }}</button>
+				<button @click="video()" style="width: 100%; margin-bottom: 8px;">{{ t('vid_action') }}</button>
 				<h3>{{ t('light') }}</h3>
 				<div class="render_slider"><span class="label">{{ t('sun_dir') }}</span><input type="range" min="-180" max="180" step="1" v-model.number="sun_azimuth" @input="save()"><span>{{ sun_azimuth }}°</span></div>
 				<div class="render_slider"><span class="label">{{ t('sun_height') }}</span><input type="range" min="2" max="90" step="1" v-model.number="sun_elevation" @input="save()"><span>{{ sun_elevation }}°</span></div>
@@ -6400,6 +6416,232 @@ function panelComponent() {
 	};
 }
 
+// ---------------------------------------------------------------------------
+// Video: the animation seen through a camera, with every effect, to an MP4 file.
+// Frames are made one by one (never faster or slower than the video says), so the result has exactly the chosen frame rate
+// however heavy the scene is. H.264 comes from the browser (WebCodecs); the MP4 container is written here.
+// ---------------------------------------------------------------------------
+
+// an MP4 file from encoded frames. samples: [{data: Uint8Array, key: bool}] (H.264: length-prefixed NAL units); o.codec 'avc1' with o.avcC (the
+// decoder config), or 'vp09' with o.codec_string ('vp09.00.40.08')
+function muxMp4(samples, o) {
+	const cat = parts => {
+		let n = 0;
+		parts.forEach(p => { n += p.length; });
+		const out = new Uint8Array(n);
+		let at = 0;
+		parts.forEach(p => { out.set(p, at); at += p.length; });
+		return out;
+	};
+	const u32 = n => Uint8Array.of((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255);
+	const u16 = n => Uint8Array.of((n >> 8) & 255, n & 255);
+	const zeros = n => new Uint8Array(n);
+	const str = s => Uint8Array.from(s, c => c.charCodeAt(0));
+	const box = (type, ...parts) => { const body = cat(parts); return cat([u32(8 + body.length), str(type), body]); };
+	const full = (type, flags, ...parts) => box(type, Uint8Array.of(0, (flags >> 16) & 255, (flags >> 8) & 255, flags & 255), ...parts);
+	const matrix = cat([u32(0x10000), zeros(12), u32(0x10000), zeros(12), u32(0x40000000)]);
+	const N = samples.length, unit = 1000, scale = Math.round(o.fps * unit);
+	const movie_ms = Math.round(N / o.fps * 1000);
+	const data_size = samples.reduce((n, s) => n + s.data.length, 0);
+
+	const sizes = cat(samples.map(s => u32(s.data.length)));
+	const keys = [];
+	samples.forEach((s, i) => { if (s.key) keys.push(i + 1); });
+	const vp9 = o.codec == 'vp09';
+	const parts = vp9 ? o.codec_string.split('.') : [];
+	const decoder = vp9
+		? box('vpcC', Uint8Array.of(1, 0, 0, 0, parseInt(parts[1]) || 0, parseInt(parts[2]) || 40, (8 << 4) | (1 << 1), 1, 1, 1, 0, 0))
+		: box('avcC', o.avcC);
+	const avc1 = box(vp9 ? 'vp09' : 'avc1', zeros(6), u16(1), zeros(16), u16(o.width), u16(o.height), u32(0x480000), u32(0x480000), zeros(4), u16(1), zeros(32), u16(0x18), u16(0xffff), decoder);
+	const stbl = offset => box('stbl',
+		full('stsd', 0, u32(1), avc1),
+		full('stts', 0, u32(1), u32(N), u32(unit)),
+		keys.length < N ? full('stss', 0, u32(keys.length), cat(keys.map(u32))) : new Uint8Array(0),
+		full('stsc', 0, u32(1), u32(1), u32(N), u32(1)),
+		full('stsz', 0, u32(0), u32(N), sizes),
+		full('stco', 0, u32(1), u32(offset)));
+	const moov = offset => box('moov',
+		full('mvhd', 0, u32(0), u32(0), u32(1000), u32(movie_ms), u32(0x10000), u16(0x100), zeros(10), matrix, zeros(24), u32(2)),
+		box('trak',
+			full('tkhd', 3, u32(0), u32(0), u32(1), zeros(4), u32(movie_ms), zeros(8), u16(0), u16(0), u16(0), zeros(2), matrix, u32(o.width * 65536), u32(o.height * 65536)),
+			box('mdia',
+				full('mdhd', 0, u32(0), u32(0), u32(scale), u32(N * unit), u16(0x55c4), u16(0)),
+				full('hdlr', 0, zeros(4), str('vide'), zeros(12), str('VideoHandler'), zeros(1)),
+				box('minf',
+					full('vmhd', 1, zeros(8)),
+					box('dinf', full('dref', 0, u32(1), full('url ', 1))),
+					stbl(offset)))));
+	const ftyp = box('ftyp', str('isom'), u32(512), str('isom'), str('iso2'), str('avc1'), str('mp41'));
+	const head = ftyp.length + moov(0).length;
+	const mdat_head = cat([u32(8 + data_size), str('mdat')]);
+	return cat([ftyp, moov(head + 8), mdat_head, ...samples.map(s => s.data)]);
+}
+
+// the encoder settings the machine can really do (the first that works), or null
+async function pickEncoder(width, height, fps, bitrate) {
+	if (typeof VideoEncoder == 'undefined' || typeof VideoFrame == 'undefined') return null;
+	const big = width * height > 1920 * 1088 ? (fps > 30 ? '34' : '33') : (fps > 30 ? '2A' : '28');
+	const vp9_level = width * height > 1920 * 1088 ? '51' : '40';
+	// H.264 is the best choice (plays everywhere); VP9 inside MP4 is the fallback when this machine has no H.264 encoder
+	for (const codec of ['avc1.6400' + big, 'avc1.4D00' + big, 'avc1.4200' + big, 'avc1.640034', 'vp09.00.' + vp9_level + '.08']) {
+		for (const hardware of ['prefer-hardware', 'no-preference']) {
+			const config = {codec, width, height, bitrate, framerate: fps, hardwareAcceleration: hardware, latencyMode: 'quality'};
+			if (codec.startsWith('avc1')) config.avc = {format: 'avc'};
+			try { const r = await VideoEncoder.isConfigSupported(config); if (r && r.supported) return config; } catch (err) { /* next */ }
+		}
+	}
+	return null;
+}
+
+const VIDEO_QUALITY = {draft: 0.06, normal: 0.11, high: 0.18, max: 0.3};   // bits per pixel
+const VIDEO_SIZES = {'1280x720': [1280, 720], '1920x1080': [1920, 1080], '2560x1440': [2560, 1440], '3840x2160': [3840, 2160], '1080x1920': [1080, 1920], '1080x1080': [1080, 1080], '854x480': [854, 480]};
+
+let video_job = null;
+
+// o: {camera: group|null, width, height, fps, start, end, quality}
+async function renderVideo(o) {
+	if (video_job) { Blockbench.showQuickMessage(tr('vid_busy'), 2500); return; }
+	const frames = Math.max(1, Math.round((o.end - o.start) * o.fps));
+	const width = Math.max(16, Math.round(o.width / 2) * 2), height = Math.max(16, Math.round(o.height / 2) * 2);
+	const bitrate = Math.round(width * height * o.fps * (VIDEO_QUALITY[o.quality] || 0.11));
+	const encoder_config = await pickEncoder(width, height, o.fps, bitrate);
+	if (!encoder_config) { Blockbench.showQuickMessage(tr('vid_no_encoder'), 6000); return; }
+
+	const job = video_job = {cancel: false};
+	const was_enabled = enabled;
+	const saved_camera = Project.render_active_camera;
+	const saved_time = Timeline.time;
+	const saved_selected = Preview.selected;
+	let renderer = null, preview = null, status = null, bar = null;
+	const hidden = [];
+	const dialog = new Dialog({
+		id: 'render_video_progress', title: tr('vid_title'), width: 420, darken: true, cancel_on_click_outside: false,
+		lines: [`<div id="render_video_status" style="margin: 6px 0;">…</div><progress id="render_video_bar" max="1" value="0" style="width: 100%;"></progress>`],
+		buttons: [tr('vid_cancel')],
+		onButton() { job.cancel = true; },
+		onCancel() { job.cancel = true; },
+	});
+	dialog.show();
+	status = document.getElementById('render_video_status'); bar = document.getElementById('render_video_bar');
+	const samples = [];
+	let avcC = null, failure = null, encoder = null;
+	try {
+		if (!was_enabled) setEnabled(true);
+		Project.render_active_camera = o.camera ? o.camera.uuid : '';
+		if (typeof Transformer != 'undefined' && Transformer.visible) { hidden.push(Transformer); Transformer.visible = false; }
+		scene.traverse(obj => { if (obj.visible && (obj.isLine || obj.isPoints || obj.isSprite)) { hidden.push(obj); obj.visible = false; } });
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width; canvas.height = height;
+		renderer = new THREE.WebGLRenderer({canvas, antialias: false, alpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance'});
+		renderer.setPixelRatio(1);
+		renderer.setSize(width, height, false);
+		const camera = new THREE.PerspectiveCamera(50, width / height, 1, 30000);
+		const view = saved_selected && saved_selected.camera;
+		if (!o.camera && view) { camera.position.copy(view.position); camera.quaternion.copy(view.quaternion); camera.fov = view.fov || 50; }
+		camera.updateProjectionMatrix();
+		preview = {renderer, camera, canvas, isOrtho: false, offline: true, controls: {target: new THREE.Vector3(), update() {}}, css_renderer: null};
+
+		const place = () => {
+			if (!o.camera || !o.camera.mesh) return;
+			o.camera.mesh.updateMatrixWorld(true);
+			camera.position.copy(o.camera.mesh.getWorldPosition(new THREE.Vector3()));
+			camera.quaternion.copy(o.camera.mesh.getWorldQuaternion(new THREE.Quaternion()));
+			const d = cameraOf(o.camera);
+			if (camera.fov != d.fov) { camera.fov = d.fov; camera.updateProjectionMatrix(); }
+			camera.updateMatrixWorld(true);
+		};
+		const at = time => {
+			if (Animation.selected) {
+				Timeline.setTime(time);
+				Animator.preview();
+			}
+			scene.updateMatrixWorld(true);
+			place();
+		};
+		// one frame before the first, so the motion blur of the first picture is right too
+		if (o.start > 0) { at(Math.max(0, o.start - 1 / o.fps)); renderWithEffects.call(preview); }
+
+		encoder = new VideoEncoder({
+			output: (chunk, meta) => {
+				const data = new Uint8Array(chunk.byteLength);
+				chunk.copyTo(data);
+				samples.push({data, key: chunk.type == 'key'});
+				const d = meta && meta.decoderConfig && meta.decoderConfig.description;
+				if (!avcC && d) avcC = ArrayBuffer.isView(d) ? new Uint8Array(d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength)) : new Uint8Array(d.slice(0));
+			},
+			error: err => { failure = err; },
+		});
+		encoder.configure(encoder_config);
+		const t0 = performance.now();
+		for (let i = 0; i < frames && !job.cancel && !failure; i++) {
+			at(o.start + i / o.fps);
+			renderWithEffects.call(preview);
+			const frame = new VideoFrame(canvas, {timestamp: Math.round(i * 1e6 / o.fps), duration: Math.round(1e6 / o.fps)});
+			encoder.encode(frame, {keyFrame: i % Math.max(1, Math.round(o.fps * 2)) == 0});
+			frame.close();
+			while (encoder.encodeQueueSize > 6 && !failure) await new Promise(r => setTimeout(r, 4));
+			if (i % 2 == 1 || i == frames - 1) {
+				const per = (performance.now() - t0) / (i + 1), left = Math.max(0, Math.round(per * (frames - i - 1) / 1000));
+				if (status) status.textContent = `${tr('vid_frame')} ${i + 1} / ${frames} · ${per < 1000 ? Math.round(1000 / per * 10) / 10 + ' ' + tr('vid_fps_render') : Math.round(per / 100) / 10 + ' ' + tr('vid_s_frame')} · ${tr('vid_left')} ${left} ${tr('vid_sec')}`;
+				if (bar) bar.value = (i + 1) / frames;
+				await new Promise(r => setTimeout(r, 0));   // the interface stays alive and Cancel works
+			}
+		}
+		if (!job.cancel && !failure) await encoder.flush();
+		if (failure) throw failure;
+		if (!job.cancel) {
+			const vp9 = encoder_config.codec.startsWith('vp09');
+			if ((!vp9 && !avcC) || !samples.length) throw new Error('the encoder gave no data');
+			const file = muxMp4(samples, {width, height, fps: o.fps, avcC, codec: vp9 ? 'vp09' : 'avc1', codec_string: encoder_config.codec});
+			const name = (Project.name || 'render').replace(/[\\/:*?"<>|]+/g, '_') + (o.camera ? '_' + o.camera.name : '');
+			Blockbench.export({type: 'MP4 video', extensions: ['mp4'], name, content: file, savetype: 'buffer'}, () => Blockbench.showQuickMessage(tr('vid_done'), 3000));
+		}
+	} catch (err) {
+		console.error('[Render view] video', err);
+		Blockbench.showQuickMessage(tr('vid_error') + ': ' + (err && err.message || err), 6000);
+	} finally {
+		try { if (encoder && encoder.state != 'closed') encoder.close(); } catch (err) { /* closed */ }
+		hidden.forEach(obj => { obj.visible = true; });
+		if (preview) { const p = pipelines.get(preview); if (p) { disposePipeline(p); pipelines.delete(preview); } }
+		if (rig && renderer) { const sk = rig.skies.get(renderer); if (sk) { if (sk.env) sk.env.dispose(); if (sk.bg) sk.bg.dispose(); rig.skies.delete(renderer); } }
+		if (renderer) renderer.dispose();
+		Project.render_active_camera = saved_camera;
+		if (Animation.selected) { Timeline.setTime(saved_time); Animator.preview(); }
+		if (!was_enabled) setEnabled(false);
+		dialog.close();
+		video_job = null;
+	}
+}
+
+function openVideoDialog(preset_camera) {
+	if (!Project) return;
+	const cameras = Group.all.filter(isCamera);
+	const options = {'': tr('vid_view')};
+	cameras.forEach(g => { options[g.uuid] = g.name; });
+	const active = preset_camera || activeCameraGroup() || cameras[0] || null;
+	const animations = Animation.all || [];
+	const length = Animation.selected ? Animation.selected.length : (animations[0] ? animations[0].length : 3);
+	new Dialog({
+		id: 'render_video', title: tr('vid_title'), width: 460,
+		form: {
+			camera: {label: tr('vid_camera'), type: 'select', options, value: active ? active.uuid : ''},
+			size: {label: tr('vid_size'), type: 'select', options: {'1280x720': '1280 × 720 (HD)', '1920x1080': '1920 × 1080 (Full HD)', '2560x1440': '2560 × 1440 (2K)', '3840x2160': '3840 × 2160 (4K)', '1080x1920': '1080 × 1920 (' + tr('vid_vertical') + ')', '1080x1080': '1080 × 1080', '854x480': '854 × 480'}, value: '1920x1080'},
+			fps: {label: tr('vid_fps'), type: 'select', options: {24: '24', 30: '30', 60: '60'}, value: '30'},
+			start: {label: tr('vid_start'), type: 'number', value: 0, min: 0, step: 0.1},
+			end: {label: tr('vid_end'), type: 'number', value: Math.round(length * 100) / 100 || 3, min: 0.1, step: 0.1},
+			quality: {label: tr('vid_quality'), type: 'select', options: {draft: tr('vid_q_draft'), normal: tr('vid_q_normal'), high: tr('vid_q_high'), max: tr('vid_q_max')}, value: 'high'},
+			hint: {type: 'info', text: tr('vid_hint')},
+		},
+		onConfirm(v) {
+			const [w, h] = VIDEO_SIZES[v.size] || [1920, 1080];
+			const camera = v.camera ? Group.all.find(g => g.uuid == v.camera) : null;
+			const start = Math.max(0, Number(v.start) || 0), end = Math.max(start + 0.05, Number(v.end) || length);
+			renderVideo({camera, width: w, height: h, fps: parseInt(v.fps) || 30, start, end, quality: v.quality});
+		},
+	}).show();
+}
+
 const STYLE = `
 	#panel_render_view .render_panel { overflow-y: auto !important; overflow-x: hidden !important; }
 	.render_panel h3, .render_materials h3 { font-size: 1em; text-transform: uppercase; opacity: 0.8; margin: 10px 0 4px; }
@@ -6431,7 +6673,7 @@ const STYLE = `
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
-if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, MotionBlurPass});
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, MotionBlurPass, muxMp4, renderVideo});
 
 Plugin.register('render', {
 	title: 'Render view',
@@ -6439,7 +6681,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.3.0',
+	version: '0.4.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -6468,8 +6710,13 @@ Plugin.register('render', {
 			condition: () => !!Project,
 			click() { openMaterials(); },
 		});
+		video_action = new Action('render_video', {
+			name: tr('vid_action'), description: tr('vid_action_desc'), icon: 'movie', category: 'view',
+			condition: () => !!Project, click() { openVideoDialog(); },
+		});
 		MenuBar.addAction(toggle, 'view');
 		MenuBar.addAction(materials_action, 'view');
+		MenuBar.addAction(video_action, 'view');
 		add_light_action = new Action('add_render_light', {
 			name: tr('act_add_light'), description: tr('act_add_light_desc'), icon: 'lightbulb', category: 'edit',
 			condition: () => !!Project, click() { spawnGroup('light'); },
@@ -6533,6 +6780,7 @@ Plugin.register('render', {
 		if (panel) panel.delete();
 		if (toggle) { MenuBar.removeAction('view.render_view'); toggle.delete(); }
 		if (materials_action) { MenuBar.removeAction('view.render_materials'); materials_action.delete(); }
+		if (video_action) { MenuBar.removeAction('view.render_video'); video_action.delete(); video_action = null; }
 		properties.forEach(p => p.delete());
 		properties = [];
 		if (style_node) style_node.delete();
