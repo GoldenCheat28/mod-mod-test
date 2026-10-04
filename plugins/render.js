@@ -5582,48 +5582,67 @@ function syncLights() {
 	}
 }
 
-// --- putting the spawn actions next to the Add buttons --------------------------
+// --- putting the spawn actions into the "+" (Add) menu ---------------------------
 
-const ADD_ANCHORS = ['add_cube', 'add_mesh', 'add_group', 'add_locator', 'add_null_object'];
+const ADD_ANCHORS = ['add_mesh', 'add_cube', 'add_spline', 'add_billboard', 'add_armature', 'add_locator', 'add_null_object', 'add_bounding_box', 'add_group', 'add_texture_mesh'];
+const idOf = item => typeof item == 'string' ? item : item && (item.id || item.uuid);
+// index of the last Add entry of a list of menu items (-1 when it is not an Add menu)
+const lastAddIndex = list => {
+	let last = -1;
+	list.forEach((item, i) => { if (ADD_ANCHORS.includes(idOf(item))) last = i; });
+	return last;
+};
 let injected = [];
 function injectAddActions(actions) {
 	try {
+		// the "+" button of the outliner is an action that opens a list; find every list that holds the Add entries
+		const items = typeof BarItems != 'undefined' ? Object.values(BarItems) : [];
+		for (const item of items) {
+			const children = item && item.children;
+			if (!children) continue;
+			if (Array.isArray(children)) {
+				const at = lastAddIndex(children);
+				if (at < 0) continue;
+				children.splice(at + 1, 0, ...actions);
+				injected.push({list: children, actions});
+			} else if (typeof children == 'function') {
+				let sample = null;
+				try { sample = children({}); } catch (err) { continue; }
+				if (!Array.isArray(sample) || lastAddIndex(sample) < 0) continue;
+				const original = children;
+				item.children = (...args) => {
+					const list = original.apply(item, args);
+					if (!Array.isArray(list)) return list;
+					const copy = list.slice();
+					const at = lastAddIndex(copy);
+					if (at >= 0) copy.splice(at + 1, 0, ...actions);
+					return copy;
+				};
+				injected.push({item, original});
+			}
+		}
+		// menus that list the Add actions directly
 		const found = [];
 		const walk = structure => {
 			if (!Array.isArray(structure)) return;
-			structure.forEach((item, index) => {
-				const id = typeof item == 'string' ? item : item && item.id;
-				if (ADD_ANCHORS.includes(id)) found.push({structure, index});
-				if (item && typeof item == 'object' && Array.isArray(item.children)) walk(item.children);
-			});
+			if (lastAddIndex(structure) >= 0) found.push(structure);
+			structure.forEach(item => { if (item && typeof item == 'object' && Array.isArray(item.children)) walk(item.children); });
 		};
 		if (typeof MenuBar != 'undefined' && MenuBar.menus) Object.values(MenuBar.menus).forEach(menu => walk(menu && menu.structure));
-		const seen = new Set();
-		for (const {structure} of found) {
-			if (seen.has(structure)) continue;
-			seen.add(structure);
-			const at = structure.findIndex(item => ADD_ANCHORS.includes(typeof item == 'string' ? item : item && item.id));
-			let position = at + 1;
-			while (position < structure.length && ADD_ANCHORS.includes(typeof structure[position] == 'string' ? structure[position] : structure[position] && structure[position].id)) position++;
-			structure.splice(position, 0, ...actions);
-			injected.push({structure, actions});
-		}
-		// the buttons row of the outliner
-		const toolbar = typeof Toolbars != 'undefined' && Toolbars.outliner;
-		if (toolbar && toolbar.children) {
-			const index = toolbar.children.findIndex(item => ADD_ANCHORS.includes(typeof item == 'string' ? item : item && item.id));
-			actions.forEach((a, i) => toolbar.add(a, index >= 0 ? index + 1 + i : undefined));
-			injected.push({toolbar, actions});
+		for (const structure of new Set(found)) {
+			if (injected.some(e => e.list === structure)) continue;
+			structure.splice(lastAddIndex(structure) + 1, 0, ...actions);
+			injected.push({list: structure, actions});
 		}
 	} catch (err) {
-		console.warn('[Render view] could not add the Light / Camera buttons next to the Add buttons', err);
+		console.warn('[Render view] could not add Light / Camera to the Add menu', err);
 	}
 }
 function removeAddActions() {
 	for (const entry of injected) {
 		try {
-			if (entry.structure) entry.actions.forEach(a => { const i = entry.structure.indexOf(a); if (i >= 0) entry.structure.splice(i, 1); });
-			if (entry.toolbar) entry.actions.forEach(a => entry.toolbar.remove(a));
+			if (entry.list) entry.actions.forEach(a => { const i = entry.list.indexOf(a); if (i >= 0) entry.list.splice(i, 1); });
+			if (entry.item) entry.item.children = entry.original;
 		} catch (err) { /* menu already gone */ }
 	}
 	injected = [];
