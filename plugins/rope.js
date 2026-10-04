@@ -237,6 +237,7 @@ const TEXTS = {
 		damping: 'Damping', elastic: 'Stretch', elastic_tip: '0 = a rope that does not stretch, 1 = a rubber band (needs the Physics tab)',
 		gravity: 'Gravity', friction: 'Friction', collide: 'Rope lies on objects and the ground', attach: 'Attach to', attach_surface: 'Surface', attach_center: 'Centre',
 		footnote: '16 px = 1 m. Simulate moves the rope on its own: its ends follow the objects. In the Physics tab (Play / Bake) the rope is also a real constraint: it pulls bodies. Keep shape writes the current shape into the mesh (Ctrl+Z undoes it).',
+		phys_dynamic: 'physics object: moves, the rope pulls it', phys_static: 'physics ground: fixed', phys_none: 'no physics: stays in place (tick it in the Physics tab to let the rope pull it)',
 		msg_two: 'Select exactly two objects: cubes, meshes or groups (not ropes)', msg_created: 'Rope created', msg_kept: 'Shape kept', msg_refit: 'Rope fitted',
 		msg_lost: 'One of the ends of this rope was deleted', msg_big: 'Too many polygons (over 6000)', msg_nothing: 'No ropes yet: create one first',
 	},
@@ -251,6 +252,7 @@ const TEXTS = {
 		damping: 'Затухание', elastic: 'Растяжение', elastic_tip: '0 = верёвка не тянется, 1 = резинка (работает во вкладке Физика)',
 		gravity: 'Гравитация', friction: 'Трение', collide: 'Верёвка ложится на объекты и землю', attach: 'Крепить к', attach_surface: 'Поверхности', attach_center: 'Центру',
 		footnote: '16 px = 1 м. «Симуляция» двигает верёвку сама: её концы следуют за объектами. Во вкладке Физика (Пуск / Запись) верёвка ещё и настоящая связь: она тянет тела. «Оставить форму» записывает текущую форму в меш (Ctrl+Z отменяет).',
+		phys_dynamic: 'физический объект: двигается, верёвка его тянет', phys_static: 'физическая земля: неподвижна', phys_none: 'без физики: стоит на месте (отметьте его во вкладке Физика, чтобы верёвка его тянула)',
 		msg_two: 'Выделите ровно два объекта: кубы, меши или группы (не верёвки)', msg_created: 'Верёвка создана', msg_kept: 'Форма оставлена', msg_refit: 'Верёвка подогнана',
 		msg_lost: 'Один из концов этой верёвки удалён', msg_big: 'Слишком много полигонов (больше 6000)', msg_nothing: 'Верёвок пока нет: сначала создайте',
 	},
@@ -267,6 +269,11 @@ const isRope = el => el instanceof Mesh && !!(el.rope && el.rope.a && el.rope.b)
 const allRopes = () => (Project ? Mesh.all.filter(el => isRope(el) && el.mesh) : []);
 const isNode = el => (el instanceof Cube || el instanceof Mesh || el instanceof Group) && !!el.mesh && !isRope(el);
 const findNode = uuid => [...Cube.all, ...Mesh.all, ...Group.all].find(n => n.uuid == uuid) || null;
+// what the Physics tab makes of this object: the closest ticked group / element above it decides
+function physicsKind(node) {
+	for (let n = node; n && n != 'root'; n = n.parent) if (n.physics && n.physics.type && n.physics.type != 'none') return n.physics.type;
+	return 'none';
+}
 const worldOfProject = () => Object.assign({gravity: 9.81, ground: true, ground_y: 0}, (Project && Project.physics_world) || {});
 
 function restPose() {
@@ -645,7 +652,7 @@ function updatePanel(force) {
 		if (rope) {
 			const d = ropeOf(rope), e = ends(rope);
 			Object.assign(vue, {segments: d.segments, sides: d.sides, radius: d.radius, slack: d.slack, bend: d.bend, damping: d.damping, elastic: d.elastic,
-				gravity: d.gravity, friction: d.friction, collide: d.collide, attach: d.attach, name: rope.name, a_name: e ? e.a.name : '?', b_name: e ? e.b.name : '?',
+				gravity: d.gravity, friction: d.friction, collide: d.collide, attach: d.attach, name: rope.name, a_name: e ? e.a.name : '?', b_name: e ? e.b.name : '?', a_phys: e ? physicsKind(e.a) : 'none', b_phys: e ? physicsKind(e.b) : 'none',
 				length: Math.round(d.length * 10) / 10});
 		}
 	}
@@ -657,7 +664,7 @@ function updatePanel(force) {
 function panelComponent() {
 	return {
 		data() {
-			return {selection_key: null, has_rope: false, state: 'stopped', rope_count: 0, physics_on: false, name: '', a_name: '', b_name: '', length: 0,
+			return {selection_key: null, has_rope: false, state: 'stopped', rope_count: 0, physics_on: false, name: '', a_name: '', b_name: '', a_phys: 'none', b_phys: 'none', length: 0,
 				segments: 24, sides: 6, radius: 1, slack: 15, bend: 0.2, damping: 0.5, elastic: 0, gravity: 1, friction: 0.5, collide: true, attach: 'surface'};
 		},
 		computed: {
@@ -696,6 +703,8 @@ function panelComponent() {
 				<div v-if="!has_rope" class="rope_dim">{{ t('select_hint') }}</div>
 				<template v-else>
 					<div class="rope_title"><b>{{ name }}</b> <span class="rope_dim">{{ t('ends') }}: {{ a_name }} ↔ {{ b_name }} · {{ t('length') }} {{ length }} px</span></div>
+
+					<div class="rope_dim small" style="margin: 0 0 6px;">{{ a_name }}: {{ t('phys_' + a_phys) }}<br>{{ b_name }}: {{ t('phys_' + b_phys) }}</div>
 
 					<details class="rope_box" open>
 						<summary>{{ t('detail') }} · {{ polys }} {{ t('polys') }}</summary>
@@ -757,7 +766,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical rope between two objects: a real mesh with the polygon count and thickness you choose. It pulls physics objects (with the Physics plugin).',
 	about: 'Open the **Ropes** tab, select two objects (cubes, meshes or groups) and press **Create rope**. A mesh tube appears between them. Change **segments** and **sides** (the polygon count), **thickness**, **slack**, **stiffness**, **stretch**, damping, gravity and friction in the panel. **Simulate** moves the rope on its own: its ends follow the objects, it hangs, swings and lies on other objects and on the ground. In the **Physics** tab the rope is also a real constraint: ropes between physics objects pull them (a tow rope) and a rope on a static object holds a falling body, in the preview and in the bake. **Keep shape** writes the current shape into the mesh.',
 	icon: 'cable',
-	version: '0.1.0',
+	version: '0.1.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
