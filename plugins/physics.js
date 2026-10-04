@@ -2393,7 +2393,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.7.0',
+	version: '0.8.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -2404,7 +2404,7 @@ Plugin.register('physics', {
 		properties.push(new Property(Cube, 'object', 'liquid', {default: null}));
 		properties.push(new Property(Mesh, 'object', 'liquid', {default: null}));
 		properties.push(new Property(Group, 'object', 'force', {default: null}));
-		window.PhysicsPlugin = {simulateFor, reset};
+		window.PhysicsPlugin = {simulateFor, reset, play, pause, bake, sim: () => sim};
 		properties.push(new Property(ModelProject, 'object', 'physics_world', {default: null}));
 		style_node = Blockbench.addCSS(STYLE);
 		mode = new Mode('physics', {

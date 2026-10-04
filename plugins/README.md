@@ -8,7 +8,8 @@ Load a plugin with **File → Plugins → Load Plugin from File**.
 | `render.js` | Render view: materials, skybox, lights, cameras with lens effects |
 | `softbody.js` | Soft body tab: crash deformation of meshes (dents) |
 | `rope.js` | Ropes tab: a physical rope mesh between two objects (segments, sides, thickness, slack...), pulls physics bodies |
+| `ragdoll.js` | Ragdoll tab: character with joints and muscles, shots, flinch and saved reaction poses, falls when hit hard; bakes through the Physics tab |
 | `pipe.js` | Connect: join faces of two meshes with a pipe (right click → Connect faces…): smoothing, path, waypoints, going around obstacles |
 | `seam.js` | Fillet between intersecting meshes (right click → Seam) |
 
-`physics.js`, `softbody.js`, `pipe.js` and `rope.js` are built from `src/`: edit `src/<name>.js` and run `node build.js` (the Jolt WebAssembly blob lives in `jolt.b64` and is inlined into `physics.js`).
+`physics.js`, `softbody.js`, `pipe.js`, `rope.js` and `ragdoll.js` are built from `src/`: edit `src/<name>.js` and run `node build.js` (the Jolt WebAssembly blob lives in `jolt.b64` and is inlined into `physics.js`).
