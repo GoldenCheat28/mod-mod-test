@@ -21,7 +21,7 @@ const SCALE = 16;
 const FIXED_DT = 1 / 120;
 const LAYER_STATIC = 0, LAYER_MOVING = 1;
 
-const DEFAULT_BODY = {type: 'none', mass: 1, friction: 0.5, restitution: 0.3, velocity: [0, 0, 0], spin: [0, 0, 0], impact: false, threshold: 1};
+const DEFAULT_BODY = {type: 'none', mass: 1, friction: 0.5, restitution: 0.3, velocity: [0, 0, 0], spin: [0, 0, 0], impact: false, threshold: 1, shatter: false};
 const DEFAULT_WORLD = {gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2};
 
 // ---------------------------------------------------------------------------
@@ -58,6 +58,7 @@ const TEXTS = {
 		tab_object: 'Object', tab_liquid: 'Liquid', tab_forces: 'Forces',
 		impact: 'Start on impact', impact_desc: 'drives straight, physics turns on at a hit',
 		impact_tip: 'The object keeps its start speed and does not fall, tilt or fall apart until something hits it hard enough',
+		shatter: 'Break apart on impact', shatter_desc: 'every cube / mesh of the group becomes a loose piece', shatter_tip: 'When the group is hit hard enough it stops being one solid body: each cube or mesh in it flies on as its own piece with the speed it had, so a crashed car falls into parts. Needs Start on impact.',
 		threshold: 'Impact threshold (m/s)', threshold_tip: 'How hard the hit must be (sudden change of speed) to turn the physics on',
 		aim_hint: 'Aim: turn the source with the Rotate tool, the arrow shows where it shoots.', aim_tip: 'Switch to the Rotate tool',
 		rotate_tool: 'Rotate', move_tool: 'Move',
@@ -105,6 +106,7 @@ const TEXTS = {
 		tab_object: 'Объект', tab_liquid: 'Жидкость', tab_forces: 'Силы',
 		impact: 'Старт от удара', impact_desc: 'едет прямо, физика включается при ударе',
 		impact_tip: 'Объект держит стартовую скорость и не падает, не кренится и не разваливается, пока что-то не ударит его достаточно сильно',
+		shatter: 'Развалиться от удара', shatter_desc: 'каждый куб / меш группы становится отдельной деталью', shatter_tip: 'Когда по группе бьют достаточно сильно, она перестаёт быть одним цельным телом: каждый куб или меш летит дальше отдельной деталью с той скоростью, что была, и разбитая машина рассыпается на части. Нужен «Старт от удара».',
 		threshold: 'Порог удара (м/с)', threshold_tip: 'Насколько сильным должен быть удар (резкое изменение скорости), чтобы включилась физика',
 		aim_hint: 'Направление: поверните источник инструментом «Вращение», стрелка показывает, куда летит жидкость.', aim_tip: 'Переключиться на вращение',
 		rotate_tool: 'Вращение', move_tool: 'Перемещение',
@@ -221,10 +223,10 @@ function describeBody(node) {
 			const center_local = new THREE.Vector3(...[0, 1, 2].map(i => (el.from[i] + el.to[i]) / 2 - el.origin[i]));
 			const center = el.mesh.localToWorld(center_local).applyMatrix4(inv);
 			const rot = inv_quat.clone().multiply(el.mesh.getWorldQuaternion(new THREE.Quaternion()));
-			parts.push({kind: 'box', half, center, rot});
+			parts.push({kind: 'box', half, center, rot, el, rest_mesh: el.mesh.matrixWorld.clone()});
 		} else if (el instanceof Mesh) {
 			const points = Object.values(el.vertices).map(v => el.mesh.localToWorld(new THREE.Vector3(...v)).applyMatrix4(inv));
-			if (points.length >= 4) parts.push({kind: 'hull', points});
+			if (points.length >= 4) parts.push({kind: 'hull', points, el, rest_mesh: el.mesh.matrixWorld.clone()});
 		}
 	}
 	return {node, settings, pos, quat, world, rest_position: node.mesh.position.clone(), parts};
@@ -349,7 +351,9 @@ function createWorld(descs, world_settings) {
 		const body = bodies.CreateBody(bcs);
 		Jolt.destroy(bcs);
 		bodies.AddBody(body.GetID(), dynamic ? Jolt.EActivation_Activate : Jolt.EActivation_DontActivate);
-		entries.push({desc, body, id: body.GetID(), dormant, kick, hold: dormant ? s.velocity.slice() : null});
+		entries.push({desc, body, id: body.GetID(), dormant, kick, hold: dormant ? s.velocity.slice() : null, broken: false, pieces: null, frozen: null,
+			can_shatter: dormant && !!s.shatter && desc.parts.length > 1 && desc.node instanceof Group,
+			rest_inv: new THREE.Matrix4().compose(desc.pos, desc.quat, new THREE.Vector3(1, 1, 1)).invert()});
 	}
 	return {iface, system, bodies, entries, tmp: new Jolt.Vec3(), tmp2: new Jolt.Vec3()};
 }
@@ -445,12 +449,102 @@ function fieldAccel(f, x, y, z, time, out) {
 }
 
 // ---------------------------------------------------------------------------
+// Break apart: when a waiting group is hit, every cube / mesh of it becomes its own body and flies on with
+// the speed it had at that point (plus a little scatter), so a car crash makes a pile of parts.
+// ---------------------------------------------------------------------------
+
+const ONE = new THREE.Vector3(1, 1, 1);
+let shatter_group_id = 1;
+
+const partLocalMatrix = part => part.kind == 'box' ? new THREE.Matrix4().compose(part.center, part.rot, ONE) : new THREE.Matrix4();
+
+// box around a part in the frame of its group, in px
+function partBounds(part) {
+	if (part.kind == 'hull') return new THREE.Box3().setFromPoints(part.points);
+	const m = new THREE.Matrix4().compose(part.center, part.rot, ONE);
+	const box = new THREE.Box3();
+	for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+		box.expandByPoint(new THREE.Vector3(sx * part.half[0], sy * part.half[1], sz * part.half[2]).applyMatrix4(m));
+	}
+	return box;
+}
+const partVolume = part => { const b = partBounds(part), s = b.getSize(new THREE.Vector3()); return Math.max(1e-6, s.x * s.y * s.z); };
+
+// where a part of a (maybe broken) group is now. ref0 = the world matrix of the thing that wears the part at rest
+function piecePose(entry, i, ref0) {
+	if (!entry.broken) return bodyWorld(entry).multiply(entry.rest_inv).multiply(ref0);
+	const piece = entry.pieces[i];
+	if (!piece) return entry.frozen.clone().multiply(entry.rest_inv).multiply(ref0);
+	return bodyWorld(piece).multiply(piece.anchor_inv).multiply(piece.K).multiply(ref0);
+}
+
+function shatterEntry(rt, entry, impact) {
+	const w = rt.world, desc = entry.desc, s = desc.settings;
+	const compound = bodyWorld(entry);
+	const com = entry.body.GetCenterOfMassPosition(), lv = entry.body.GetLinearVelocity(), av = entry.body.GetAngularVelocity();
+	const com_v = new THREE.Vector3(com.GetX(), com.GetY(), com.GetZ());
+	const lin = new THREE.Vector3(lv.GetX(), lv.GetY(), lv.GetZ()), ang = new THREE.Vector3(av.GetX(), av.GetY(), av.GetZ());
+	const volumes = desc.parts.map(partVolume), total = volumes.reduce((a, b) => a + b, 0);
+	const bounds = desc.parts.map(partBounds);
+	// parts that touch each other at the start do not collide with each other (they would push each other away violently)
+	const filter = new Jolt.GroupFilterTable(desc.parts.length);
+	for (let i = 0; i < bounds.length; i++) for (let j = i + 1; j < bounds.length; j++) {
+		if (bounds[i].clone().expandByScalar(1).intersectsBox(bounds[j])) filter.DisableCollision(i, j);
+	}
+	const group_id = shatter_group_id++;
+	const rnd = randomFor('break' + desc.node.uuid);
+	const scatter = Math.min(8, impact) * 0.3, spin_scatter = Math.min(8, impact) * 60;
+	entry.pieces = [];
+	desc.parts.forEach((part, i) => {
+		const pose = compound.clone().multiply(partLocalMatrix(part));
+		const {pos, quat} = decompose(pose);
+		const result = shapeSettingsFor(part).Create();
+		if (result.HasError()) { entry.pieces.push(null); return; }
+		const jpos = new Jolt.RVec3(pos.x / SCALE, pos.y / SCALE, pos.z / SCALE), jquat = quatToJolt(quat);
+		const bcs = new Jolt.BodyCreationSettings(result.Get(), jpos, jquat, Jolt.EMotionType_Dynamic, LAYER_MOVING);
+		bcs.mFriction = s.friction;
+		bcs.mRestitution = s.restitution;
+		bcs.mOverrideMassProperties = Jolt.EOverrideMassProperties_CalculateInertia;
+		bcs.mMassPropertiesOverride.mMass = Math.max(0.001, s.mass * volumes[i] / total);
+		bcs.mMotionQuality = Jolt.EMotionQuality_LinearCast;
+		bcs.mCollisionGroup.SetGroupFilter(filter);
+		bcs.mCollisionGroup.SetGroupID(group_id);
+		bcs.mCollisionGroup.SetSubGroupID(i);
+		// the speed of this spot of the old body, plus a random kick
+		const r = pos.clone().multiplyScalar(1 / SCALE).sub(com_v);
+		const v = lin.clone().add(new THREE.Vector3().crossVectors(ang, r));
+		v.x += rnd() * scatter; v.y += Math.abs(rnd()) * scatter * 0.6; v.z += rnd() * scatter;
+		const spin = ang.clone().add(new THREE.Vector3(rnd(), rnd(), rnd()).multiplyScalar(spin_scatter * Math.PI / 180));
+		bcs.mLinearVelocity = v3(v.x, v.y, v.z);
+		bcs.mAngularVelocity = v3(spin.x, spin.y, spin.z);
+		const body = w.bodies.CreateBody(bcs);
+		Jolt.destroy(bcs); Jolt.destroy(jpos); Jolt.destroy(jquat);
+		w.bodies.AddBody(body.GetID(), Jolt.EActivation_Activate);
+		const local_part = part.kind == 'box'
+			? {kind: 'box', half: part.half, center: new THREE.Vector3(), rot: new THREE.Quaternion(), el: part.el, rest_mesh: part.rest_mesh}
+			: part;
+		const piece = {desc: {node: part.el, settings: s, parts: [local_part], pos, quat}, body, id: body.GetID(), dormant: false, kick: null, hold: null,
+			piece_of: entry, part_index: i, can_shatter: false};
+		piece.anchor_inv = bodyWorld(piece).invert();
+		piece.K = compound.clone().multiply(entry.rest_inv);
+		entry.pieces.push(piece);
+		w.entries.push(piece);
+	});
+	// the whole body is gone, its parts took over
+	entry.frozen = compound;
+	w.bodies.RemoveBody(entry.id);
+	w.bodies.DestroyBody(entry.id);
+	entry.body = null;
+	entry.broken = true;
+}
+
+// ---------------------------------------------------------------------------
 // Runtime: the Jolt world, the liquid and the fields stepped together (preview and bake share it)
 // ---------------------------------------------------------------------------
 
 const IMPACT_SPIN = 3;   // rad/s: a waiting object that gets spun faster than this by a hit starts too
 
-function wakeEntry(rt, entry) {
+function wakeEntry(rt, entry, impact = 0) {
 	const w = rt.world, s = entry.desc.settings;
 	entry.dormant = false;
 	w.bodies.SetGravityFactor(entry.id, 1);
@@ -460,6 +554,7 @@ function wakeEntry(rt, entry) {
 	w.tmp2.Set(...entry.kick.spin.map(d => d * Math.PI / 180));
 	w.bodies.AddLinearAndAngularVelocity(entry.id, w.tmp, w.tmp2);
 	entry.woke_at = rt.time;
+	if (entry.can_shatter) shatterEntry(rt, entry, impact);
 }
 
 // objects that wait for an impact keep going straight at their start speed until something hits them hard enough
@@ -473,11 +568,11 @@ function holdWaiting(world) {
 	}
 }
 function wakeHit(rt) {
-	for (const e of rt.world.entries) {
-		if (!e.dormant) continue;
-		const lv = e.body.GetLinearVelocity(), av = e.body.GetAngularVelocity();
+	for (const e of [...rt.world.entries]) {
+	if (!e.dormant) continue;
+	const lv = e.body.GetLinearVelocity(), av = e.body.GetAngularVelocity();
 		const dv = Math.hypot(lv.GetX() - e.hold[0], lv.GetY() - e.hold[1], lv.GetZ() - e.hold[2]);
-		if (dv > Math.max(0.05, e.desc.settings.threshold) || Math.hypot(av.GetX(), av.GetY(), av.GetZ()) > IMPACT_SPIN) wakeEntry(rt, e);
+		if (dv > Math.max(0.05, e.desc.settings.threshold) || Math.hypot(av.GetX(), av.GetY(), av.GetZ()) > IMPACT_SPIN) wakeEntry(rt, e, dv);
 	}
 }
 
@@ -485,7 +580,7 @@ const tmp_accel = new THREE.Vector3();
 function pushBodies(rt) {
 	const w = rt.world;
 	for (const e of w.entries) {
-		if (e.desc.settings.type != 'dynamic' || e.dormant) continue;
+		if (e.desc.settings.type != 'dynamic' || e.dormant || e.broken) continue;
 		const p = e.body.GetPosition(), x = p.GetX() * SCALE, y = p.GetY() * SCALE, z = p.GetZ() * SCALE;
 		let ax = 0, ay = 0, az = 0, noisy = 0;
 		for (const f of rt.fields) {
@@ -522,6 +617,7 @@ function bindSources(liquid, world, descs) {
 		const center = new THREE.Vector3(), quat = new THREE.Quaternion(), bquat = new THREE.Quaternion(), bpos = new THREE.Vector3(), scale = new THREE.Vector3(), M = new THREE.Matrix4();
 		const point = new Jolt.RVec3(0, 0, 0);
 		e.follow = em => {
+		if (entry.broken) return;   // a source on a body that fell apart stays where the body broke
 			const W = bodyWorld(entry);
 			W.decompose(bpos, bquat, scale);
 			M.copy(W).multiply(rel).decompose(center, quat, scale);
@@ -606,6 +702,7 @@ function sourceBox(el) {
 function liquidColliders(world) {
 	const boxes = [];
 	for (const entry of world.entries) {
+		if (entry.broken) continue;
 		const W = bodyWorld(entry);
 		const {pos, quat} = decompose(W);
 		for (const part of entry.desc.parts) {
@@ -1301,9 +1398,26 @@ function unpackShapes(packed) {
 
 let sim = null;   // {world, time, acc, last, playing}
 
+// a group that fell apart: every part is placed on its own
+function poseParts(entry) {
+	entry.desc.parts.forEach((part, i) => {
+		const mesh = part.el.mesh;
+		if (!mesh || !mesh.parent) return;
+		mesh.parent.updateMatrixWorld(true);
+		const local = new THREE.Matrix4().copy(mesh.parent.matrixWorld).invert().multiply(piecePose(entry, i, part.rest_mesh));
+		const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scale = new THREE.Vector3();
+		local.decompose(pos, quat, scale);
+		mesh.position.copy(pos);
+		mesh.quaternion.copy(quat);
+		mesh.scale.copy(scale);
+		mesh.updateMatrixWorld(true);
+	});
+}
+
 function applyPoses(entries) {
 	for (const entry of entries) {
-		if (entry.desc.settings.type != 'dynamic') continue;
+		if (entry.piece_of || entry.desc.settings.type != 'dynamic') continue;
+		if (entry.broken) { poseParts(entry); continue; }
 		const mesh = entry.desc.node.mesh;
 		mesh.parent.updateMatrixWorld(true);
 		const local = new THREE.Matrix4().copy(mesh.parent.matrixWorld).invert().multiply(bodyWorld(entry));
@@ -1439,8 +1553,20 @@ async function bake() {
 
 	// Blockbench animates groups only: ticked cubes / meshes get their own group (same pivot, same random seed)
 	const loose = bodyNodes().filter(n => isPart(n) && typeOf(n) == 'dynamic');
-	Undo.initEdit({outliner: true, groups: [], elements: loose, animations: [], selection: true});
+	// groups that fall apart on impact: each of their cubes / meshes needs its own group to be animated
+	const breaking = bodyNodes().filter(n => n instanceof Group && typeOf(n) == 'dynamic' && bodyOf(n).impact && bodyOf(n).shatter);
+	const pieces = breaking.flatMap(g => partsOf(g)).filter(el => el.parent instanceof Group);
+	const wrapper_of = new Map();
+	Undo.initEdit({outliner: true, groups: [], elements: [...loose, ...pieces], animations: [], selection: true});
 	const new_groups = [];
+	for (const el of pieces) {
+		const wrapper = new Group({name: el.name, origin: el.origin.slice()});
+		wrapper.addTo(el.parent);
+		wrapper.init();
+		el.addTo(wrapper);
+		wrapper_of.set(el, wrapper);
+		new_groups.push(wrapper);
+	}
 	for (const el of loose) {
 		const group = new Group({name: el.name, origin: el.origin.slice()});
 		if (el.parent instanceof Group) group.addTo(el.parent);
@@ -1450,11 +1576,11 @@ async function bake() {
 		el.physics = null;
 		new_groups.push(group);
 	}
-	if (loose.length) Canvas.updateAll();
+	if (loose.length || pieces.length) Canvas.updateAll();
 	restPose();
 
 	const descs = bodyNodes().map(describeBody);
-	const dynamic = descs.filter(d => d.settings.type == 'dynamic');
+	const dynamic = descs.filter(d => d.settings.type == 'dynamic' && !(d.settings.impact && d.settings.shatter && d.parts.length > 1 && d.node instanceof Group));
 	const ws = worldOf();
 	const fps = Math.max(1, Math.round(ws.fps));
 	const frames = Math.max(1, Math.round(ws.duration * fps));
@@ -1463,11 +1589,24 @@ async function bake() {
 	const liquid_frames = [], liquid_shapes = [];
 
 	// sample every body's world transform (and the liquid) at every frame
-	const tracks = new Map(world.entries.map(e => [e.desc.node, []]));
+	const base_entries = world.entries.slice();   // pieces created by a break come later and are followed through their group
+	const tracks = new Map();
+	const part_tracks = [];
+	for (const e of base_entries) {
+		if (!e.can_shatter) { tracks.set(e.desc.node, []); continue; }
+		e.desc.parts.forEach((part, i) => {
+			const wrapper = wrapper_of.get(part.el);
+			if (!wrapper) return;
+			tracks.set(wrapper, []);
+			part_tracks.push({entry: e, i, wrapper, ref0: wrapper.mesh.matrixWorld.clone()});
+			dynamic.push({node: wrapper, rest_position: wrapper.mesh.position.clone()});
+		});
+	}
 	for (let f = 0; f <= frames; f++) {
 	const target = f / fps;
 	while (rt.time + FIXED_DT / 2 < target) stepRuntime(rt);
-		world.entries.forEach(e => tracks.get(e.desc.node).push(bodyWorld(e)));
+	base_entries.forEach(e => { if (!e.can_shatter) tracks.get(e.desc.node).push(bodyWorld(e)); });
+	part_tracks.forEach(t => tracks.get(t.wrapper).push(piecePose(t.entry, t.i, t.ref0)));
 		if (liquid) {
 			liquid_frames.push(snapshotLiquid(liquid));
 			if (ws.liquid_view != 'points') liquid_shapes.push(packShapes(liquidShapes(liquid)));
@@ -1480,9 +1619,10 @@ async function bake() {
 	destroyWorld(world);
 
 	// animated world transform of any group at a frame (bodies follow their track, the rest follow their parents)
+	const wrapper_set = new Set(wrapper_of.values());
 	const rest_world = g => descs.find(d => d.node == g)?.world || g.mesh.matrixWorld.clone();
 	const animatedWorld = (node, f) => {
-		if (tracks.has(node) && typeOf(node) == 'dynamic') return tracks.get(node)[f].clone();
+		if (tracks.has(node) && (typeOf(node) == 'dynamic' || wrapper_set.has(node))) return tracks.get(node)[f].clone();
 		const parent = node.parent instanceof Group ? node.parent : null;
 		if (!parent) return rest_world(node);
 		const local = new THREE.Matrix4().copy(rest_world(parent)).invert().multiply(rest_world(node));
@@ -1514,7 +1654,7 @@ async function bake() {
 			}
 		}
 	}
-	Undo.finishEdit('Bake physics', {outliner: true, groups: new_groups, elements: loose, animations: [animation], selection: true});
+	Undo.finishEdit('Bake physics', {outliner: true, groups: new_groups, elements: [...loose, ...pieces], animations: [animation], selection: true});
 	if (liquid) {
 		liquid_bakes.set(animation.uuid, {fps, r: liquid.r, view: ws.liquid_view, sources, frames: liquid_frames, shapes: liquid_shapes.length ? liquid_shapes : null,
 			emitters: liquid.emitters.map(e => ({index: e.index, s: Object.assign({}, e.s)}))});
@@ -1703,7 +1843,7 @@ function updatePanel() {
 		Object.assign(vue, {l_amount: l.amount, l_size: l.size, l_speed: l.speed, l_spread: l.spread,
 			l_emit_time: l.emit_time, l_cohesion: l.cohesion, l_stickiness: l.stickiness, l_thickness: l.thickness, l_gravity: l.gravity, l_color: l.color, l_look: l.look});
 		const s = bodyOf(nodes.find(n => typeOf(n) == 'dynamic') || nodes[0] || {});
-		Object.assign(vue, {mass: s.mass, friction: s.friction, restitution: s.restitution, impact: !!s.impact, threshold: s.threshold,
+		Object.assign(vue, {mass: s.mass, friction: s.friction, restitution: s.restitution, impact: !!s.impact, threshold: s.threshold, shatter: !!s.shatter,
 			vx: s.velocity[0], vy: s.velocity[1], vz: s.velocity[2], sx: s.spin[0], sy: s.spin[1], sz: s.spin[2]});
 		vue.f_available = nodes.length > 0 && nodes.every(n => n instanceof Group);
 		vue.f_enabled = vue.f_available && nodes.every(isForce);
@@ -1738,7 +1878,7 @@ function panelComponent() {
 			return {
 				tab: 'object',
 				selection_key: null, count: 0, has_group: false, label: '', owner: '', type: 'none', world_project: '', state: 'stopped', time: '0.00',
-				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
+				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, shatter: false, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
 				gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2,
 				l_available: false, l_enabled: false, l_amount: 1500, l_size: 0.35, l_speed: 6, l_spread: 12,
 				l_emit_time: 0.3, l_cohesion: 0.35, l_stickiness: 0.6, l_thickness: 0.35, l_gravity: 1, l_color: '#7c0a0a', l_look: 0.5,
@@ -1761,7 +1901,7 @@ function panelComponent() {
 			saveBody() {
 				const values = {
 					mass: num(this.mass, 1), friction: num(this.friction, 0.5), restitution: num(this.restitution, 0.3),
-					impact: !!this.impact, threshold: Math.max(0, num(this.threshold, 1)),
+					impact: !!this.impact, threshold: Math.max(0, num(this.threshold, 1)), shatter: !!this.shatter,
 					velocity: [num(this.vx, 0), num(this.vy, 0), num(this.vz, 0)],
 					spin: [num(this.sx, 0), num(this.sy, 0), num(this.sz, 0)],
 				};
@@ -1906,8 +2046,12 @@ function panelComponent() {
 								<span><b>{{ t('impact') }}</b> — {{ t('impact_desc') }}</span>
 							</label>
 							<div v-if="impact" class="physics_grid g1">
-								<label :title="t('threshold_tip')">{{ t('threshold') }}<input type="number" step="0.1" min="0" v-model="threshold" @change="saveBody()"></label>
+							<label :title="t('threshold_tip')">{{ t('threshold') }}<input type="number" step="0.1" min="0" v-model="threshold" @change="saveBody()"></label>
 							</div>
+							<label v-if="impact && has_group" class="physics_check" :title="t('shatter_tip')">
+							<input type="checkbox" v-model="shatter" @change="saveBody()">
+							<span><b>{{ t('shatter') }}</b> — {{ t('shatter_desc') }}</span>
+							</label>
 						</div>
 					</template>
 
@@ -2085,7 +2229,7 @@ const onPoll = () => {
 	if (Modes.physics && !sim) updateArrows();
 };
 
-if (typeof __PHYSICS_EXPORT !== 'undefined') __PHYSICS_EXPORT({createRuntime, stepRuntime, forceNodes, LiquidSim, DEFAULT_LIQUID, setJolt: j => { Jolt = j; }, createWorld, describeBody, liquidColliders, bodyWorld, DEFAULT_WORLD, DEFAULT_BODY, FIXED_DT, LIQUID_DT, SCALE});
+if (typeof __PHYSICS_EXPORT !== 'undefined') __PHYSICS_EXPORT({piecePose, createRuntime, stepRuntime, forceNodes, LiquidSim, DEFAULT_LIQUID, setJolt: j => { Jolt = j; }, createWorld, describeBody, liquidColliders, bodyWorld, DEFAULT_WORLD, DEFAULT_BODY, FIXED_DT, LIQUID_DT, SCALE});
 if (typeof Plugin === 'undefined' || typeof Blockbench === 'undefined') return;
 
 Plugin.register('physics', {
