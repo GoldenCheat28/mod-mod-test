@@ -80,10 +80,17 @@ const roleOf = g => { const b = boneOf(g); return b.role || roleOfName(g.name); 
 const zoneOfRole = role => ({head: 'head', neck: 'head', chest: 'torso', abdomen: 'torso', pelvis: 'torso', upperarm: 'arms', forearm: 'arms', hand: 'arms', thigh: 'legs', shin: 'legs', foot: 'legs'})[role] || '';
 
 // the joint a part of the body normally has (swing and twist in degrees, hinges have a range)
-const JOINTS = {
-	abdomen: {joint: 'ball', swing: 25, twist: 25, strength: 2.2}, chest: {joint: 'ball', swing: 20, twist: 25, strength: 1.8}, neck: {joint: 'ball', swing: 35, twist: 40, strength: 1.2}, head: {joint: 'ball', swing: 40, twist: 45, strength: 1.2},
-	upperarm: {joint: 'ball', swing: 120, twist: 60, strength: 1}, forearm: {joint: 'hinge', hmin: -5, hmax: 150, strength: 1}, hand: {joint: 'ball', swing: 45, twist: 30, strength: 0.8},
-	thigh: {joint: 'ball', swing: 95, twist: 25, strength: 2.6}, shin: {joint: 'hinge', hmin: -150, hmax: 5, strength: 3}, foot: {joint: 'ball', swing: 35, twist: 15, strength: 3}, pelvis: {joint: 'ball', swing: 30, twist: 20, strength: 2},
+const JOINTS = {   // the joints of the Blood ragdoll: limits in degrees (swing, twist, hinge range), the strength of the muscle
+	pelvis: {joint: 'ball', swing: 30, twist: 20, strength: 2}, abdomen: {joint: 'ball', swing: 30, twist: 26, strength: 2.2}, chest: {joint: 'ball', swing: 26, twist: 23, strength: 1.8},
+	neck: {joint: 'ball', swing: 35, twist: 40, strength: 1.2}, head: {joint: 'ball', swing: 40, twist: 63, strength: 1.2},
+	upperarm: {joint: 'ball', swing: 130, twist: 70, strength: 1}, forearm: {joint: 'hinge', hmin: 0, hmax: 143, strength: 1}, hand: {joint: 'ball', swing: 34, twist: 6, strength: 0.8},
+	thigh: {joint: 'ball', swing: 100, twist: 30, strength: 2.6}, shin: {joint: 'hinge', hmin: -143, hmax: 0, strength: 3}, foot: {joint: 'ball', swing: 40, twist: 9, strength: 3},
+};
+// what every part weighs (kg, the whole body 74), how fast its muscle works (rad/s) and how strong it is (N·m): from the Blood ragdoll
+const ROLE_PARAMS = {
+	pelvis: {mass: 10.5, omega: 17, torque: 380}, abdomen: {mass: 10.3, omega: 17, torque: 380}, chest: {mass: 16, omega: 17, torque: 380}, neck: {mass: 1.2, omega: 15, torque: 60}, head: {mass: 6, omega: 15, torque: 70},
+	upperarm: {mass: 2.1, omega: 14, torque: 130}, forearm: {mass: 1.2, omega: 12, torque: 80}, hand: {mass: 0.55, omega: 11, torque: 32},
+	thigh: {mass: 7.4, omega: 18, torque: 480}, shin: {mass: 3.45, omega: 18, torque: 380}, foot: {mass: 1.07, omega: 14, torque: 140},
 };
 
 // ---------------------------------------------------------------------------
@@ -314,7 +321,7 @@ class RagdollRuntime {
 		const rel = (role, side, x, y, z) => { const b = byRole(role, side); if (b) targets.set(b, q(x, y, z).multiply(b.rest_local)); };
 		// arm poses found for the character: [upper arm x, z], [forearm x, z], hand x (z is mirrored for the other arm)
 		const ARM = {
-			head: [[72, -14], [126, -4], 0], chest: [[0, -2], [150, -36], -10], belly: [[0, -20], [150, -60], 0],
+			head: [[78, -2], [114, -16], 0], chest: [[0, -2], [144, -36], 0], belly: [[0, 28], [72, 0], 0],
 			pull: [[18, 10], [100, -25], 0], balance: [[0, -40], [8, 0], 0], guard: [[40, -10], [120, -10], 0],
 		};
 		const arm = (side, name) => { const [u, fo, h] = ARM[name]; set('upperarm', side, u[0], 0, -side * u[1]); set('forearm', side, fo[0], 0, -side * fo[1]); set('hand', side, h, 0, 0); };
@@ -525,11 +532,14 @@ function bonesOf(root) {
 function buildRagdoll(root, total_mass) {
 	const bones = bonesOf(root);
 	if (bones.length < 2) return {error: 'few'};
-	const sum = bones.reduce((s, g) => s + Math.max(volumeOf(g), 1), 0);
+	const roles = bones.map(g => (g.bone && g.bone.role) || roleOfName(g.name));
+	const anatomy = roles.every(r => ROLE_PARAMS[r]);   // known body parts: the weights of a real body, else by volume
+	const weight = (g, i) => anatomy ? ROLE_PARAMS[roles[i]].mass : Math.max(volumeOf(g), 1);
+	const sum = bones.reduce((s, g, i) => s + weight(g, i), 0);
 	const mass = total_mass || ragdollOf(root).total_mass;
 	root.ragdoll = Object.assign(ragdollOf(root), {enabled: true, total_mass: mass});
-	for (const g of bones) {
-		g.physics = Object.assign({}, g.physics || {}, {type: 'dynamic', mass: Math.max(0.2, Math.round(mass * Math.max(volumeOf(g), 1) / sum * 100) / 100), friction: 0.7, restitution: 0.05, velocity: (g.physics && g.physics.velocity) || [0, 0, 0]});
+	for (const [gi, g] of bones.entries()) {
+		g.physics = Object.assign({}, g.physics || {}, {type: 'dynamic', mass: Math.max(0.2, Math.round(mass * weight(g, gi) / sum * 100) / 100), friction: 0.7, restitution: 0.05, velocity: (g.physics && g.physics.velocity) || [0, 0, 0]});
 		const old = g.bone || {}, role = old.role || roleOfName(g.name), jd = (!old.joint && JOINTS[role]) || null;
 		g.bone = Object.assign({}, DEFAULT_BONE, old, jd || {}, {role, joint: old.joint || (jd && jd.joint) || (hingeByName(g.name) ? 'hinge' : 'ball'), rest: (old.rest || g.rotation || [0, 0, 0]).slice(), hinge_axis: old.hinge_axis || 'x'});
 		if (!jd && !old.joint && hingeByName(g.name)) { g.bone.hmin = -140; g.bone.hmax = 140; }
@@ -547,7 +557,7 @@ function removeRagdoll(root) {
 // ---------------------------------------------------------------------------
 
 // angles are in three.js terms (degrees): x tips a limb that hangs down toward -Z (the front), z swings it sideways
-const POSES = {
+const POSES = {   // the simple mannequin
 	stand: {   // relaxed: arms hang with a little bend at the elbows, the feet turned out a little, knees not locked
 		upperarm: {x: -4, z: -6}, forearm: {x: 14, z: 0}, hand: {x: 4, z: 0}, thigh: {x: 2, z: 2}, shin: {x: -3, z: 0}, foot: {x: 1, y: 8},
 		abdomen: {x: 0}, chest: {x: 1}, neck: {x: 2}, head: {x: -1}, pelvis: {x: 0},
@@ -558,7 +568,61 @@ const POSES = {
 	},
 };
 
+
+// ---- the person from the game Blood: 15 body parts with the proportions and the joints of that ragdoll (1.8 m tall) ----
+
+const NPC_COLORS = {skin: '#cc9e80', shirt: '#59738f', pants: '#33383f', shoes: '#1f1a1a', hair: '#33231a', eye: '#141010', lips: '#4a1a18', chair: '#7a5a3a'};
+const NPC_MATERIALS = ['skin', 'shirt', 'pants', 'shoes', 'hair', 'eye', 'lips', 'chair'];
+
+const NPC_POSES = {
+	stand: {upperarm: {x: -3, z: -5}, forearm: {x: 10, z: 0}, hand: {x: 4, z: 0}, thigh: {x: 1, z: 1}, shin: {x: -2, z: 0}, foot: {x: 1, y: 6}},
+	sit: {thigh: {x: 90, z: 3}, shin: {x: -90, z: 0}, foot: {x: 0, y: 5}, abdomen: {x: -3}, chest: {x: -2}, head: {x: 2},
+		upperarm: {x: 0, z: 20}, forearm: {x: 75, z: 0}, hand: {x: 0}},
+};
+
+// all in metres here, the result in pixels (16 px = 1 m)
+function npcSpec(o = {}) {
+	const pose = NPC_POSES[o.pose] ? o.pose : 'stand', P = NPC_POSES[pose], sit = pose == 'sit';
+	const k = (o.height ? o.height / 28.7 : 1) * SCALE;     // metres -> pixels (the character is 1.795 m tall)
+	const drop = sit ? 0.415 : 0;                             // sitting: the body comes down by the thigh
+	const bones = [], rnd = v => Math.round(v * 1000) / 1000;
+	const r = (p, ax) => (p && p[ax]) || 0;
+	const cube = (c, size, mat) => ({from: [0, 1, 2].map(i => rnd((c[i] - size[i] / 2) * k)), to: [0, 1, 2].map(i => rnd((c[i] + size[i] / 2) * k)), mat});
+	const add = (name, role, parent, pivot, cubes, rot) => bones.push({name, role, parent, pivot: pivot.map(v => rnd(v * k)), cubes, rot: rot || [0, 0, 0]});
+	const hi = y => y - drop;   // a height of the upper body
+	add('Pelvis', 'pelvis', null, [0, hi(0.97), 0], [cube([0, hi(0.97), 0], [0.36, 0.27, 0.23], 'pants')], [0, 0, 0]);
+	add('Abdomen', 'abdomen', 'Pelvis', [0, hi(1.05), 0], [cube([0, hi(1.14), 0], [0.31, 0.25, 0.205], 'shirt')], [r(P.abdomen, 'x'), 0, 0]);
+	add('Chest', 'chest', 'Abdomen', [0, hi(1.245), 0], [cube([0, hi(1.36), 0], [0.40, 0.30, 0.24], 'shirt'), cube([0, hi(1.43), 0.01], [0.44, 0.18, 0.2], 'shirt')], [r(P.chest, 'x'), 0, 0]);
+	add('Head', 'head', 'Chest', [0, hi(1.53), 0], [
+		cube([0, hi(1.545), 0], [0.11, 0.17, 0.11], 'skin'),                     // neck
+		cube([0, hi(1.675), -0.01], [0.186, 0.235, 0.216], 'skin'),                // skull
+		cube([0, hi(1.605), -0.045], [0.147, 0.1, 0.168], 'skin'),                 // jaw
+		cube([0, hi(1.66), -0.113], [0.034, 0.05, 0.034], 'skin'),                 // nose
+		cube([0.093, hi(1.665), 0], [0.022, 0.05, 0.04], 'skin'), cube([-0.093, hi(1.665), 0], [0.022, 0.05, 0.04], 'skin'),   // ears
+		cube([0.035, hi(1.69), -0.102], [0.022, 0.016, 0.011], 'eye'), cube([-0.035, hi(1.69), -0.102], [0.022, 0.016, 0.011], 'eye'),
+		cube([0, hi(1.593), -0.108], [0.05, 0.008, 0.012], 'lips'),                // mouth
+		cube([0, hi(1.76), 0.005], [0.2, 0.09, 0.225], 'hair'),                    // hair
+	], [r(P.head, 'x'), 0, 0]);
+	for (const s of [1, -1]) {
+		const L = s > 0 ? 'R' : 'L';
+		add('Upper Arm ' + L, 'upperarm', 'Chest', [s * 0.22, hi(1.43), 0], [cube([s * 0.25, hi(1.3), 0], [0.116, 0.32, 0.116], 'shirt'), cube([s * 0.25, hi(1.42), 0], [0.124, 0.12, 0.124], 'shirt')], [r(P.upperarm, 'x'), 0, -s * r(P.upperarm, 'z')]);
+		add('Forearm ' + L, 'forearm', 'Upper Arm ' + L, [s * 0.25, hi(1.155), 0], [cube([s * 0.25, hi(1.02), 0], [0.094, 0.29, 0.094], 'skin')], [r(P.forearm, 'x'), 0, -s * r(P.forearm, 'z')]);
+		add('Hand ' + L, 'hand', 'Forearm ' + L, [s * 0.25, hi(0.88), 0], [cube([s * 0.25, hi(0.812), -0.005], [0.044, 0.11, 0.078], 'skin'), cube([s * 0.25, hi(0.87), -0.005], [0.06, 0.1, 0.06], 'skin'), cube([s * 0.25, hi(0.84), -0.052], [0.022, 0.045, 0.022], 'skin')], [r(P.hand, 'x'), 0, 0]);
+		add('Thigh ' + L, 'thigh', 'Pelvis', [s * 0.1, hi(0.92), 0], [cube([s * 0.1, hi(0.72), 0], [0.164, 0.46, 0.164], 'pants')], [r(P.thigh, 'x'), 0, -s * r(P.thigh, 'z')]);
+		add('Shin ' + L, 'shin', 'Thigh ' + L, [s * 0.1, hi(0.505) + (sit ? 0 : 0), 0], [cube([s * 0.1, hi(0.29), 0], [0.124, 0.46, 0.124], 'pants')], [r(P.shin, 'x'), 0, 0]);
+		add('Foot ' + L, 'foot', 'Shin ' + L, [s * 0.1, hi(0.08), 0], [cube([s * 0.1, hi(0.045), -0.055], [0.1, 0.08, 0.26], 'shoes'), cube([s * 0.1, hi(0.065), 0.025], [0.1, 0.06, 0.07], 'shoes')], [r(P.foot, 'x'), s * r(P.foot, 'y'), 0]);
+	}
+	let chair = null;
+	if (sit) {
+		const top = 0.505 - 0.082, t = 0.04;   // the thighs lie on the seat
+		const post = (sx, zc) => cube([sx * 0.2, top / 2 - t / 2, zc], [0.03, top - t, 0.03], 'chair');
+		chair = {name: 'Chair', cubes: [cube([0, top - t / 2, -0.05], [0.5, t, 0.5], 'chair'), cube([0, top + 0.28, 0.22], [0.46, 0.55, 0.04], 'chair'), post(1, 0.18), post(-1, 0.18), post(1, -0.3), post(-1, -0.3)]};
+	}
+	return {bones, chair, pose, model: 'npc'};
+}
+
 function characterSpec(o = {}) {
+	if (o.model != 'mannequin') return npcSpec(o);
 	const k = (o.height || 28.6) / 28.6, pose = POSES[o.pose] ? o.pose : 'stand', P = POSES[pose], sit = pose == 'sit';
 	const y = v => v * k;
 	const drop = sit ? y(6.9) : 0;   // sitting: the whole body comes down by the length of the thigh
@@ -599,10 +663,34 @@ function characterSpec(o = {}) {
 	return {bones, chair, pose};
 }
 
+
+// a small colour texture for the character (skin, shirt, pants, shoes, hair...) and the faces that use it
+function npcPalette() {
+	try {
+		if (typeof Texture == 'undefined' || typeof document == 'undefined') return null;
+		const found = (Texture.all || []).find(t => t.name == 'npc_palette.png' || t.name == 'npc_palette');
+		if (found) return found;
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = 16;
+		const c = canvas.getContext('2d');
+		NPC_MATERIALS.forEach((m, i) => { c.fillStyle = NPC_COLORS[m]; c.fillRect((i % 4) * 4, Math.floor(i / 4) * 4, 4, 4); });
+		return new Texture({name: 'npc_palette.png'}).fromDataURL(canvas.toDataURL()).add(false);
+	} catch (err) { console.warn('[Ragdoll] palette', err); return null; }
+}
+function paintCube(el, mat, texture) {
+	try {
+		const k = Math.max(0, NPC_MATERIALS.indexOf(mat || 'skin')), ratio = ((typeof Project != 'undefined' && Project && Project.texture_width) || 16) / 16;
+		const x = (k % 4) * 4, y = Math.floor(k / 4) * 4, uv = [(x + 1) * ratio, (y + 1) * ratio, (x + 3) * ratio, (y + 3) * ratio];
+		for (const f of ['north', 'east', 'south', 'west', 'up', 'down']) { if (el.faces && el.faces[f]) { el.faces[f].uv = uv.slice(); el.faces[f].texture = texture.uuid; } }
+		if (typeof Canvas != 'undefined' && Canvas.updateView) Canvas.updateView({elements: [el], element_aspects: {uv: true, faces: true}});
+	} catch (err) { /* unpainted */ }
+}
+
 // makes the groups and cubes of the character; returns the group that holds the character
 function createCharacter(o = {}) {
 	const spec = characterSpec(o), made = new Map();
 	Undo.initEdit({outliner: true, elements: [], groups: [], selection: true});
+	const palette = spec.model == 'npc' ? npcPalette() : null;
 	const root = new Group({name: 'Character', origin: [0, 0, 0]});
 	root.addTo('root').init();
 	const groups = [root], elements = [];
@@ -614,6 +702,7 @@ function createCharacter(o = {}) {
 		for (const c of b.cubes) {
 			const el = new Cube({name: b.name.toLowerCase().replace(/ /g, '_'), from: c.from, to: c.to, origin: [0, 1, 2].map(i => (c.from[i] + c.to[i]) / 2)});
 			el.addTo(g).init();
+			if (palette && c.mat) paintCube(el, c.mat, palette);
 			elements.push(el);
 		}
 	}
@@ -626,6 +715,7 @@ function createCharacter(o = {}) {
 		for (const c of spec.chair.cubes) {
 			const el = new Cube({name: 'chair', from: c.from, to: c.to, origin: [0, 1, 2].map(i => (c.from[i] + c.to[i]) / 2)});
 			el.addTo(chair).init();
+			if (palette) paintCube(el, 'chair', palette);
 			elements.push(el);
 		}
 	}
@@ -1653,7 +1743,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
