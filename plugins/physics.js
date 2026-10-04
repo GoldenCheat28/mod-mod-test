@@ -21,7 +21,7 @@ const SCALE = 16;
 const FIXED_DT = 1 / 120;
 const LAYER_STATIC = 0, LAYER_MOVING = 1;
 
-const DEFAULT_BODY = {type: 'none', mass: 1, friction: 0.5, restitution: 0.3, velocity: [0, 0, 0], spin: [0, 0, 0], impact: false, threshold: 1, shatter: false};
+const DEFAULT_BODY = {type: 'none', mass: 1, friction: 0.5, restitution: 0.3, velocity: [0, 0, 0], spin: [0, 0, 0], impact: false, threshold: 1, shatter: false, scatter: 1};
 const DEFAULT_WORLD = {gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2};
 
 // ---------------------------------------------------------------------------
@@ -58,8 +58,9 @@ const TEXTS = {
 		tab_object: 'Object', tab_liquid: 'Liquid', tab_forces: 'Forces',
 		impact: 'Start on impact', impact_desc: 'drives straight, physics turns on at a hit',
 		impact_tip: 'The object keeps its start speed and does not fall, tilt or fall apart until something hits it hard enough',
+		scatter: 'Scatter strength', scatter_tip: 'How violently the parts fly apart (grows with the speed of the hit). 0 = they just keep their speed, 1 = normal, 3 = explosion',
 		shatter: 'Break apart on impact', shatter_desc: 'every cube / mesh of the group becomes a loose piece', shatter_tip: 'When the group is hit hard enough it stops being one solid body: each cube or mesh in it flies on as its own piece with the speed it had, so a crashed car falls into parts. Needs Start on impact.',
-		threshold: 'Impact threshold (m/s)', threshold_tip: 'How hard the hit must be (sudden change of speed) to turn the physics on',
+		threshold: 'Impact strength needed (m/s)', threshold_tip: 'How hard the hit must be (sudden change of speed) to turn the physics on. Higher = tougher, softer touches do nothing',
 		aim_hint: 'Aim: turn the source with the Rotate tool, the arrow shows where it shoots.', aim_tip: 'Switch to the Rotate tool',
 		rotate_tool: 'Rotate', move_tool: 'Move',
 		l_flow: 'Flow', l_material: 'Material', l_view: 'View and bake',
@@ -106,8 +107,9 @@ const TEXTS = {
 		tab_object: 'Объект', tab_liquid: 'Жидкость', tab_forces: 'Силы',
 		impact: 'Старт от удара', impact_desc: 'едет прямо, физика включается при ударе',
 		impact_tip: 'Объект держит стартовую скорость и не падает, не кренится и не разваливается, пока что-то не ударит его достаточно сильно',
+		scatter: 'Сила разлёта', scatter_tip: 'Насколько сильно детали разлетаются (растёт со скоростью удара). 0 = просто сохраняют скорость, 1 = обычно, 3 = взрыв',
 		shatter: 'Развалиться от удара', shatter_desc: 'каждый куб / меш группы становится отдельной деталью', shatter_tip: 'Когда по группе бьют достаточно сильно, она перестаёт быть одним цельным телом: каждый куб или меш летит дальше отдельной деталью с той скоростью, что была, и разбитая машина рассыпается на части. Нужен «Старт от удара».',
-		threshold: 'Порог удара (м/с)', threshold_tip: 'Насколько сильным должен быть удар (резкое изменение скорости), чтобы включилась физика',
+		threshold: 'Нужная сила удара (м/с)', threshold_tip: 'Насколько сильным должен быть удар (резкое изменение скорости), чтобы включилась физика. Больше = прочнее, лёгкие касания ничего не делают',
 		aim_hint: 'Направление: поверните источник инструментом «Вращение», стрелка показывает, куда летит жидкость.', aim_tip: 'Переключиться на вращение',
 		rotate_tool: 'Вращение', move_tool: 'Перемещение',
 		l_flow: 'Поток', l_material: 'Материал', l_view: 'Вид и запись',
@@ -493,7 +495,8 @@ function shatterEntry(rt, entry, impact) {
 	}
 	const group_id = shatter_group_id++;
 	const rnd = randomFor('break' + desc.node.uuid);
-	const scatter = Math.min(8, impact) * 0.3, spin_scatter = Math.min(8, impact) * 60;
+	const power = Math.max(0, s.scatter ?? 1);   // 0 = parts keep their speed exactly, bigger = they fly apart more
+	const scatter = Math.min(8, impact) * 0.3 * power, spin_scatter = Math.min(8, impact) * 60 * power;
 	entry.pieces = [];
 	desc.parts.forEach((part, i) => {
 		const pose = compound.clone().multiply(partLocalMatrix(part));
@@ -1843,7 +1846,7 @@ function updatePanel() {
 		Object.assign(vue, {l_amount: l.amount, l_size: l.size, l_speed: l.speed, l_spread: l.spread,
 			l_emit_time: l.emit_time, l_cohesion: l.cohesion, l_stickiness: l.stickiness, l_thickness: l.thickness, l_gravity: l.gravity, l_color: l.color, l_look: l.look});
 		const s = bodyOf(nodes.find(n => typeOf(n) == 'dynamic') || nodes[0] || {});
-		Object.assign(vue, {mass: s.mass, friction: s.friction, restitution: s.restitution, impact: !!s.impact, threshold: s.threshold, shatter: !!s.shatter,
+		Object.assign(vue, {mass: s.mass, friction: s.friction, restitution: s.restitution, impact: !!s.impact, threshold: s.threshold, shatter: !!s.shatter, scatter: s.scatter ?? 1,
 			vx: s.velocity[0], vy: s.velocity[1], vz: s.velocity[2], sx: s.spin[0], sy: s.spin[1], sz: s.spin[2]});
 		vue.f_available = nodes.length > 0 && nodes.every(n => n instanceof Group);
 		vue.f_enabled = vue.f_available && nodes.every(isForce);
@@ -1878,7 +1881,7 @@ function panelComponent() {
 			return {
 				tab: 'object',
 				selection_key: null, count: 0, has_group: false, label: '', owner: '', type: 'none', world_project: '', state: 'stopped', time: '0.00',
-				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, shatter: false, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
+				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, shatter: false, scatter: 1, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
 				gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2,
 				l_available: false, l_enabled: false, l_amount: 1500, l_size: 0.35, l_speed: 6, l_spread: 12,
 				l_emit_time: 0.3, l_cohesion: 0.35, l_stickiness: 0.6, l_thickness: 0.35, l_gravity: 1, l_color: '#7c0a0a', l_look: 0.5,
@@ -1901,7 +1904,7 @@ function panelComponent() {
 			saveBody() {
 				const values = {
 					mass: num(this.mass, 1), friction: num(this.friction, 0.5), restitution: num(this.restitution, 0.3),
-					impact: !!this.impact, threshold: Math.max(0, num(this.threshold, 1)), shatter: !!this.shatter,
+					impact: !!this.impact, threshold: Math.max(0, num(this.threshold, 1)), shatter: !!this.shatter, scatter: Math.max(0, num(this.scatter, 1)),
 					velocity: [num(this.vx, 0), num(this.vy, 0), num(this.vz, 0)],
 					spin: [num(this.sx, 0), num(this.sy, 0), num(this.sz, 0)],
 				};
@@ -2052,6 +2055,9 @@ function panelComponent() {
 							<input type="checkbox" v-model="shatter" @change="saveBody()">
 							<span><b>{{ t('shatter') }}</b> — {{ t('shatter_desc') }}</span>
 							</label>
+							<div v-if="impact && has_group && shatter" class="physics_grid g1">
+							<label :title="t('scatter_tip')">{{ t('scatter') }}<input type="number" step="0.25" min="0" v-model="scatter" @change="saveBody()"></label>
+							</div>
 						</div>
 					</template>
 
