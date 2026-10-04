@@ -4637,7 +4637,7 @@ const TEXTS = {
 		rec_time: 'Record (s)', rec_fps: 'Frames/s', rec_blood: 'Record the blood', rec_blood_tip: 'Bake the blood with the animation: in the Animate tab it lands, spreads and dries as the animation plays',
 		spawn: 'Spawn ragdoll', click_shot: 'Click shot', click_shot_on: 'Click shot: click the character… (press again to cancel)', click_shot_msg: 'Click the character: a shot is made there, at the current time',
 		msg_click_shot: 'Shot added', shots: 'Shots', add_shot2: 'Add shot', shot_name: 'Shot', shot_time2: 'Fires at (s)', shot_power: 'Power (N*s)',
-		grab_tip: 'Move it (W) and turn it (R) in the 3D view', grab_hint: 'A shot is a little gun: press ✥, then drag it (W) and turn it (R). It shoots along the dashed line.',
+		grab_tip: 'Edit this shot in the 3D view', grab_hint: 'Press ✥ on a shot: drag the orange ball (the gun) to move it - it keeps aiming at the same point; drag the yellow ball at the end of the line to aim it. It shoots along that line. Press ✥ again when done.',
 		hands: 'In the hands', hands_hint: 'Select a thing (a group or cubes), then:', hand_r: 'Right hand', hand_l: 'Left hand', hand_both: 'Both hands', item_drop2: 'Dropped when he dies',
 		skeleton: 'Pose', edit_skeleton: 'Edit skeleton', edit_skeleton_hint: 'W: drag a joint (the limb follows). R: click a joint, then turn that bone alone with the rotate handles. The pose is the model\'s pose (the Edit tab shows it) and the one he holds when it runs.',
 		more: 'More settings', msg_spawn_first: 'Spawn a ragdoll first',
@@ -4679,7 +4679,7 @@ const TEXTS = {
 		rec_time: 'Запись (с)', rec_fps: 'Кадров/с', rec_blood: 'Записывать кровь', rec_blood_tip: 'Кровь запекается вместе с анимацией: во вкладке Animate она падает, растекается и сохнет по ходу анимации',
 		spawn: 'Спавн регдолла', click_shot: 'Click shot', click_shot_on: 'Click shot: кликните по персонажу… (ещё раз — отмена)', click_shot_msg: 'Кликните по персонажу: туда будет выстрел, в текущий момент времени',
 		msg_click_shot: 'Выстрел добавлен', shots: 'Выстрелы', add_shot2: 'Добавить выстрел', shot_name: 'Выстрел', shot_time2: 'Через (с)', shot_power: 'Сила (Н·с)',
-		grab_tip: 'Двигать (W) и вращать (R) в окне 3D', grab_hint: 'Выстрел — это маленький пистолет: нажмите ✥ и тащите его (W) и вращайте (R). Стреляет по пунктирной линии.',
+		grab_tip: 'Редактировать этот выстрел в окне 3D', grab_hint: 'Нажмите ✥ у выстрела: оранжевый шар (пистолет) — тащите, чтобы передвинуть, он продолжает целиться в ту же точку; жёлтый шар в конце линии — тащите, чтобы прицелиться. Выстрел идёт ровно по этой линии. Ещё раз ✥ — готово.',
 		hands: 'В руках', hands_hint: 'Выделите предмет (группу или кубы), затем:', hand_r: 'Правая рука', hand_l: 'Левая рука', hand_both: 'Обе руки', item_drop2: 'Выпадает при смерти',
 		skeleton: 'Поза', edit_skeleton: 'Редактировать скелет', edit_skeleton_hint: 'W — тянуть сустав (конечность идёт следом). R — клик по суставу, затем вращайте эту кость отдельно рукоятками поворота. Поза сохраняется в модели (видна во вкладке Edit) и её персонаж держит при запуске.',
 		more: 'Дополнительные настройки', msg_spawn_first: 'Сначала заспавните регдолл',
@@ -4823,7 +4823,8 @@ function updatePanel(force) {
 	vue.click_shot = click_shot;
 	if (act) {
 		const sel_g = Group.first_selected;
-		const shots = shotsOf(act).map(g => ({uuid: g.uuid, name: g.name, t: g.ragdoll_shot.t, impulse: g.ragdoll_shot.impulse, selected: sel_g === g}));
+		const shots = shotsOf(act).map(g => ({uuid: g.uuid, name: g.name, t: g.ragdoll_shot.t, impulse: g.ragdoll_shot.impulse, selected: shot_edit == g.uuid}));
+		void sel_g;
 		const key2 = JSON.stringify(shots) + '|' + act.uuid;
 		if (force || vue.shots_key != key2) { vue.shots_key = key2; vue.shots = shots; }
 		const bones = bonesOf(act);
@@ -4888,7 +4889,7 @@ function panelComponent() {
 			deleteHit(i) { this.hits.splice(i, 1); this.saveHits(); },
 			clearHits() { this.hits = []; this.saveHits(); },
 			addHit() { addHitFromView(); },
-			toggleEdit() { pose_edit = !pose_edit; if (pose_edit) { shoot_mode = false; click_shot = false; } syncSkeletonView(true); updatePanel(true); },
+			toggleEdit() { pose_edit = !pose_edit; if (pose_edit) { shoot_mode = false; click_shot = false; shot_edit = null; syncShotLines(); } syncSkeletonView(true); updatePanel(true); },
 			savePoseNow() { savePose(this.pose_name); },
 			usePose(i, rest) { applyPose(i, rest); },
 			removePose(i) { deletePose(i); },
@@ -4904,16 +4905,17 @@ function panelComponent() {
 			toggleClickShot() {
 				click_shot = !click_shot;
 				// a shot that was being moved is let go
-				if (click_shot) { pose_edit = false; syncSkeletonView(); if (Group.first_selected && isShot(Group.first_selected) && typeof unselectAllElements == 'function') unselectAllElements(); Blockbench.showQuickMessage(tr('click_shot_msg'), 2500); }
+				if (click_shot) { pose_edit = false; shot_edit = null; syncShotLines(); syncSkeletonView(); Blockbench.showQuickMessage(tr('click_shot_msg'), 2500); }
 				updatePanel(true);
 			},
-			addShot2() { const g = addShotFor(activeRoot()); if (g) { g.select(); if (BarItems.move_tool) BarItems.move_tool.select(); } },
+			addShot2() { const g = addShotFor(activeRoot()); if (g) { shot_edit = g.uuid; pose_edit = false; click_shot = false; syncSkeletonView(); syncShotLines(); updatePanel(true); } },
 			grabShot(uuid) {
 				const g = Group.all.find(x => x.uuid == uuid);
 				if (!g) return;
 				click_shot = false; pose_edit = false; syncSkeletonView();
-				g.select();
-				if (BarItems.move_tool) BarItems.move_tool.select();
+				// (pressed again: done)
+				shot_edit = shot_edit == uuid ? null : uuid;
+				syncShotLines();
 				updatePanel(true);
 			},
 			deleteShot(uuid) {
@@ -5816,32 +5818,104 @@ function onClickShot(event) {
 	}
 }
 
-// the lines of the shots in the 3D view: from each gun to what it hits
-let shot_lines = null;
-function removeShotLines() { if (shot_lines && shot_lines.parent) shot_lines.parent.remove(shot_lines); shot_lines = null; }
+// The shot being edited (✥): its line from the gun to what it hits, and two handles. The gun handle moves the gun (it
+// keeps aiming at the same point); the aim handle at the end of the line turns it. The gun is model data (the group and
+// its cubes), so the simulation shoots from exactly where it is.
+let shot_edit = null;   // uuid of the shot being edited
+let shot_view = null, shot_drag = null;
+function removeShotLines() { if (shot_view && shot_view.group.parent) shot_view.group.parent.remove(shot_view.group); shot_view = null; }
+function editedShot() { const g = shot_edit && Group.all.find(x => x.uuid == shot_edit); if (!g) shot_edit = null; return g || null; }
+function shotAim(g) {
+	const {origin, dir} = shotRay(g);
+	const root = Group.all.find(x => x.uuid == g.ragdoll_shot.root);
+	const hit = root && pickBone(root, origin, dir);
+	return {origin, dir, end: hit ? hit.point : origin.clone().addScaledVector(dir, 48), hit: !!hit};
+}
 function syncShotLines() {
-	if (!Project || typeof Modes == 'undefined' || !Modes.ragdoll) { removeShotLines(); return; }
-	const shots = shotsOf(null);
-	if (!shots.length) { removeShotLines(); return; }
-	if (!shot_lines) { shot_lines = new THREE.Group(); shot_lines.name = 'ragdoll_shot_lines'; scene.add(shot_lines); }
-	while (shot_lines.children.length < shots.length) {
-		const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]), new THREE.LineDashedMaterial({color: 0xff7a1a, dashSize: 1.2, gapSize: 0.8, depthTest: false, transparent: true}));
-		l.renderOrder = 998;
-		shot_lines.add(l);
+	const g = Project && typeof Modes != 'undefined' && Modes.ragdoll ? editedShot() : null;
+	if (!g || !g.mesh) { removeShotLines(); return; }
+	if (!shot_view) {
+		const group = new THREE.Group();
+		group.name = 'ragdoll_shot_edit';
+		const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]), new THREE.LineDashedMaterial({color: 0xff7a1a, dashSize: 1.2, gapSize: 0.8, depthTest: false, transparent: true}));
+		line.renderOrder = 998;
+		const ball = color => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), new THREE.MeshBasicMaterial({color, depthTest: false, transparent: true})); m.renderOrder = 1000; return m; };
+		const gun = ball(0xff7a1a), aim = ball(0xffd27a);
+		group.add(line, gun, aim);
+		scene.add(group);
+		shot_view = {group, line, gun, aim};
 	}
-	shot_lines.children.forEach((l, i) => { l.visible = i < shots.length; });
-	const sel = Group.first_selected;
-	shots.forEach((g, i) => {
-		const {origin, dir} = shotRay(g);
-		const root = Group.all.find(x => x.uuid == g.ragdoll_shot.root);
-		const hit = root && pickBone(root, origin, dir);
-		const end = hit ? hit.point : origin.clone().addScaledVector(dir, 48);
-		const l = shot_lines.children[i], pos = l.geometry.attributes.position;
-		pos.setXYZ(0, origin.x, origin.y, origin.z); pos.setXYZ(1, end.x, end.y, end.z); pos.needsUpdate = true;
-		l.geometry.computeBoundingSphere();
-		l.computeLineDistances();
-		l.material.color.set(sel === g ? 0xffffff : hit ? 0xff7a1a : 0x888888);
-	});
+	scene.updateMatrixWorld(true);
+	const a = shot_drag && shot_drag.aim_point ? Object.assign(shotAim(g), {end: shot_drag.aim_point}) : shotAim(g);
+	const pos = shot_view.line.geometry.attributes.position;
+	pos.setXYZ(0, a.origin.x, a.origin.y, a.origin.z); pos.setXYZ(1, a.end.x, a.end.y, a.end.z); pos.needsUpdate = true;
+	shot_view.line.geometry.computeBoundingSphere();
+	shot_view.line.computeLineDistances();
+	shot_view.line.material.color.set(a.hit ? 0xff7a1a : 0x888888);
+	shot_view.gun.position.copy(a.origin);
+	shot_view.aim.position.copy(a.end);
+}
+
+// the gun to a new place (Blockbench world pixels): the group and its cubes move together
+function moveShotTo(g, world) {
+	const to = Project.model_3d ? Project.model_3d.worldToLocal(world.clone()) : world.clone();
+	const d = to.toArray().map((v, i) => v - g.origin[i]);
+	g.origin = g.origin.map((v, i) => Math.round((v + d[i]) * 100) / 100);
+	for (const c of g.children) if (c instanceof Cube) {
+		c.from = c.from.map((v, i) => v + d[i]); c.to = c.to.map((v, i) => v + d[i]); c.origin = c.origin.map((v, i) => v + d[i]);
+	}
+}
+// the gun turned to shoot at a point (Blockbench world pixels)
+function aimShotAt(g, world) {
+	g.mesh.updateMatrixWorld(true);
+	const from = g.mesh.getWorldPosition(new THREE.Vector3()), dir = world.clone().sub(from);
+	if (dir.lengthSq() < 1e-6) return;
+	const parent_q = g.mesh.parent ? g.mesh.parent.getWorldQuaternion(new THREE.Quaternion()) : new THREE.Quaternion();
+	const q = parent_q.invert().multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir.normalize()));
+	const e = new THREE.Euler().setFromQuaternion(q, eulerOrder());
+	g.rotation = bbOfThree([e.x / D2R, e.y / D2R, e.z / D2R]);
+}
+function refreshShot(g) {
+	if (typeof Canvas != 'undefined') { if (Canvas.updateAll) Canvas.updateAll(); else { Canvas.updateAllPositions(); Canvas.updateAllBones(); } }
+	scene.updateMatrixWorld(true);
+	syncShotLines();
+}
+
+function onShotDown(event) {
+	const g = editedShot();
+	if (!g || !shot_view || !Project || event.button !== 0 || !Modes.ragdoll) return;
+	const preview = previewOf(event);
+	if (!preview) return;
+	let which = null, best = 16;
+	for (const [name, h] of [['gun', shot_view.gun], ['aim', shot_view.aim]]) {
+		const p = screenPoint(h.position, preview), d = Math.hypot(p.x - event.clientX, p.y - event.clientY);
+		if (d < best) { best = d; which = name; }
+	}
+	if (!which) return;
+	event.stopPropagation(); event.preventDefault();
+	const at = (which == 'gun' ? shot_view.gun : shot_view.aim).position.clone();
+	shot_drag = {g, which, preview, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(preview.camera.getWorldDirection(new THREE.Vector3()), at), aim_point: shot_view.aim.position.clone()};
+	Undo.initEdit({outliner: true, elements: g.children.slice(), groups: [g]});
+}
+function onShotMove(event) {
+	if (!shot_drag) return;
+	event.stopPropagation(); event.preventDefault();
+	const p = new THREE.Vector3();
+	if (!rayFor(event, shot_drag.preview).intersectPlane(shot_drag.plane, p)) return;
+	const g = shot_drag.g;
+	if (shot_drag.which == 'gun') { moveShotTo(g, p); refreshShot(g); aimShotAt(g, shot_drag.aim_point); }
+	else { shot_drag.aim_point = p.clone(); aimShotAt(g, p); }
+	refreshShot(g);
+	Project.saved = false;
+}
+function onShotUp(event) {
+	if (!shot_drag) return;
+	event.stopPropagation();
+	const g = shot_drag.g;
+	shot_drag = null;
+	Undo.finishEdit('Move shot', {outliner: true, elements: g.children.slice(), groups: [g]});
+	refreshShot(g);
+	updatePanel(true);
 }
 
 // a thing into a hand ('r', 'l') or into both: its grip is the point of it nearest the fist
@@ -5878,7 +5952,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.7.0',
+	version: '0.7.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -5927,6 +6001,9 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook).concat([physicsHook]);
 		document.addEventListener('pointerdown', onClick, true);
 		document.addEventListener('pointerdown', onClickShot, true);
+		document.addEventListener('pointerdown', onShotDown, true);
+		document.addEventListener('pointermove', onShotMove, true);
+		document.addEventListener('pointerup', onShotUp, true);
 		document.addEventListener('pointerdown', onSkeletonDown, true);
 		document.addEventListener('pointermove', onSkeletonMove, true);
 		document.addEventListener('pointerup', onSkeletonUp, true);
@@ -5940,6 +6017,9 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		removeArrow(); removeShotLines(); pose_edit = false; click_shot = false; removeSkeletonView();
 		document.removeEventListener('pointerdown', onClick, true);
 		document.removeEventListener('pointerdown', onClickShot, true);
+		document.removeEventListener('pointerdown', onShotDown, true);
+		document.removeEventListener('pointermove', onShotMove, true);
+		document.removeEventListener('pointerup', onShotUp, true);
 		document.removeEventListener('pointerdown', onSkeletonDown, true);
 		document.removeEventListener('pointermove', onSkeletonMove, true);
 		document.removeEventListener('pointerup', onSkeletonUp, true);
