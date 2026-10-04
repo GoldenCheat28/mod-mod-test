@@ -333,15 +333,31 @@ class Humanoid {
 		const AX = this.axes();
 		for (const t of [AX.tx, AX.ty, AX.tz]) st.MakeFixedAxis(t);
 		const d = humanoidPartsList()[this.parts.indexOf(p)];
+		// the pose he is made in is always one he can be in: where it goes past the game's limits of a joint (an arm posed
+		// by hand: the shoulder out, the forearm up), the limits are widened to take it in - otherwise the joint snaps back
+		// to its limit at the first step and the muscles can never hold the pose
+		const now = this.jointAngles(par, p);
 		[AX.rx, AX.ry, AX.rz].forEach((axis, i) => {
-			const lo = [d.lo.x, d.lo.y, d.lo.z][i], hi = [d.hi.x, d.hi.y, d.hi.z][i];
-			if (lo > hi) st.MakeFreeAxis(axis); else st.SetLimitedAxis(axis, lo, hi);
+			let lo = [d.lo.x, d.lo.y, d.lo.z][i], hi = [d.hi.x, d.hi.y, d.hi.z][i];
+			if (lo > hi) { st.MakeFreeAxis(axis); return; }
+			const cap = i == 0 ? Math.PI : Math.PI - 0.05;
+			lo = Math.max(-cap, Math.min(lo, now[i] - 0.12)); hi = Math.min(cap, Math.max(hi, now[i] + 0.12));
+			st.SetLimitedAxis(axis, lo, hi);
 		});
 		const c = J.castObject(st.Create(par.body, p.body), J.SixDOFConstraint);
 		J.destroy(st);
 		for (const axis of [AX.rx, AX.ry, AX.rz]) c.SetMotorState(axis, J.EMotorState_Velocity);
 		world.system.AddConstraint(c);
 		p.joint = c;
+	}
+
+	// the turn of a joint now as Jolt's 6DOF measures it: twist about X, then the swing about Y and Z
+	jointAngles(par, p) {
+		const r = this.quat(par).invert().multiply(this.quat(p));
+		if (r.w < 0) { r.x = -r.x; r.y = -r.y; r.z = -r.z; r.w = -r.w; }
+		const tw = Math.hypot(r.x, r.w) > 1e-9 ? new THREE.Quaternion(r.x, 0, 0, r.w).normalize() : new THREE.Quaternion();
+		const sw = r.clone().multiply(tw.clone().invert());
+		return [2 * Math.atan2(tw.x, tw.w), 2 * Math.atan2(sw.y, sw.w), 2 * Math.atan2(sw.z, sw.w)];
 	}
 
 	axes() {
