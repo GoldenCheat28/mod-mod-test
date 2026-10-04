@@ -6591,33 +6591,39 @@ function animateWaves() {
 
 const original_render = Preview.prototype.render;
 function renderWithEffects() {
-syncActiveCamera(this);
-if (Project) { updateParticles(this.camera); syncDecals(); }
-if (!enabled || !Project) return original_render.call(this);
+	try {
+		syncActiveCamera(this);
+		if (Project) { updateParticles(this.camera); syncDecals(); }
+	} catch (err) { console.warn('[Render view]', err); }
+	if (!enabled || !Project) return original_render.call(this);
+	const r = this.renderer, camera = this.camera;
+	const saved = {shadow: r.shadowMap.enabled, type: r.shadowMap.type, tone: r.toneMapping, enc: r.outputEncoding, far: camera.far, auto: r.autoClear};
+	const restore = () => {
+		r.setRenderTarget(null);
+		r.autoClear = saved.auto;
+		r.shadowMap.enabled = saved.shadow; r.shadowMap.type = saved.type; r.toneMapping = saved.tone; r.outputEncoding = saved.enc;
+		if (camera.far != saved.far) { camera.far = saved.far; camera.updateProjectionMatrix(); }
+	};
 	try {
 		this.controls.update();
 		applyMaterials();
 		animateWaves();
 		if (!rig) {
-		disposeRig();
-		rig = buildRig(this.renderer);
+			disposeRig();
+			rig = buildRig(r);
 			scene.add(rig.group);
 		}
-		updateRig(this.renderer);
-		const r = this.renderer;
-		const saved = {shadow: r.shadowMap.enabled, type: r.shadowMap.type, tone: r.toneMapping, enc: r.outputEncoding};
+		updateRig(r);
 		r.shadowMap.enabled = true;
 		r.shadowMap.type = THREE.PCFSoftShadowMap;
 		r.toneMapping = THREE.NoToneMapping;
 		r.outputEncoding = THREE.LinearEncoding;
 		// Blockbench's camera sees from 1 to 30000 units; the effects keep depth in 16 bits, which is far too coarse
 		// for that range. Fit the far plane to the model while rendering, so occlusion and reflections find their surfaces.
-		const camera = this.camera;
-		const saved_far = camera.far;
 		if (camera.isPerspectiveCamera) {
 			const box = modelBox();
 			const radius = Math.max(16, box.getSize(new THREE.Vector3()).length() / 2);
-			camera.far = Math.min(saved_far, camera.position.distanceTo(box.getCenter(new THREE.Vector3())) + radius * 8);
+			camera.far = Math.min(saved.far, camera.position.distanceTo(box.getCenter(new THREE.Vector3())) + radius * 8);
 			camera.updateProjectionMatrix();
 		}
 		const pipe = pipelineFor(this);
@@ -6625,12 +6631,13 @@ if (!enabled || !Project) return original_render.call(this);
 		if (pipe.gbuf) pipe.gbuf.render(r, scene, camera);
 		if (pipe.gloss) pipe.gloss.renderMaterials(r, scene, camera);
 		pipe.composer.render();
-		if (camera.far != saved_far) { camera.far = saved_far; camera.updateProjectionMatrix(); }
-		r.shadowMap.enabled = saved.shadow; r.shadowMap.type = saved.type; r.toneMapping = saved.tone; r.outputEncoding = saved.enc;
+		restore();
 		if (this.css_renderer) this.css_renderer.render(Canvas.scene, this.camera, this == Preview.selected);
 	} catch (err) {
+		// never leave the editor drawing into one of our buffers: put the renderer back and draw the normal way
 		console.error('[Render view]', err);
-		setEnabled(false);
+		try { restore(); } catch (e) { /* lost context */ }
+		try { setEnabled(false); } catch (e) { console.warn(e); }
 		original_render.call(this);
 	}
 }
@@ -8921,7 +8928,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.9.0',
+	version: '0.9.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -9026,52 +9033,59 @@ Plugin.register('render', {
 		patchApplyTexture();
 		},
 	onunload() {
-		setEnabled(false);
-		limitBrightness(false);
+		// the editor must draw again whatever else fails below
 		Preview.prototype.render = original_render;
-		Blockbench.removeListener('select_project', onProject);
-		Blockbench.removeListener('update_texture', invalidate);
-		Blockbench.removeListener('add_texture', invalidate);
-		Blockbench.removeListener('update_selection', onSelection);
-		Blockbench.removeListener('finished_edit', onSelection);
-		Blockbench.removeListener('undo', onSelection);
-		Blockbench.removeListener('redo', onSelection);
-		if (poll) clearInterval(poll);
-		document.removeEventListener('pointerdown', onIconPress, true);
-		document.removeEventListener('mousedown', onIconPress, true);
-		document.removeEventListener('pointerdown', onDecalPress, true);
-		document.removeEventListener('mousedown', onDecalPress, true);
-		document.removeEventListener('keydown', onDecalKey, true);
-		for (const type of ['keydown', 'keyup', 'mousemove', 'mouseup', 'pointerup', 'pointermove']) document.removeEventListener(type, trackCtrl, true);
-		unpatchApplyTexture();
-		clearDecals();
-		clearEditorHelpers();
-		removeAddActions();
-		removeGroupMenuActions();
-		if (open_settings) open_settings.cancel();
-		clearEmitters();
-		if (particle_panel) { particle_panel.delete(); particle_panel = null; }
-		if (particles_action) {
-			for (const type of [Cube, Mesh, Group]) { try { type.prototype.menu.removeAction(particles_action); } catch (err) { /* menu already gone */ } }
-			try { MenuBar.removeAction('edit.render_particles'); } catch (err) { /* it was never there */ }
-			particles_action.delete();
-			particles_action = null;
-		}
-		for (const [action, path] of [[add_light_action, 'edit.add_render_light'], [add_camera_action, 'edit.add_render_camera'], [add_particles_action, 'edit.add_render_particles']]) {
-			if (!action) continue;
-			try { MenuBar.removeAction(path); } catch (err) { /* it was never in the Edit menu */ }
-			action.delete();
-		}
-		add_light_action = null; add_camera_action = null; add_particles_action = null;
-		if (materials_dialog) { materials_dialog.close && materials_dialog.close(); materials_dialog = null; }
-		if (panel) panel.delete();
-		if (toggle) { MenuBar.removeAction('view.render_view'); toggle.delete(); }
-		if (materials_action) { MenuBar.removeAction('view.render_materials'); materials_action.delete(); }
-		if (video_action) { MenuBar.removeAction('view.render_video'); video_action.delete(); video_action = null; }
-		properties.forEach(p => p.delete());
-		properties = [];
-		if (style_node) style_node.delete();
-		if (thumb) { thumb.renderer.dispose(); thumb = null; }
+		try { (Preview.all || []).forEach(p => { if (p.renderer) { p.renderer.setRenderTarget(null); p.renderer.autoClear = true; } }); } catch (err) { /* no previews */ }
+		const safe = fn => { try { fn(); } catch (err) { console.warn('[Render view] unload', err); } };
+		safe(() => { setEnabled(false); });
+		safe(() => { limitBrightness(false); });
+		safe(() => { Blockbench.removeListener('select_project', onProject); });
+		safe(() => { Blockbench.removeListener('update_texture', invalidate); });
+		safe(() => { Blockbench.removeListener('add_texture', invalidate); });
+		safe(() => { Blockbench.removeListener('update_selection', onSelection); });
+		safe(() => { Blockbench.removeListener('finished_edit', onSelection); });
+		safe(() => { Blockbench.removeListener('undo', onSelection); });
+		safe(() => { Blockbench.removeListener('redo', onSelection); });
+		safe(() => { if (poll) clearInterval(poll); });
+		safe(() => { document.removeEventListener('pointerdown', onIconPress, true); });
+		safe(() => { document.removeEventListener('mousedown', onIconPress, true); });
+		safe(() => { document.removeEventListener('pointerdown', onDecalPress, true); });
+		safe(() => { document.removeEventListener('mousedown', onDecalPress, true); });
+		safe(() => { document.removeEventListener('keydown', onDecalKey, true); });
+		safe(() => { for (const type of ['keydown', 'keyup', 'mousemove', 'mouseup', 'pointerup', 'pointermove']) document.removeEventListener(type, trackCtrl, true); });
+		safe(() => { unpatchApplyTexture(); });
+		safe(() => { clearDecals(); });
+		safe(() => { clearEditorHelpers(); });
+		safe(() => { removeAddActions(); });
+		safe(() => { removeGroupMenuActions(); });
+		safe(() => { if (open_settings) open_settings.cancel(); });
+		safe(() => { clearEmitters(); });
+		safe(() => { if (particle_panel) { particle_panel.delete(); particle_panel = null; } });
+		safe(() => {
+			if (particles_action) {
+				for (const type of [Cube, Mesh, Group]) { try { type.prototype.menu.removeAction(particles_action); } catch (err) { /* menu already gone */ } }
+				try { MenuBar.removeAction('edit.render_particles'); } catch (err) { /* it was never there */ }
+				particles_action.delete();
+				particles_action = null;
+			}
+		});
+		safe(() => {
+			for (const [action, path] of [[add_light_action, 'edit.add_render_light'], [add_camera_action, 'edit.add_render_camera'], [add_particles_action, 'edit.add_render_particles']]) {
+				if (!action) continue;
+				try { MenuBar.removeAction(path); } catch (err) { /* it was never in the Edit menu */ }
+				action.delete();
+			}
+		});
+		safe(() => { add_light_action = null; add_camera_action = null; add_particles_action = null; });
+		safe(() => { if (materials_dialog) { materials_dialog.close && materials_dialog.close(); materials_dialog = null; } });
+		safe(() => { if (panel) panel.delete(); });
+		safe(() => { if (toggle) { MenuBar.removeAction('view.render_view'); toggle.delete(); } });
+		safe(() => { if (materials_action) { MenuBar.removeAction('view.render_materials'); materials_action.delete(); } });
+		safe(() => { if (video_action) { MenuBar.removeAction('view.render_video'); video_action.delete(); video_action = null; } });
+		safe(() => { properties.forEach(p => p.delete()); });
+		safe(() => { properties = []; });
+		safe(() => { if (style_node) style_node.delete(); });
+		safe(() => { if (thumb) { thumb.renderer.dispose(); thumb = null; } });
 		window.RenderView = undefined;
 	},
 });
