@@ -284,7 +284,7 @@ const TEXTS = {
 		save: 'Save', cancel: 'Cancel', points: 'Points', start: 'Start', end: 'End',
 		msg_select: 'Connect: select two meshes and one or more faces on each (face selection mode)',
 		msg_loop: 'Connect: the chosen faces have no open edge (select a part of the surface, not the whole closed shape)',
-		msg_done: 'Pipe created', msg_busy: 'Finish the current connection first (Save or Cancel)',
+		msg_done: 'Pipe created', msg_updated: 'Pipe updated', msg_busy: 'Finish the current connection first (press Close)', close: 'Close',
 	},
 	ru: {
 		connect: 'Соединить грани…', connect_desc: 'Соединить выбранные грани двух мешей трубой',
@@ -297,7 +297,7 @@ const TEXTS = {
 		save: 'Сохранить', cancel: 'Отмена', points: 'Точки', start: 'Начало', end: 'Конец',
 		msg_select: 'Соединение: выделите два меша и по одной или нескольким граням на каждом (режим выбора граней)',
 		msg_loop: 'Соединение: у выбранных граней нет открытого края (выделите часть поверхности, а не всю замкнутую форму)',
-		msg_done: 'Труба создана', msg_busy: 'Сначала закончите текущее соединение (Сохранить или Отмена)',
+		msg_done: 'Труба создана', msg_updated: 'Труба обновлена', msg_busy: 'Сначала закончите текущее соединение (нажмите «Закрыть»)', close: 'Закрыть',
 	},
 };
 const tr = key => {
@@ -595,7 +595,7 @@ function cancelConnect() {
 	endSession();
 }
 
-// the pipe appears only now
+// the pipe appears only now. Save again after moving points: the same pipe is rewritten, no second one is made
 function saveConnect() {
 	if (!session) return;
 	const values = valuesNow();
@@ -609,17 +609,28 @@ function saveConnect() {
 		return;
 	}
 	const {pa, pb, texture} = session;
+	const alive = session.pipe && Mesh.all.includes(session.pipe);
+	if (alive) {
+		Undo.initEdit({elements: [session.pipe]});
+		writePipe(session.pipe, result, texture, !!values.shading);
+		Undo.finishEdit('Update pipe', {elements: [session.pipe]});
+		Blockbench.showQuickMessage(tr('msg_updated'), 1500);
+		return;
+	}
 	Undo.initEdit({outliner: true, elements: [pa.mesh, pb.mesh], selection: true});
 	const pipe = new Mesh({name: 'Pipe', origin: [0, 0, 0], rotation: [0, 0, 0], vertices: []});
 	pipe.addTo('root').init();
-	writePipe(pipe, result, texture, !!values.shading);
-	if (values.remove_faces) {
-		pa.faces.forEach(fk => { delete pa.mesh.faces[fk]; });
-		pb.faces.forEach(fk => { delete pb.mesh.faces[fk]; });
-		Canvas.updateView({elements: [pa.mesh, pb.mesh], element_aspects: {geometry: true, faces: true, uv: true}});
+	session.pipe = pipe;   // remembered at once, so even a failure further down cannot lead to a second pipe
+	try {
+		writePipe(pipe, result, texture, !!values.shading);
+		if (values.remove_faces) {
+			pa.faces.forEach(fk => { delete pa.mesh.faces[fk]; });
+			pb.faces.forEach(fk => { delete pb.mesh.faces[fk]; });
+			Canvas.updateView({elements: [pa.mesh, pb.mesh], element_aspects: {geometry: true, faces: true, uv: true}});
+		}
+	} finally {
+		Undo.finishEdit('Connect faces', {outliner: true, elements: [pa.mesh, pb.mesh, pipe], selection: true});
 	}
-	Undo.finishEdit('Connect faces', {outliner: true, elements: [pa.mesh, pb.mesh, pipe], selection: true});
-	endSession();
 	Blockbench.showQuickMessage(tr('msg_done'), 1500);
 }
 
@@ -668,7 +679,7 @@ function panelComponent() {
 			<div class="pipe_panel">
 				<div class="pipe_buttons">
 					<button @click="save()" class="pipe_primary">{{ t('save') }}</button>
-					<button @click="cancel()">{{ t('cancel') }}</button>
+					<button @click="cancel()">{{ t('close') }}</button>
 				</div>
 				<div class="pipe_points">
 					<div class="pipe_caption">{{ t('points') }}: {{ count }}</div>
@@ -754,7 +765,7 @@ Plugin.register('pipe', {
 			condition: () => !!session, click() { saveConnect(); },
 		});
 		cancel_action = new Action('pipe_cancel', {
-			name: tr('cancel') + ' (' + tr('title') + ')', icon: 'close', category: 'edit',
+			name: tr('close') + ' (' + tr('title') + ')', icon: 'close', category: 'edit',
 			condition: () => !!session, click() { cancelConnect(); },
 		});
 		Mesh.prototype.menu.addAction(action);
