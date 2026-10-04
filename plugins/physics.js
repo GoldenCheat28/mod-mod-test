@@ -21,7 +21,8 @@ const SCALE = 16;
 const FIXED_DT = 1 / 120;
 const LAYER_STATIC = 0, LAYER_MOVING = 1;
 
-const DEFAULT_BODY = {type: 'none', mass: 1, friction: 0.5, restitution: 0.3, velocity: [0, 0, 0], spin: [0, 0, 0], impact: false, threshold: 1, shatter: false, scatter: 1};
+const DEFAULT_BODY = {type: 'none', mass: 1, friction: 0.5, restitution: 0.3, velocity: [0, 0, 0], spin: [0, 0, 0], impact: false, threshold: 1, shatter: false, scatter: 1,
+	axle: false, axle_axis: 'x', axle_speed: 0, axle_torque: 0, axle_friction: 0};
 const DEFAULT_WORLD = {gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2};
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,12 @@ const TEXTS = {
 		tab_object: 'Object', tab_liquid: 'Liquid', tab_forces: 'Forces',
 		impact: 'Start on impact', impact_desc: 'drives straight, physics turns on at a hit',
 		impact_tip: 'The object keeps its start speed and does not fall, tilt or fall apart until something hits it hard enough',
+		axle: 'Axle (hinge)', axle_desc: 'stays on its pivot and only spins, like a wheel',
+		axle_tip: 'The object is pinned at its pivot point (the origin of the group) and can only turn around one axis. It is still a real physical body: it is pushed by hits, forces and liquid.',
+		axle_axis: 'Axis', axle_speed: 'Motor (°/s)', axle_speed_tip: 'A motor turns it at this speed. 0 = no motor (it spins freely; use Start spin to kick it). Negative = other direction',
+		axle_torque: 'Motor strength', axle_torque_tip: 'Maximum force of the motor. 0 = unlimited (holds the speed no matter what). Smaller values let the wheel slow down when something resists',
+		axle_friction: 'Axle friction', axle_friction_tip: 'Brakes the spin. 0 = spins forever',
+		axle_hint: 'The pivot is the origin of the group (move it with the Pivot tool). A cyan line shows the axis. Start velocity is ignored.',
 		scatter: 'Scatter strength', scatter_tip: 'How violently the parts fly apart (grows with the speed of the hit). 0 = they just keep their speed, 1 = normal, 3 = explosion',
 		shatter: 'Break apart on impact', shatter_desc: 'every cube / mesh of the group becomes a loose piece', shatter_tip: 'When the group is hit hard enough it stops being one solid body: each cube or mesh in it flies on as its own piece with the speed it had, so a crashed car falls into parts. Needs Start on impact.',
 		threshold: 'Impact strength needed (m/s)', threshold_tip: 'How hard the hit must be (sudden change of speed) to turn the physics on. Higher = tougher, softer touches do nothing',
@@ -107,6 +114,12 @@ const TEXTS = {
 		tab_object: 'Объект', tab_liquid: 'Жидкость', tab_forces: 'Силы',
 		impact: 'Старт от удара', impact_desc: 'едет прямо, физика включается при ударе',
 		impact_tip: 'Объект держит стартовую скорость и не падает, не кренится и не разваливается, пока что-то не ударит его достаточно сильно',
+		axle: 'Ось (шарнир)', axle_desc: 'стоит на одной точке и только крутится, как колесо',
+		axle_tip: 'Объект закреплён в точке вращения (origin группы) и может крутиться только вокруг одной оси. Он всё ещё настоящее физическое тело: его толкают удары, силы и жидкость.',
+		axle_axis: 'Ось', axle_speed: 'Мотор (°/с)', axle_speed_tip: 'Мотор крутит с этой скоростью. 0 = без мотора (крутится свободно; раскрутите «Начальным вращением»). Минус = в другую сторону',
+		axle_torque: 'Сила мотора', axle_torque_tip: 'Максимальная сила мотора. 0 = без ограничения (держит скорость, что бы ни случилось). Меньше = колесо замедляется, если что-то мешает',
+		axle_friction: 'Трение оси', axle_friction_tip: 'Тормозит вращение. 0 = крутится вечно',
+		axle_hint: 'Точка вращения — origin группы (двигайте инструментом «Точка вращения»). Голубая линия показывает ось. Начальная скорость игнорируется.',
 		scatter: 'Сила разлёта', scatter_tip: 'Насколько сильно детали разлетаются (растёт со скоростью удара). 0 = просто сохраняют скорость, 1 = обычно, 3 = взрыв',
 		shatter: 'Развалиться от удара', shatter_desc: 'каждый куб / меш группы становится отдельной деталью', shatter_tip: 'Когда по группе бьют достаточно сильно, она перестаёт быть одним цельным телом: каждый куб или меш летит дальше отдельной деталью с той скоростью, что была, и разбитая машина рассыпается на части. Нужен «Старт от удара».',
 		threshold: 'Нужная сила удара (м/с)', threshold_tip: 'Насколько сильным должен быть удар (резкое изменение скорости), чтобы включилась физика. Больше = прочнее, лёгкие касания ничего не делают',
@@ -289,6 +302,49 @@ function createShape(desc) {
 	return result.Get();
 }
 
+// ---- axle (hinge): the body stays on its pivot point and only turns around one axis, like a wheel ----
+const axleIndex = s => ({x: 0, y: 1, z: 2})[s.axle_axis] ?? 0;
+const axleDirection = (quat, index) => new THREE.Vector3(index == 0 ? 1 : 0, index == 1 ? 1 : 0, index == 2 ? 1 : 0).applyQuaternion(quat).normalize();
+
+function addAxle(system, body, desc, s) {
+	const ai = axleIndex(s);
+	const axis = axleDirection(desc.quat, ai);
+	const normal = axleDirection(desc.quat, (ai + 1) % 3);
+	const pivot = new Jolt.RVec3(desc.pos.x / SCALE, desc.pos.y / SCALE, desc.pos.z / SCALE);
+	const settings = new Jolt.HingeConstraintSettings();
+	settings.mSpace = Jolt.EConstraintSpace_WorldSpace;
+	settings.mPoint1 = pivot; settings.mPoint2 = pivot;
+	settings.mHingeAxis1 = v3(axis.x, axis.y, axis.z); settings.mHingeAxis2 = v3(axis.x, axis.y, axis.z);
+	settings.mNormalAxis1 = v3(normal.x, normal.y, normal.z); settings.mNormalAxis2 = v3(normal.x, normal.y, normal.z);
+	settings.mMaxFrictionTorque = Math.max(0, s.axle_friction || 0);
+	if (s.axle_speed && s.axle_torque > 0) {
+		// limited motor: a weak motor cannot hold its speed when something drags on the wheel
+		settings.mMotorSettings.mMaxTorqueLimit = s.axle_torque;
+		settings.mMotorSettings.mMinTorqueLimit = -s.axle_torque;
+	}
+	const constraint = Jolt.castObject(settings.Create(Jolt.JoltInterface.prototype.sGetFixedToWorldBody(), body), Jolt.HingeConstraint);
+	system.AddConstraint(constraint);
+	if (s.axle_speed) {
+		// a motor keeps the wheel at this speed (a limited torque lets it slow down under load)
+		constraint.SetMotorState(Jolt.EMotorState_Velocity);
+		constraint.SetTargetAngularVelocity(s.axle_speed * Math.PI / 180);
+	}
+	return constraint;
+}
+
+// how far an axle turned in total (the hinge reports -180..180 only)
+function trackAxles(world) {
+	for (const e of world.entries) {
+		if (!e.hinge) continue;
+		const a = e.hinge.GetCurrentAngle();
+		let d = a - e.axle_last;
+		if (d > Math.PI) d -= 2 * Math.PI;
+		if (d < -Math.PI) d += 2 * Math.PI;
+		e.axle_angle += d;
+		e.axle_last = a;
+	}
+}
+
 function createWorld(descs, world_settings) {
 	const settings = new Jolt.JoltSettings();
 	const pairs = new Jolt.ObjectLayerPairFilterTable(2);
@@ -326,7 +382,8 @@ function createWorld(descs, world_settings) {
 			quatToJolt(desc.quat), dynamic ? Jolt.EMotionType_Dynamic : Jolt.EMotionType_Static, dynamic ? LAYER_MOVING : LAYER_STATIC);
 		bcs.mFriction = s.friction;
 		bcs.mRestitution = s.restitution;
-		const dormant = dynamic && !!s.impact;
+		const axle = dynamic && !!s.axle;
+		const dormant = dynamic && !!s.impact && !axle;
 		let kick = null;
 		if (dynamic) {
 			bcs.mOverrideMassProperties = Jolt.EOverrideMassProperties_CalculateInertia;
@@ -344,6 +401,12 @@ function createWorld(descs, world_settings) {
 				bcs.mGravityFactor = 0;
 				bcs.mAllowSleeping = false;
 				bcs.mLinearVelocity = v3(...velocity);
+			} else if (axle) {
+				// pinned on an axle: it can only turn around its axis, so the start spin and the motor speed both mean that axis
+				const ai = axleIndex(s), w = (spin[ai] + (s.axle_speed || 0)) * Math.PI / 180;
+				const a = axleDirection(desc.quat, ai);
+				bcs.mAngularDamping = 0;   // a free wheel keeps spinning until the axle friction stops it
+				bcs.mAngularVelocity = v3(a.x * w, a.y * w, a.z * w);
 			} else {
 				for (let i = 0; i < 3; i++) { velocity[i] += kick_v[i]; spin[i] += kick_s[i]; }
 				bcs.mLinearVelocity = v3(...velocity);
@@ -353,7 +416,8 @@ function createWorld(descs, world_settings) {
 		const body = bodies.CreateBody(bcs);
 		Jolt.destroy(bcs);
 		bodies.AddBody(body.GetID(), dynamic ? Jolt.EActivation_Activate : Jolt.EActivation_DontActivate);
-		entries.push({desc, body, id: body.GetID(), dormant, kick, hold: dormant ? s.velocity.slice() : null, broken: false, pieces: null, frozen: null,
+		const hinge = axle ? addAxle(system, body, desc, s) : null;
+		entries.push({desc, body, hinge, axle_angle: 0, axle_last: hinge ? hinge.GetCurrentAngle() : 0, id: body.GetID(), dormant, kick, hold: dormant ? s.velocity.slice() : null, broken: false, pieces: null, frozen: null,
 			can_shatter: dormant && !!s.shatter && desc.parts.length > 1 && desc.node instanceof Group,
 			rest_inv: new THREE.Matrix4().compose(desc.pos, desc.quat, new THREE.Vector3(1, 1, 1)).invert()});
 	}
@@ -649,6 +713,7 @@ function stepRuntime(rt) {
 	if (rt.fields.length) pushBodies(rt);
 	holdWaiting(rt.world);
 	rt.world.iface.Step(FIXED_DT, 1);
+	trackAxles(rt.world);
 	rt.time += FIXED_DT;
 	wakeHit(rt);
 	if (rt.liquid) {
@@ -1595,6 +1660,7 @@ async function bake() {
 	const base_entries = world.entries.slice();   // pieces created by a break come later and are followed through their group
 	const tracks = new Map();
 	const part_tracks = [];
+	const axle_angles = new Map(base_entries.filter(e => e.hinge).map(e => [e.desc.node, []]));   // total turn of every axle
 	for (const e of base_entries) {
 		if (!e.can_shatter) { tracks.set(e.desc.node, []); continue; }
 		e.desc.parts.forEach((part, i) => {
@@ -1608,7 +1674,7 @@ async function bake() {
 	for (let f = 0; f <= frames; f++) {
 	const target = f / fps;
 	while (rt.time + FIXED_DT / 2 < target) stepRuntime(rt);
-	base_entries.forEach(e => { if (!e.can_shatter) tracks.get(e.desc.node).push(bodyWorld(e)); });
+	base_entries.forEach(e => { if (!e.can_shatter) tracks.get(e.desc.node).push(bodyWorld(e)); if (e.hinge) axle_angles.get(e.desc.node).push(e.axle_angle); });
 	part_tracks.forEach(t => tracks.get(t.wrapper).push(piecePose(t.entry, t.i, t.ref0)));
 		if (liquid) {
 			liquid_frames.push(snapshotLiquid(liquid));
@@ -1638,8 +1704,17 @@ async function bake() {
 		const group = desc.node;
 		const animator = animation.getBoneAnimator(group);
 		const positions = [], rotations = [];
+		const direct = axle_angles.has(group) && group.rotation.every(r => Math.abs(r) < 1e-6);
 		let prev = null;
 		for (let f = 0; f <= frames; f++) {
+			if (direct) {
+				// an axle only turns: the keys come straight from the counted angle (no jumps, however fast it spins)
+				const deg = [0, 0, 0];
+				deg[axleIndex(desc.settings)] = axle_angles.get(group)[f] * 180 / Math.PI;
+				positions.push([0, 0, 0]);
+				rotations.push(deg);
+				continue;
+			}
 			const local = parentWorld(group, f).invert().multiply(tracks.get(group)[f]);
 			const {pos, quat} = decompose(local);
 			positions.push([0, 1, 2].map(i => pos.getComponent(i) - desc.rest_position.getComponent(i)));
@@ -1699,6 +1774,11 @@ function updateArrows(preview) {
 	for (const node of bodyNodes()) {
 		const s = bodyOf(node);
 		if (s.type != 'dynamic') continue;
+		if (s.axle) {
+			node.mesh.updateMatrixWorld(true);
+			items.push({color: new THREE.Color(0x35d0ff), origin: node.mesh.getWorldPosition(new THREE.Vector3()), dir: axleDirection(node.mesh.getWorldQuaternion(new THREE.Quaternion()), axleIndex(s)), length: 24});
+			continue;
+		}
 		const v = new THREE.Vector3(...s.velocity), speed = v.length();
 		if (speed < 1e-6) continue;
 		items.push({color: new THREE.Color(0xff8a1f), origin: node.mesh.getWorldPosition(new THREE.Vector3()), dir: v.normalize(), length: Math.min(80, 4 + speed * 2)});
@@ -1847,6 +1927,7 @@ function updatePanel() {
 			l_emit_time: l.emit_time, l_cohesion: l.cohesion, l_stickiness: l.stickiness, l_thickness: l.thickness, l_gravity: l.gravity, l_color: l.color, l_look: l.look});
 		const s = bodyOf(nodes.find(n => typeOf(n) == 'dynamic') || nodes[0] || {});
 		Object.assign(vue, {mass: s.mass, friction: s.friction, restitution: s.restitution, impact: !!s.impact, threshold: s.threshold, shatter: !!s.shatter, scatter: s.scatter ?? 1,
+			axle: !!s.axle, axle_axis: s.axle_axis, axle_speed: s.axle_speed, axle_torque: s.axle_torque, axle_friction: s.axle_friction,
 			vx: s.velocity[0], vy: s.velocity[1], vz: s.velocity[2], sx: s.spin[0], sy: s.spin[1], sz: s.spin[2]});
 		vue.f_available = nodes.length > 0 && nodes.every(n => n instanceof Group);
 		vue.f_enabled = vue.f_available && nodes.every(isForce);
@@ -1881,7 +1962,7 @@ function panelComponent() {
 			return {
 				tab: 'object',
 				selection_key: null, count: 0, has_group: false, label: '', owner: '', type: 'none', world_project: '', state: 'stopped', time: '0.00',
-				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, shatter: false, scatter: 1, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
+				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, shatter: false, scatter: 1, axle: false, axle_axis: 'x', axle_speed: 0, axle_torque: 0, axle_friction: 0, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
 				gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2,
 				l_available: false, l_enabled: false, l_amount: 1500, l_size: 0.35, l_speed: 6, l_spread: 12,
 				l_emit_time: 0.3, l_cohesion: 0.35, l_stickiness: 0.6, l_thickness: 0.35, l_gravity: 1, l_color: '#7c0a0a', l_look: 0.5,
@@ -1905,6 +1986,8 @@ function panelComponent() {
 				const values = {
 					mass: num(this.mass, 1), friction: num(this.friction, 0.5), restitution: num(this.restitution, 0.3),
 					impact: !!this.impact, threshold: Math.max(0, num(this.threshold, 1)), shatter: !!this.shatter, scatter: Math.max(0, num(this.scatter, 1)),
+					axle: !!this.axle, axle_axis: ['x', 'y', 'z'].includes(this.axle_axis) ? this.axle_axis : 'x', axle_speed: num(this.axle_speed, 0),
+					axle_torque: Math.max(0, num(this.axle_torque, 0)), axle_friction: Math.max(0, num(this.axle_friction, 0)),
 					velocity: [num(this.vx, 0), num(this.vy, 0), num(this.vz, 0)],
 					spin: [num(this.sx, 0), num(this.sy, 0), num(this.sz, 0)],
 				};
@@ -2060,6 +2143,28 @@ function panelComponent() {
 							</div>
 						</div>
 					</template>
+
+					<div v-if="type == 'dynamic'" class="physics_box">
+						<label class="physics_check" :title="t('axle_tip')">
+							<input type="checkbox" v-model="axle" @change="saveBody()">
+							<span><b>{{ t('axle') }}</b> — {{ t('axle_desc') }}</span>
+						</label>
+						<template v-if="axle">
+							<div class="physics_grid g2">
+								<label>{{ t('axle_axis') }}
+									<select v-model="axle_axis" @change="saveBody()">
+										<option value="x">X</option>
+										<option value="y">Y</option>
+										<option value="z">Z</option>
+									</select>
+								</label>
+								<label :title="t('axle_speed_tip')">{{ t('axle_speed') }}<input type="number" step="30" v-model="axle_speed" @change="saveBody()"></label>
+								<label :title="t('axle_torque_tip')">{{ t('axle_torque') }}<input type="number" step="10" min="0" v-model="axle_torque" @change="saveBody()"></label>
+								<label :title="t('axle_friction_tip')">{{ t('axle_friction') }}<input type="number" step="0.5" min="0" v-model="axle_friction" @change="saveBody()"></label>
+							</div>
+							<div class="physics_dim small">{{ t('axle_hint') }}</div>
+						</template>
+					</div>
 
 					<details class="physics_box">
 						<summary>{{ t('world') }}</summary>
