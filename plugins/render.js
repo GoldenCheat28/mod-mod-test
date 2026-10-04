@@ -4869,7 +4869,7 @@ const TEXTS = {
 		new_material: '+ New material', texture_material: 'texture', custom_material: 'custom', name: 'Name',
 		base: 'Base', color: 'Color', texture: 'Texture', roughness: 'Roughness', metalness: 'Metalness', map: 'Map',
 		normal: 'Normal map', normal_strength: 'Strength', emission: 'Emission', emission_strength: 'Strength',
-		transparency: 'Transparency', thickness: 'Distortion (thickness)', wave: 'Ripples', tint: 'Glass colour', tint_distance: 'Colour depth (0 = clear)', glass_name: 'Glass',
+		transparency: 'Transparency', thickness: 'Distortion (thickness)', wave: 'Ripples', tint: 'Glass colour', tint_distance: 'Colour depth (0 = clear)', glass_name: 'Glass', water_name: 'Water', wave_speed: 'Ripples moving (speed)', wave_size: 'Ripple density',
 		opacity: 'Opacity', glass: 'Glass (transmission)', ior: 'Refraction (IOR)', clearcoat: 'Clearcoat (lacquer)', env: 'Reflections of the sky',
 		none: '— none —', load_image: 'Load image…', loaded_image: 'Image',
 		assign: 'Assign to selected', unassign: 'Remove from selected', delete: 'Delete', users: 'Used by', elements: 'elements',
@@ -4883,8 +4883,9 @@ const TEXTS = {
 		sky_sun: 'Sun / moon disc', sky_clouds: 'Clouds', sky_image: 'Panorama image', sky_rotation: 'Rotation', sky_load: 'Load image…', sky_none: 'no image',
 		sky_hint: 'The skybox is the background and also lights and reflects in the materials. Use an equirectangular (2:1) panorama for an image.',
 		light_flicker: 'Flicker', light_flicker_amount: 'Flicker amount', light_flicker_speed: 'Flicker speed', fl_none: 'None (steady)', fl_candle: 'Candle', fl_fire: 'Fire', fl_fluorescent: 'Failing fluorescent tube', fl_broken: 'Loose contact (goes off)', fl_strobe: 'Strobe', fl_pulse: 'Slow pulse',
+		light_kind: 'Kind', lk_point: 'Point (bulb)', lk_spot: 'Spot (torch, stage light)', lk_area: 'Area (window, panel)', light_angle: 'Cone angle', light_softness: 'Soft edge', light_area_w: 'Width (px)', light_area_h: 'Height (px)',
 		lights: 'Lights', add_light: '+ Light', light_title: 'Light', light_strength: 'Strength', light_radius: 'Radius (px)', light_shadows: 'Shadows',
-		light_hint: 'A light is an empty group. Move it with the Move tool. It shines in the Render view.', light_selected: 'Selected light',
+		light_hint: 'A light is an empty group. Move it with the Move tool; a spot and an area light shine along the group\'s -Z axis (turn it with Rotate). It shines in the Render view.', light_selected: 'Selected light',
 		cameras: 'Cameras', add_camera: '+ Camera', camera_title: 'Camera', camera_selected: 'Selected camera',
 		cam_look: 'Look through this camera', cam_looking: 'Looking through it (click to leave)', cam_fov: 'Field of view',
 		cam_lens: 'Lens', cam_distortion: 'Corner distortion', cam_distortion_tip: 'Negative = pincushion, positive = barrel (fisheye)', cam_chroma: 'Chromatic aberration',
@@ -4919,6 +4920,8 @@ const TEXTS = {
 		pt_gravity: 'Gravity', pt_gravity_tip: 'Positive pulls down, negative lifts (smoke, steam)', pt_drag: 'Air drag', pt_shape: 'Come out of', ps_point: 'The centre', ps_box: 'The whole object (its volume)',
 		pt_follow: 'Move with the object', pt_follow_tip: 'On: all particles move along when the object moves. Off: they stay where they came out (a trail)',
 		pt_hint: 'The particles are worked out from the time: in the Animate tab they follow the timeline (scrub it back and they go back too) and a video renders them exactly the same.',
+		pt_collide: 'Hit solid objects', pt_collide_tip: 'The particles stop on the cubes and meshes of the scene and on the floor (bounce or stick) instead of flying through them', pt_stick: 'Stick where they hit', pt_bounce: 'Bounce', pt_friction: 'Friction',
+		pt_sheet: 'Sprite sheet', pt_sheet_cols: 'Columns', pt_sheet_rows: 'Rows', pt_sheet_tip: 'A texture made of several frames in a grid (an animated flame, smoke puffs): how many across and down', pt_sheet_mode: 'Frames', psm_life: 'Over the lifetime', psm_fps: 'At a frame rate (loop)', psm_random: 'One random frame each', pt_sheet_fps: 'Frames per second',
 		ptx_dot: 'Soft dot', ptx_smoke: 'Smoke', ptx_spark: 'Spark', ptx_fire: 'Flame', ptx_snow: 'Snowflake', ptx_drop: 'Drop', ptx_star: 'Star', ptx_square: 'Square',
 		decals: 'Decals', decal: 'Decal', decal_image: 'Picture', decal_size: 'Size', decal_angle: 'Turn', decal_width: 'Width', decal_height: 'Height', decal_depth: 'Depth (how far it wraps)',
 		decal_place: 'Place decal (click an object)', decal_placing: 'Placing: click an object (Esc to stop)', decal_place_msg: 'Click an object to put the decal there. Esc stops.', decal_miss: 'No object there', decals_of: 'Decals of',
@@ -4937,7 +4940,7 @@ const TEXTS = {
 		new_material: '+ Новый материал', texture_material: 'текстура', custom_material: 'свой', name: 'Имя',
 		base: 'Основа', color: 'Цвет', texture: 'Текстура', roughness: 'Шероховатость', metalness: 'Металличность', map: 'Карта',
 		normal: 'Карта нормалей', normal_strength: 'Сила', emission: 'Свечение', emission_strength: 'Сила',
-		transparency: 'Прозрачность', thickness: 'Искажение (толщина)', wave: 'Волны / неровность', tint: 'Цвет стекла', tint_distance: 'Глубина цвета (0 — прозрачное)', glass_name: 'Стекло',
+		transparency: 'Прозрачность', thickness: 'Искажение (толщина)', wave: 'Волны / неровность', tint: 'Цвет стекла', tint_distance: 'Глубина цвета (0 — прозрачное)', glass_name: 'Стекло', water_name: 'Вода', wave_speed: 'Движение волн (скорость)', wave_size: 'Частота волн',
 		opacity: 'Непрозрачность', glass: 'Стекло (пропускание)', ior: 'Преломление (IOR)', clearcoat: 'Лак (clearcoat)', env: 'Отражение неба',
 		none: '— нет —', load_image: 'Загрузить картинку…', loaded_image: 'Картинка',
 		assign: 'Назначить выделенным', unassign: 'Снять с выделенных', delete: 'Удалить', users: 'Используют', elements: 'элем.',
@@ -4951,8 +4954,9 @@ const TEXTS = {
 		sky_sun: 'Диск солнца / луны', sky_clouds: 'Облака', sky_image: 'Панорама', sky_rotation: 'Поворот', sky_load: 'Загрузить картинку…', sky_none: 'нет картинки',
 		sky_hint: 'Скайбокс — это фон, а ещё он освещает и отражается в материалах. Для картинки нужна панорама 2:1 (equirectangular).',
 		light_flicker: 'Мерцание', light_flicker_amount: 'Сила мерцания', light_flicker_speed: 'Скорость мерцания', fl_none: 'Нет (ровный)', fl_candle: 'Свеча', fl_fire: 'Огонь / костёр', fl_fluorescent: 'Барахлящая лампа дневного света', fl_broken: 'Плохой контакт (гаснет)', fl_strobe: 'Стробоскоп', fl_pulse: 'Медленная пульсация',
+		light_kind: 'Тип', lk_point: 'Точечный (лампочка)', lk_spot: 'Прожектор (фонарь, софит)', lk_area: 'Площадной (окно, панель)', light_angle: 'Угол конуса', light_softness: 'Мягкий край', light_area_w: 'Ширина (px)', light_area_h: 'Высота (px)',
 		lights: 'Свет', add_light: '+ Свет', light_title: 'Свет', light_strength: 'Сила', light_radius: 'Радиус (px)', light_shadows: 'Тени',
-		light_hint: 'Свет — это пустая группа. Двигайте её инструментом «Перемещение». Светит в Рендер-виде.', light_selected: 'Выбранный свет',
+		light_hint: 'Свет — это пустая группа. Двигайте её «Перемещением»; прожектор и площадной свет светят вдоль оси -Z группы (поворачивайте «Вращением»). Светит в Рендер-виде.', light_selected: 'Выбранный свет',
 		cameras: 'Камеры', add_camera: '+ Камера', camera_title: 'Камера', camera_selected: 'Выбранная камера',
 		cam_look: 'Смотреть через эту камеру', cam_looking: 'Смотрим через неё (нажмите, чтобы выйти)', cam_fov: 'Угол обзора',
 		cam_lens: 'Объектив', cam_distortion: 'Искажение углов', cam_distortion_tip: 'Минус = подушка, плюс = бочка (рыбий глаз)', cam_chroma: 'Хроматическая аберрация',
@@ -4987,6 +4991,8 @@ const TEXTS = {
 		pt_gravity: 'Гравитация', pt_gravity_tip: 'Плюс тянет вниз, минус поднимает (дым, пар)', pt_drag: 'Сопротивление воздуха', pt_shape: 'Откуда вылетают', ps_point: 'Из центра', ps_box: 'Из всего объекта (его объёма)',
 		pt_follow: 'Двигаются вместе с объектом', pt_follow_tip: 'Вкл: все частицы смещаются вместе с объектом. Выкл: остаются там, где вылетели (шлейф)',
 		pt_hint: 'Частицы рассчитываются по времени: во вкладке «Анимация» они идут по таймлайну (перемотали назад — частицы тоже вернулись), а в видео получаются точно такими же.',
+		pt_collide: 'Сталкиваются с твёрдыми объектами', pt_collide_tip: 'Частицы останавливаются на кубах, мешах сцены и на полу (отскакивают или прилипают), а не пролетают сквозь них', pt_stick: 'Прилипают при ударе', pt_bounce: 'Упругость (отскок)', pt_friction: 'Трение',
+		pt_sheet: 'Спрайтшит (кадры)', pt_sheet_cols: 'Колонок', pt_sheet_rows: 'Строк', pt_sheet_tip: 'Текстура из нескольких кадров сеткой (анимированный огонь, клубы дыма): сколько кадров по горизонтали и вертикали', pt_sheet_mode: 'Кадры', psm_life: 'За время жизни', psm_fps: 'С частотой (по кругу)', psm_random: 'Случайный кадр у каждой', pt_sheet_fps: 'Кадров в секунду',
 		ptx_dot: 'Мягкая точка', ptx_smoke: 'Дым', ptx_spark: 'Искра', ptx_fire: 'Пламя', ptx_snow: 'Снежинка', ptx_drop: 'Капля', ptx_star: 'Звезда', ptx_square: 'Квадрат',
 		decals: 'Декали', decal: 'Декаль', decal_image: 'Картинка', decal_size: 'Размер', decal_angle: 'Поворот', decal_width: 'Ширина', decal_height: 'Высота', decal_depth: 'Глубина (насколько огибает)',
 		decal_place: 'Поставить декаль (клик по объекту)', decal_placing: 'Ставим: кликните по объекту (Esc — стоп)', decal_place_msg: 'Кликните по объекту, чтобы поставить декаль. Esc — закончить.', decal_miss: 'Там нет объекта', decals_of: 'Декали объекта',
@@ -5018,9 +5024,13 @@ const DEFAULT_MATERIAL = {
 	name: 'Material', color: '#ffffff', map: null, roughness: 0.8, roughness_map: null, metalness: 0, metalness_map: null,
 	normal_map: null, normal_strength: 1, emission: '#ffffff', emission_strength: 0, emission_map: null,
 	opacity: 1, transmission: 0, ior: 1.45, clearcoat: 0, env: 0.6,
-	thickness: 0, wave: 0, tint: '#ffffff', tint_distance: 0,
+	thickness: 0, wave: 0, wave_speed: 0, wave_size: 2, tint: '#ffffff', tint_distance: 0,
 };
 // the glass that is always there: clear, refracting what is behind it (a thick pane bends it), a faint ripple in it
+const WATER_ID = 'mat:water';
+// water: clear, bending what is under it, blue-green when deep, with moving ripples
+const WATER_MATERIAL = {color: '#ffffff', roughness: 0.03, metalness: 0, opacity: 1, transmission: 1, ior: 1.33, clearcoat: 0.4, env: 1.1,
+	thickness: 10, wave: 0.7, wave_speed: 0.6, wave_size: 3, tint: '#3fa7b5', tint_distance: 30};
 const GLASS_ID = 'mat:glass';
 const GLASS_MATERIAL = {color: '#ffffff', roughness: 0.04, metalness: 0, opacity: 1, transmission: 1, ior: 1.5, clearcoat: 1, env: 1.2,
 	thickness: 6, wave: 0.35, tint: '#d8f0ee', tint_distance: 40};
@@ -5037,6 +5047,7 @@ function materialStore() {
 		if (!store[id]) store[id] = Object.assign({}, DEFAULT_MATERIAL, {name: tex.name, map: {kind: 'texture', uuid: tex.uuid}});
 	}
 	if (!store[GLASS_ID]) store[GLASS_ID] = Object.assign({}, DEFAULT_MATERIAL, GLASS_MATERIAL, {name: tr('glass_name')});
+	if (!store[WATER_ID]) store[WATER_ID] = Object.assign({}, DEFAULT_MATERIAL, WATER_MATERIAL, {name: tr('water_name')});
 	return store;
 }
 function materialData(id) {
@@ -5106,7 +5117,15 @@ function buildMaterial(d) {
 	});
 	if (d.emission_strength > 0 && !m.emissiveMap && d.map) m.emissiveMap = m.map;
 	// ripples in the glass (a wavy normal), when no normal map is set
-	if (d.wave > 0 && !m.normalMap) { m.normalMap = waveNormalTexture(); m.normalScale = new THREE.Vector2(d.wave, -d.wave); }
+	if (d.wave > 0 && !m.normalMap) {
+		// moving ripples need a texture of their own (its offset slides with the time)
+		const base = waveNormalTexture();
+		const moving = d.wave_speed > 0 || (d.wave_size && d.wave_size != 2);
+		m.normalMap = moving ? base.clone() : base;
+		if (moving) { m.normalMap.needsUpdate = true; m.normalMap.repeat.set(d.wave_size || 2, d.wave_size || 2); }
+		m.normalScale = new THREE.Vector2(d.wave, -d.wave);
+		m.userData.wave_speed = d.wave_speed || 0;
+	}
 	m.userData.render_plugin = true;
 	return m;
 }
@@ -6188,7 +6207,7 @@ class VolumetricFogPass extends THREE.Pass {
 				maxDist: {value: 400}, steps: {value: 32},
 				sunDir: {value: new THREE.Vector3(0, 1, 0)}, sunColor: {value: new THREE.Color()}, sunShadowMap: {value: null}, sunShadowMatrix: {value: new THREE.Matrix4()},
 				hasShadow: {value: 0}, shadowBias: {value: 0},
-				lPos: {value: arr(8)}, lCol: {value: arr(8)}, lRad: {value: new Array(8).fill(1)}, nLights: {value: 0},
+				lPos: {value: arr(8)}, lCol: {value: arr(8)}, lRad: {value: new Array(8).fill(1)}, lDir: {value: arr(8)}, lCone: {value: Array.from({length: 8}, () => new THREE.Vector2(-2, -1))}, nLights: {value: 0},
 			},
 			vertexShader: FULLSCREEN_VERTEX,
 			fragmentShader: '#include <packing>\n' + VIEW_SPACE_GLSL + `
@@ -6196,7 +6215,7 @@ class VolumetricFogPass extends THREE.Pass {
 				uniform float ambient; uniform float base; uniform float height; uniform float noiseAmount; uniform float noiseSize; uniform vec3 wind;
 				uniform float lightAmount; uniform float aniso; uniform float maxDist; uniform float steps;
 				uniform vec3 sunDir; uniform vec3 sunColor; uniform sampler2D sunShadowMap; uniform mat4 sunShadowMatrix; uniform float hasShadow; uniform float shadowBias;
-				uniform vec3 lPos[8]; uniform vec3 lCol[8]; uniform float lRad[8]; uniform int nLights;
+				uniform vec3 lPos[8]; uniform vec3 lCol[8]; uniform float lRad[8]; uniform vec3 lDir[8]; uniform vec2 lCone[8]; uniform int nLights;
 				varying vec2 vUv;
 				float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 				float vnoise(vec3 x) {
@@ -6243,7 +6262,9 @@ class VolumetricFogPass extends THREE.Pass {
 							vec3 dl = lPos[k] - X;
 							float dist = length(dl);
 							float a = clamp(1.0 - dist / lRad[k], 0.0, 1.0);
-							light += lCol[k] * (lightAmount * a * a * phase(dot(rd, dl / max(dist, 1e-3))));
+							// a spot (or a rectangle of light) only lights the fog in front of it
+							float cone = lCone[k].x < -1.5 ? 1.0 : smoothstep(lCone[k].x, max(lCone[k].y, lCone[k].x + 1e-3), dot(-dl / max(dist, 1e-3), lDir[k]));
+							light += lCol[k] * (lightAmount * a * a * cone * phase(dot(rd, dl / max(dist, 1e-3))));
 						}
 						float tr = exp(-d * 0.01 * stepLen);
 						scat += T * fogColor * light * (1.0 - tr);
@@ -6303,7 +6324,10 @@ class VolumetricFogPass extends THREE.Pass {
 			const l = this.lights[i];
 			u.lPos.value[i].copy(l.position);
 			u.lCol.value[i].set(l.color.r * l.intensity, l.color.g * l.intensity, l.color.b * l.intensity);
-			u.lRad.value[i] = Math.max(1, l.distance);
+			u.lRad.value[i] = Math.max(1, l.userData.radius || l.distance || 1);
+			u.lDir.value[i].copy(l.userData.forward || new THREE.Vector3(0, 0, -1));
+			const cone = l.userData.cone;
+			u.lCone.value[i].set(cone ? cone[0] : -2, cone ? cone[1] : -1);
 		}
 		u.nLights.value = n;
 		renderer.setRenderTarget(this.fog);
@@ -6552,6 +6576,19 @@ function sceneSignature() {
 	return sig.toFixed(5);
 }
 
+// the ripples of water and glass move with the time of the animation (the same in a video every time)
+function animateWaves() {
+	const t = lightClock();
+	for (const c of material_cache.values()) {
+		const list = Array.isArray(c.material) ? c.material : [c.material];
+		for (const m of list) {
+			const speed = m && m.userData && m.userData.wave_speed;
+			if (!speed || !m.normalMap) continue;
+			m.normalMap.offset.set((t * speed * 0.05) % 1, (t * speed * 0.031) % 1);
+		}
+	}
+}
+
 const original_render = Preview.prototype.render;
 function renderWithEffects() {
 syncActiveCamera(this);
@@ -6560,6 +6597,7 @@ if (!enabled || !Project) return original_render.call(this);
 	try {
 		this.controls.update();
 		applyMaterials();
+		animateWaves();
 		if (!rig) {
 		disposeRig();
 		rig = buildRig(this.renderer);
@@ -6623,7 +6661,7 @@ function invalidate() {
 // (a light also shows its radius when selected, a camera shows what it sees). Spawn them from the Add menus.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false, flicker: 'none', flicker_amount: 0.5, flicker_speed: 1};
+const DEFAULT_LIGHT = {kind: 'point', color: '#ffe0b0', strength: 3, radius: 96, shadows: false, flicker: 'none', flicker_amount: 0.5, flicker_speed: 1, angle: 30, softness: 0.4, area_w: 16, area_h: 16};
 const DEFAULT_CAMERA = {bloom: 0.35, motion_blur: 0.5, fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
 const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {});
 const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
@@ -6824,9 +6862,36 @@ function syncEditorHelpers() {
 		h.sprite.scale.setScalar(ortho ? (cam.top - cam.bottom) / (cam.zoom || 1) * 0.045 : 0.05);
 		if (kind == 'light') {
 			const d = lightOf(g);
-			h.wire.visible = !!g.selected;
+			h.wire.visible = !!g.selected && d.kind != 'area';
 			h.wire.scale.setScalar(Math.max(0.01, d.radius));
 			h.wire.material.color.set(d.color);
+			// a spot shows its cone, a rectangle of light its frame; both turn with the group (they shine along its -Z)
+			const shape_key = d.kind + '|' + d.angle + '|' + d.radius + '|' + d.area_w + '|' + d.area_h;
+			if (h.shape_key != shape_key) {
+				if (h.shape) { h.object.remove(h.shape); h.shape.geometry.dispose(); h.shape.material.dispose(); h.shape = null; }
+				const pts = [];
+				if (d.kind == 'spot') {
+					const L = Math.min(d.radius, 48), r = Math.tan(Math.max(1, Math.min(89, d.angle)) * Math.PI / 180) * L;
+					for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; pts.push(0, 0, 0, Math.cos(a) * r, Math.sin(a) * r, -L); }
+					for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, b = (i + 1) / 24 * Math.PI * 2; pts.push(Math.cos(a) * r, Math.sin(a) * r, -L, Math.cos(b) * r, Math.sin(b) * r, -L); }
+				} else if (d.kind == 'area') {
+					const w = d.area_w / 2, hh = d.area_h / 2;
+					pts.push(-w, -hh, 0, w, -hh, 0, w, -hh, 0, w, hh, 0, w, hh, 0, -w, hh, 0, -w, hh, 0, -w, -hh, 0, 0, 0, 0, 0, 0, -Math.max(4, Math.min(w, hh)));
+				}
+				if (pts.length) {
+					const geo = new THREE.BufferGeometry();
+					geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+					h.shape = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({transparent: true, opacity: 0.8, depthTest: false}));
+					h.shape.renderOrder = 998;
+					h.object.add(h.shape);
+				}
+				h.shape_key = shape_key;
+			}
+			if (h.shape) {
+				h.shape.quaternion.copy(g.mesh.getWorldQuaternion(new THREE.Quaternion()));
+				h.shape.material.color.set(g.selected ? '#ffffff' : d.color);
+				h.shape.visible = !!g.selected || d.kind == 'area';
+			}
 		} else if (kind == 'camera') {
 			const d = cameraOf(g);
 			h.frustum.quaternion.copy(g.mesh.getWorldQuaternion(new THREE.Quaternion()));
@@ -6920,37 +6985,77 @@ function flickerOf(d, t, seed) {
 
 const FLICKER_OPTIONS = () => ({none: tr('fl_none'), candle: tr('fl_candle'), fire: tr('fl_fire'), fluorescent: tr('fl_fluorescent'), broken: tr('fl_broken'), strobe: tr('fl_strobe'), pulse: tr('fl_pulse')});
 
+let area_ready = false;
+// a light of the kind it should be (a point, a spot looking along the group's -Z, or a glowing rectangle facing -Z)
+function lightObject(d) {
+	if (d.kind == 'spot') { const l = new THREE.SpotLight(0xffffff, 1, 100, 0.5, 0.4, 2); l.userData.kind = 'spot'; return l; }
+	if (d.kind == 'area') {
+		if (!area_ready && THREE.RectAreaLightUniformsLib) { THREE.RectAreaLightUniformsLib.init(); area_ready = true; }
+		const l = new THREE.RectAreaLight(0xffffff, 1, 16, 16); l.userData.kind = 'area'; return l;
+	}
+	const l = new THREE.PointLight(0xffffff, 1, 100, 2); l.userData.kind = 'point'; return l;
+}
 function syncLights() {
 	const list = lightGroups().filter(g => g.mesh && g.visibility !== false);
 	const seen = new Set();
 	let shadows = 0;
 	for (const g of list) {
-		const d = lightOf(g);
+		const d = lightOf(g), kind = ['spot', 'area'].includes(d.kind) ? d.kind : 'point';
 		let light = rig.lights.get(g.uuid);
+		if (light && light.userData.kind != kind) {
+			rig.group.remove(light);
+			if (light.target && light.target.parent) light.target.parent.remove(light.target);
+			if (light.dispose) light.dispose();
+			light = null;
+		}
 		if (!light) {
-			light = new THREE.PointLight(0xffffff, 1, 100, 2);
+			light = lightObject({kind});
 			rig.group.add(light);
+			if (light.target) rig.group.add(light.target);
 			rig.lights.set(g.uuid, light);
 		}
 		g.mesh.updateMatrixWorld(true);
-		light.position.copy(g.mesh.getWorldPosition(new THREE.Vector3()));
+		const pos = g.mesh.getWorldPosition(new THREE.Vector3()), quat = g.mesh.getWorldQuaternion(new THREE.Quaternion());
+		const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+		light.position.copy(pos);
 		light.color.set(d.color);
-		light.intensity = d.strength * (d.flicker && d.flicker != 'none' ? flickerOf(d, lightClock(), lhash(g.uuid.length + g.uuid.charCodeAt(0) * 0.37 + g.uuid.charCodeAt(2) * 0.11)) : 1);
-		light.distance = Math.max(1, d.radius);
-		const cast = !!d.shadows && shadows < 3;
-		if (cast) shadows++;
-		if (light.castShadow != cast) {
-			light.castShadow = cast;
-			light.shadow.mapSize.set(1024, 1024);
-			light.shadow.bias = -0.001;
-			light.shadow.normalBias = 0.05;
-			light.shadow.camera.near = 0.5;
+		const flick = d.flicker && d.flicker != 'none' ? flickerOf(d, lightClock(), lhash(g.uuid.length + g.uuid.charCodeAt(0) * 0.37 + g.uuid.charCodeAt(2) * 0.11)) : 1;
+		light.userData.radius = Math.max(1, d.radius);
+		light.userData.forward = forward.clone();
+		if (kind == 'area') {
+			// a rectangle of light: its brightness is per area, so a bigger one shines more
+			light.intensity = d.strength * flick * 0.6;
+			light.width = Math.max(0.1, d.area_w);
+			light.height = Math.max(0.1, d.area_h);
+			light.quaternion.copy(quat);
+			light.userData.cone = [0, 0.35];   // (for the fog: it shines to its front)
+		} else {
+			light.intensity = d.strength * flick;
+			light.distance = Math.max(1, d.radius);
+			if (kind == 'spot') {
+				const angle = Math.max(1, Math.min(89, d.angle)) * Math.PI / 180;
+				light.angle = angle;
+				light.penumbra = Math.max(0, Math.min(1, d.softness));
+				light.target.position.copy(pos).addScaledVector(forward, 10);
+				light.target.updateMatrixWorld(true);
+				light.userData.cone = [Math.cos(angle), Math.cos(angle * (1 - light.penumbra))];
+			} else light.userData.cone = null;
+			const cast = !!d.shadows && shadows < 3;
+			if (cast) shadows++;
+			if (light.castShadow != cast) {
+				light.castShadow = cast;
+				light.shadow.mapSize.set(1024, 1024);
+				light.shadow.bias = -0.001;
+				light.shadow.normalBias = 0.05;
+				light.shadow.camera.near = 0.5;
+			}
 		}
 		seen.add(g.uuid);
 	}
 	for (const [uuid, light] of rig.lights) {
 		if (seen.has(uuid)) continue;
 		rig.group.remove(light);
+		if (light.target && light.target.parent) light.target.parent.remove(light.target);
 		if (light.dispose) light.dispose();
 		rig.lights.delete(uuid);
 	}
@@ -6969,6 +7074,8 @@ const DEFAULT_PARTICLES = {
 	direction: 'up', yaw: 0, pitch: 45, local: false, spread: 20, speed: 25, speed_jitter: 0.3, gravity: 0, drag: 0.3,
 	shape: 'point', follow: false,
 	size: 4, size_end: 12, size_jitter: 0.3, spin: 0.5, color: '#ffffff', color_end: '#9a9a9a', opacity: 0.8, glow: 0, additive: false,
+	collide: false, bounce: 0.3, friction: 0.4, stick: false,
+	sheet_cols: 1, sheet_rows: 1, sheet_mode: 'life', sheet_fps: 12,
 };
 const PARTICLE_TEXTURES = ['dot', 'smoke', 'spark', 'fire', 'snow', 'drop', 'star', 'square'];
 const particlesOf = node => Object.assign({}, DEFAULT_PARTICLES, node.render_particles || {});
@@ -7049,10 +7156,12 @@ function particleTexture(d) {
 
 const ParticleShader = {
 	vertexShader: `
-		attribute vec3 iPos; attribute vec4 iColor; attribute vec2 iSizeRot;
-		uniform float linearOut; varying vec2 vUv; varying vec4 vColor;
+		attribute vec3 iPos; attribute vec4 iColor; attribute vec3 iSizeRot;
+		uniform float linearOut; uniform vec2 sheet; varying vec2 vUv; varying vec4 vColor;
 		void main() {
-			vUv = uv;
+			// a frame of a sprite sheet: counted from the top left, row by row
+			float f = iSizeRot.z, cx = mod(f, sheet.x), cy = floor(f / sheet.x);
+			vUv = vec2((uv.x + cx) / sheet.x, (uv.y + sheet.y - 1.0 - cy) / sheet.y);
 			vColor = iColor;
 			if (linearOut > 0.5) vColor.rgb = pow(vColor.rgb, vec3(2.2));
 			vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
@@ -7090,7 +7199,7 @@ function emitterFor(node) {
 	geometry.setAttribute('position', quad.attributes.position);
 	geometry.setAttribute('uv', quad.attributes.uv);
 	const material = new THREE.ShaderMaterial({
-		uniforms: {map: {value: null}, glow: {value: 0}, additive: {value: 0}, linearOut: {value: 0}},
+		uniforms: {map: {value: null}, glow: {value: 0}, additive: {value: 0}, linearOut: {value: 0}, sheet: {value: new THREE.Vector2(1, 1)}},
 		vertexShader: ParticleShader.vertexShader, fragmentShader: ParticleShader.fragmentShader,
 		transparent: true, depthWrite: false, side: THREE.DoubleSide,
 	});
@@ -7119,10 +7228,10 @@ function clearEmitters() { [...emitters.keys()].forEach(removeEmitter); }
 function ensureCapacity(e, n) {
 	if (n <= e.capacity) return;
 	const cap = Math.ceil(n * 1.25 + 16);
-	e.pos = new Float32Array(cap * 3); e.col = new Float32Array(cap * 4); e.sr = new Float32Array(cap * 2);
+	e.pos = new Float32Array(cap * 3); e.col = new Float32Array(cap * 4); e.sr = new Float32Array(cap * 3);
 	e.geometry.setAttribute('iPos', new THREE.InstancedBufferAttribute(e.pos, 3).setUsage(THREE.DynamicDrawUsage));
 	e.geometry.setAttribute('iColor', new THREE.InstancedBufferAttribute(e.col, 4).setUsage(THREE.DynamicDrawUsage));
-	e.geometry.setAttribute('iSizeRot', new THREE.InstancedBufferAttribute(e.sr, 2).setUsage(THREE.DynamicDrawUsage));
+	e.geometry.setAttribute('iSizeRot', new THREE.InstancedBufferAttribute(e.sr, 3).setUsage(THREE.DynamicDrawUsage));
 	e.capacity = cap;
 }
 
@@ -7216,14 +7325,20 @@ function updateEmitter(node, e, t, camera) {
 			along = (1 - ek) / drag;
 			fall = (age - along) / drag;
 		} else { along = age; fall = 0.5 * age * age; }
-		pos.addScaledVector(_v, speed * along);
-		pos.y += g * fall;
+		if (d.collide) pos.copy(collidingFlight(e, d, k, pos, _v.clone().multiplyScalar(speed), g, drag, L, age, node));
+		else {
+			pos.addScaledVector(_v, speed * along);
+			pos.y += g * fall;
+		}
 		const f = age / L;
 		const alpha = d.opacity * Math.min(1, d.fade_in > 0 ? age / d.fade_in : 1) * Math.min(1, d.fade_out > 0 ? (L - age) / d.fade_out : 1);
 		const sz = (d.size + (d.size_end - d.size) * f) * (1 + d.size_jitter * (r(9) * 2 - 1));
 		const rot = r(10) * Math.PI * 2 + d.spin * age * (r(11) * 2 - 1) * 2;
-		list.push({pos, alpha, sz, rot, f});
+		const frames = Math.max(1, Math.round(d.sheet_cols) * Math.round(d.sheet_rows));
+		const frame = frames <= 1 ? 0 : d.sheet_mode == 'random' ? Math.floor(r(12) * frames) : d.sheet_mode == 'fps' ? Math.floor(age * d.sheet_fps) % frames : Math.min(frames - 1, Math.floor(f * frames));
+		list.push({pos, alpha, sz, rot, f, frame});
 	}
+	if (e.paths) for (const k of e.paths.keys()) if (k < k0 || k > k1) e.paths.delete(k);
 	// far ones first, so the near ones are drawn over them
 	if (!d.additive && camera) {
 		const cp = camera.getWorldPosition(new THREE.Vector3()), dir = camera.getWorldDirection(new THREE.Vector3());
@@ -7234,18 +7349,88 @@ function updateEmitter(node, e, t, camera) {
 	list.forEach((o, i) => {
 		e.pos[i * 3] = o.pos.x; e.pos[i * 3 + 1] = o.pos.y; e.pos[i * 3 + 2] = o.pos.z;
 		e.col[i * 4] = _c0.r + (_c1.r - _c0.r) * o.f; e.col[i * 4 + 1] = _c0.g + (_c1.g - _c0.g) * o.f; e.col[i * 4 + 2] = _c0.b + (_c1.b - _c0.b) * o.f; e.col[i * 4 + 3] = Math.max(0, o.alpha);
-		e.sr[i * 2] = Math.max(0.01, o.sz); e.sr[i * 2 + 1] = o.rot;
+		e.sr[i * 3] = Math.max(0.01, o.sz); e.sr[i * 3 + 1] = o.rot; e.sr[i * 3 + 2] = o.frame;
 	});
 	e.geometry.instanceCount = list.length;
 	for (const name of ['iPos', 'iColor', 'iSizeRot']) e.geometry.attributes[name].needsUpdate = true;
 	const m = e.material;
 	m.uniforms.map.value = particleTexture(d);
 	m.uniforms.glow.value = d.glow;
+	m.uniforms.sheet.value.set(Math.max(1, Math.round(d.sheet_cols)), Math.max(1, Math.round(d.sheet_rows)));
 	m.uniforms.additive.value = d.additive ? 1 : 0;
 	m.uniforms.linearOut.value = enabled ? 1 : 0;   // the Render view works in linear light
 	const blending = d.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
 	if (m.blending != blending) { m.blending = blending; m.needsUpdate = true; }
 	e.mesh.visible = list.length > 0;
+}
+
+
+// --- particles that hit things: the flight of every particle is worked out once, in small steps, and kept; a step that
+// would pass through a solid element (or the floor) stops on it, bounces off it or sticks to it
+const PARTICLE_DT = 1 / 40;
+function particleColliders(node) {
+	const own = new Set();
+	if (node instanceof Group) { const walk = g => (g.children || []).forEach(c => { own.add(c); if (c instanceof Group) walk(c); }); walk(node); }
+	own.add(node);
+	return [...Cube.all, ...Mesh.all].filter(el => el.mesh && !own.has(el) && el.visibility !== false && el.mesh.visible !== false).map(el => el.mesh);
+}
+function collisionKey(node, d, colliders) {
+	let sig = 0;
+	colliders.forEach((m, i) => { const e = m.matrixWorld.elements; sig += (e[12] * 1.1 + e[13] * 1.3 + e[14] * 1.7 + e[0] + e[5] * 2 + e[10] * 3) * (1 + i * 0.01); });
+	return JSON.stringify([d.bounce, d.friction, d.stick, d.speed, d.gravity, d.drag, d.lifetime, d.direction, d.spread, d.shape, d.local, d.follow, d.yaw, d.pitch]) + '|' + colliders.length + '|' + sig.toFixed(3);
+}
+const _ray = new THREE.Raycaster(), _n = new THREE.Vector3(), _nm = new THREE.Matrix3();
+function collidingFlight(e, d, k, start, v0, g, drag, L, age, node) {
+	if (!e.paths) e.paths = new Map();
+	if (e.collide_frame !== e.frame_id) {
+		e.collide_frame = e.frame_id;
+		const colliders = particleColliders(node), key = collisionKey(node, d, colliders);
+		if (key !== e.collide_key) { e.paths.clear(); e.collide_key = key; }
+		e.colliders = colliders;
+		e.floor_y = Project && Project.model_3d ? Project.model_3d.localToWorld(new THREE.Vector3()).y : 0;
+	}
+	let path = e.paths.get(k);
+	if (!path) {
+		const steps = Math.ceil(L / PARTICLE_DT) + 1, pts = new Float32Array(steps * 3);
+		const p = start.clone(), v = v0.clone(), next = new THREE.Vector3(), seg = new THREE.Vector3();
+		let stuck = false;
+		for (let i = 0; i < steps; i++) {
+			pts.set([p.x, p.y, p.z], i * 3);
+			if (stuck) continue;
+			v.y += g * PARTICLE_DT;
+			if (drag > 0) v.multiplyScalar(Math.exp(-drag * PARTICLE_DT));
+			next.copy(p).addScaledVector(v, PARTICLE_DT);
+			seg.subVectors(next, p);
+			const len = seg.length();
+			let hit = null;
+			if (len > 1e-6 && e.colliders.length) {
+				_ray.set(p, seg.clone().divideScalar(len));
+				_ray.near = 0; _ray.far = len;
+				const hits = _ray.intersectObjects(e.colliders, false);
+				if (hits.length && hits[0].face) {
+					_nm.getNormalMatrix(hits[0].object.matrixWorld);
+					hit = {point: hits[0].point, normal: _n.copy(hits[0].face.normal).applyMatrix3(_nm).normalize().clone()};
+				}
+			}
+			// the floor of the scene
+			if (!hit && p.y >= e.floor_y && next.y < e.floor_y) {
+				const f = (p.y - e.floor_y) / Math.max(1e-6, p.y - next.y);
+				hit = {point: p.clone().lerp(next, f), normal: new THREE.Vector3(0, 1, 0)};
+			}
+			if (!hit) { p.copy(next); continue; }
+			if (hit.normal.dot(v) > 0) hit.normal.negate();
+			p.copy(hit.point).addScaledVector(hit.normal, 0.05);
+			if (d.stick) { v.set(0, 0, 0); stuck = true; continue; }
+			// bounce: the part along the normal turns round (less by the bounce), the rest is slowed by friction
+			const vn = hit.normal.clone().multiplyScalar(v.dot(hit.normal)), vt = v.clone().sub(vn);
+			v.copy(vt.multiplyScalar(1 - Math.min(1, d.friction))).addScaledVector(vn, -Math.max(0, Math.min(1, d.bounce)));
+			if (v.lengthSq() < 0.25 && hit.normal.y > 0.5) { v.set(0, 0, 0); stuck = true; }
+		}
+		path = pts;
+		e.paths.set(k, path);
+	}
+	const fi = Math.min(path.length / 3 - 1.001, Math.max(0, age / PARTICLE_DT)), i = Math.floor(fi), w = fi - i;
+	return new THREE.Vector3(path[i * 3] + (path[i * 3 + 3] - path[i * 3]) * w, path[i * 3 + 1] + (path[i * 3 + 4] - path[i * 3 + 1]) * w, path[i * 3 + 2] + (path[i * 3 + 5] - path[i * 3 + 2]) * w);
 }
 
 const lightClockIsAnimation = () => video_clock !== null || !!(typeof Modes != 'undefined' && Modes.animate && typeof Animation != 'undefined' && Animation.selected);
@@ -7258,7 +7443,7 @@ function updateParticles(camera) {
 	const t = lightClock();
 	for (const node of nodes) {
 		seen.add(node.uuid);
-		try { updateEmitter(node, emitterFor(node), t, camera); } catch (err) { console.warn('[Render view] particles', err); }
+		try { const e = emitterFor(node); e.frame_id = (e.frame_id || 0) + 1; updateEmitter(node, e, t, camera); } catch (err) { console.warn('[Render view] particles', err); }
 	}
 	for (const uuid of [...emitters.keys()]) if (!seen.has(uuid)) removeEmitter(uuid);
 }
@@ -7411,6 +7596,15 @@ function particlePanelComponent() {
 					<div class="render_slider"><span class="label">{{ t('pt_spin') }}</span><input type="range" min="0" max="10" step="0.1" v-model.number="p.spin" @input="live()" @change="done()"><span>{{ p.spin }}</span></div>
 					<div class="render_slider"><span class="label">{{ t('pt_glow') }}</span><input type="range" min="0" max="20" step="0.1" v-model.number="p.glow" @input="live()" @change="done()"><span>{{ p.glow }}</span></div>
 					<label class="render_row" :title="t('pt_additive_tip')">{{ t('pt_additive') }} <input type="checkbox" v-model="p.additive" @change="change()"></label>
+					<div class="render_cap">{{ t('pt_sheet') }}</div>
+					<div class="render_slider" :title="t('pt_sheet_tip')"><span class="label">{{ t('pt_sheet_cols') }}</span><input type="range" min="1" max="16" step="1" v-model.number="p.sheet_cols" @input="live()" @change="done()"><span>{{ p.sheet_cols }}</span></div>
+					<div class="render_slider" :title="t('pt_sheet_tip')"><span class="label">{{ t('pt_sheet_rows') }}</span><input type="range" min="1" max="16" step="1" v-model.number="p.sheet_rows" @input="live()" @change="done()"><span>{{ p.sheet_rows }}</span></div>
+					<template v-if="p.sheet_cols * p.sheet_rows > 1">
+						<label class="render_row">{{ t('pt_sheet_mode') }}
+							<select v-model="p.sheet_mode" @change="change()"><option value="life">{{ t('psm_life') }}</option><option value="fps">{{ t('psm_fps') }}</option><option value="random">{{ t('psm_random') }}</option></select>
+						</label>
+						<div class="render_slider" v-if="p.sheet_mode == 'fps'"><span class="label">{{ t('pt_sheet_fps') }}</span><input type="range" min="1" max="60" step="1" v-model.number="p.sheet_fps" @input="live()" @change="done()"><span>{{ p.sheet_fps }}</span></div>
+					</template>
 
 					<div class="render_cap">{{ t('pt_motion') }}</div>
 					<label class="render_row">{{ t('pt_direction') }}
@@ -7439,6 +7633,14 @@ function particlePanelComponent() {
 						</select>
 					</label>
 					<label class="render_row" :title="t('pt_follow_tip')">{{ t('pt_follow') }} <input type="checkbox" v-model="p.follow" @change="change()"></label>
+					<label class="render_row" :title="t('pt_collide_tip')">{{ t('pt_collide') }} <input type="checkbox" v-model="p.collide" @change="change()"></label>
+					<template v-if="p.collide">
+						<label class="render_row">{{ t('pt_stick') }} <input type="checkbox" v-model="p.stick" @change="change()"></label>
+						<template v-if="!p.stick">
+							<div class="render_slider"><span class="label">{{ t('pt_bounce') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="p.bounce" @input="live()" @change="done()"><span>{{ p.bounce }}</span></div>
+							<div class="render_slider"><span class="label">{{ t('pt_friction') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="p.friction" @input="live()" @change="done()"><span>{{ p.friction }}</span></div>
+						</template>
+					</template>
 					<div class="render_hint">{{ t('pt_hint') }}</div>
 				</template>
 			</div>`,
@@ -7651,8 +7853,13 @@ function openSettings(group, kind) {
 		focus: {label: tr('cam_focus'), type: 'select', options, value: d.focus || ''},
 		focus_blur: {label: tr('cam_focus_blur'), type: 'range', value: d.focus_blur, min: 0, max: 1, step: 0.05},
 	} : {
+		kind: {label: tr('light_kind'), type: 'select', value: d.kind || 'point', options: {point: tr('lk_point'), spot: tr('lk_spot'), area: tr('lk_area')}},
 		color: {label: tr('color'), type: 'color', value: d.color},
 		strength: {label: tr('light_strength'), type: 'range', value: d.strength, min: 0, max: 20, step: 0.1},
+		angle: {label: tr('light_angle'), type: 'range', value: d.angle ?? 30, min: 1, max: 89, step: 1, condition: f => f.kind == 'spot'},
+		softness: {label: tr('light_softness'), type: 'range', value: d.softness ?? 0.4, min: 0, max: 1, step: 0.05, condition: f => f.kind == 'spot'},
+		area_w: {label: tr('light_area_w'), type: 'range', value: d.area_w ?? 16, min: 0.5, max: 200, step: 0.5, condition: f => f.kind == 'area'},
+		area_h: {label: tr('light_area_h'), type: 'range', value: d.area_h ?? 16, min: 0.5, max: 200, step: 0.5, condition: f => f.kind == 'area'},
 		radius: {label: tr('light_radius'), type: 'range', value: d.radius, min: 4, max: 400, step: 1},
 		shadows: {label: tr('light_shadows'), type: 'checkbox', value: !!d.shadows},
 		flicker: {label: tr('light_flicker'), type: 'select', value: d.flicker || 'none', options: FLICKER_OPTIONS()},
@@ -7912,7 +8119,7 @@ function openMaterials() {
 					if (!this.selected || !this.d) return;
 					const num = v => isFinite(parseFloat(v)) ? parseFloat(v) : 0;
 					const d = Object.assign({}, this.d);
-					['roughness', 'metalness', 'normal_strength', 'emission_strength', 'opacity', 'transmission', 'ior', 'clearcoat', 'env', 'thickness', 'wave', 'tint_distance'].forEach(k => { d[k] = num(d[k]); });
+					['roughness', 'metalness', 'normal_strength', 'emission_strength', 'opacity', 'transmission', 'ior', 'clearcoat', 'env', 'thickness', 'wave', 'wave_speed', 'wave_size', 'tint_distance'].forEach(k => { d[k] = num(d[k]); });
 					materialStore()[this.selected] = d;
 					Project.saved = false;
 					invalidate();
@@ -8065,6 +8272,8 @@ function openMaterials() {
 							<div class="render_slider"><span class="label">{{ t('ior') }}</span><input type="range" min="1" max="2.4" step="0.01" v-model.number="d.ior" @change="save()"><span>{{ d.ior }}</span></div>
 							<div class="render_slider"><span class="label">{{ t('thickness') }}</span><input type="range" min="0" max="32" step="0.5" v-model.number="d.thickness" @change="save()"><span>{{ d.thickness }}</span></div>
 							<div class="render_slider"><span class="label">{{ t('wave') }}</span><input type="range" min="0" max="2" step="0.05" v-model.number="d.wave" @change="save()"><span>{{ d.wave }}</span></div>
+							<div class="render_slider" v-if="d.wave > 0"><span class="label">{{ t('wave_speed') }}</span><input type="range" min="0" max="5" step="0.05" v-model.number="d.wave_speed" @change="save()"><span>{{ d.wave_speed }}</span></div>
+							<div class="render_slider" v-if="d.wave > 0"><span class="label">{{ t('wave_size') }}</span><input type="range" min="0.2" max="12" step="0.1" v-model.number="d.wave_size" @change="save()"><span>{{ d.wave_size }}</span></div>
 							<label class="render_row">{{ t('tint') }} <input type="color" v-model="d.tint" @change="save()"></label>
 							<div class="render_slider"><span class="label">{{ t('tint_distance') }}</span><input type="range" min="0" max="200" step="1" v-model.number="d.tint_distance" @change="save()"><span>{{ d.tint_distance }}</span></div>
 						</template>
@@ -8373,6 +8582,19 @@ function panelComponent() {
 					<button @click="spawn('light')" class="render_btn">{{ t('add_light') }}</button>
 					<div v-if="light" class="render_box">
 						<div class="render_cap">{{ t('light_selected') }}</div>
+						<label class="render_row">{{ t('light_kind') }}
+							<select v-model="light.kind" @change="liveLight(); endEdit('Edit light')">
+								<option value="point">{{ t('lk_point') }}</option><option value="spot">{{ t('lk_spot') }}</option><option value="area">{{ t('lk_area') }}</option>
+							</select>
+						</label>
+						<template v-if="light.kind == 'spot'">
+							<div class="render_slider"><span class="label">{{ t('light_angle') }}</span><input type="range" min="1" max="89" step="1" v-model.number="light.angle" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.angle }}°</span></div>
+							<div class="render_slider"><span class="label">{{ t('light_softness') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="light.softness" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.softness }}</span></div>
+						</template>
+						<template v-if="light.kind == 'area'">
+							<div class="render_slider"><span class="label">{{ t('light_area_w') }}</span><input type="range" min="0.5" max="200" step="0.5" v-model.number="light.area_w" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.area_w }}</span></div>
+							<div class="render_slider"><span class="label">{{ t('light_area_h') }}</span><input type="range" min="0.5" max="200" step="0.5" v-model.number="light.area_h" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.area_h }}</span></div>
+						</template>
 						<label class="render_row">{{ t('color') }} <input type="color" v-model="light.color" @input="liveLight()" @change="endEdit('Edit light')"></label>
 						<div class="render_slider"><span class="label">{{ t('light_strength') }}</span><input type="range" min="0" max="20" step="0.1" v-model.number="light.strength" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.strength }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('light_radius') }}</span><input type="range" min="4" max="400" step="1" v-model.number="light.radius" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.radius }}</span></div>
