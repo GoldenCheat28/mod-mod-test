@@ -433,6 +433,7 @@ function openConnect() {
 	const getValues = () => Object.assign({twist: 0}, dialog && dialog.content_vue ? dialog.content_vue.f : state);
 	const options = {
 		id: 'pipe_connect_dialog', title: tr('title'), width: 460, darken: false,
+		cancel_on_click_outside: false,   // only Confirm or the cross close it: you work in the 3D view with the window open
 		component: {
 			data() { return {f: Object.assign({}, state)}; },
 			methods: {
