@@ -4528,6 +4528,7 @@ const TEXTS = {
 		sky_custom: 'Custom colors', sky_image_mode: 'Image (360° panorama)', sky_top: 'Top color', sky_horizon: 'Horizon color', sky_ground: 'Ground color',
 		sky_sun: 'Sun / moon disc', sky_clouds: 'Clouds', sky_image: 'Panorama image', sky_rotation: 'Rotation', sky_load: 'Load image…', sky_none: 'no image',
 		sky_hint: 'The skybox is the background and also lights and reflects in the materials. Use an equirectangular (2:1) panorama for an image.',
+		light_flicker: 'Flicker', light_flicker_amount: 'Flicker amount', light_flicker_speed: 'Flicker speed', fl_none: 'None (steady)', fl_candle: 'Candle', fl_fire: 'Fire', fl_fluorescent: 'Failing fluorescent tube', fl_broken: 'Loose contact (goes off)', fl_strobe: 'Strobe', fl_pulse: 'Slow pulse',
 		lights: 'Lights', add_light: '+ Light', light_title: 'Light', light_strength: 'Strength', light_radius: 'Radius (px)', light_shadows: 'Shadows',
 		light_hint: 'A light is an empty group. Move it with the Move tool. It shines in the Render view.', light_selected: 'Selected light',
 		cameras: 'Cameras', add_camera: '+ Camera', camera_title: 'Camera', camera_selected: 'Selected camera',
@@ -4570,6 +4571,7 @@ const TEXTS = {
 		sky_custom: 'Свои цвета', sky_image_mode: 'Картинка (панорама 360°)', sky_top: 'Цвет сверху', sky_horizon: 'Цвет горизонта', sky_ground: 'Цвет земли',
 		sky_sun: 'Диск солнца / луны', sky_clouds: 'Облака', sky_image: 'Панорама', sky_rotation: 'Поворот', sky_load: 'Загрузить картинку…', sky_none: 'нет картинки',
 		sky_hint: 'Скайбокс — это фон, а ещё он освещает и отражается в материалах. Для картинки нужна панорама 2:1 (equirectangular).',
+		light_flicker: 'Мерцание', light_flicker_amount: 'Сила мерцания', light_flicker_speed: 'Скорость мерцания', fl_none: 'Нет (ровный)', fl_candle: 'Свеча', fl_fire: 'Огонь / костёр', fl_fluorescent: 'Барахлящая лампа дневного света', fl_broken: 'Плохой контакт (гаснет)', fl_strobe: 'Стробоскоп', fl_pulse: 'Медленная пульсация',
 		lights: 'Свет', add_light: '+ Свет', light_title: 'Свет', light_strength: 'Сила', light_radius: 'Радиус (px)', light_shadows: 'Тени',
 		light_hint: 'Свет — это пустая группа. Двигайте её инструментом «Перемещение». Светит в Рендер-виде.', light_selected: 'Выбранный свет',
 		cameras: 'Камеры', add_camera: '+ Камера', camera_title: 'Камера', camera_selected: 'Выбранная камера',
@@ -5536,7 +5538,7 @@ function invalidate() {
 // (a light also shows its radius when selected, a camera shows what it sees). Spawn them from the Add menus.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false};
+const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false, flicker: 'none', flicker_amount: 0.5, flicker_speed: 1};
 const DEFAULT_CAMERA = {bloom: 0.35, motion_blur: 0.5, fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
 const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {});
 const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
@@ -5784,6 +5786,48 @@ function onIconPress(event) {
 
 // --- real lights in the render view -------------------------------------------
 
+// --- flickering lights: how bright a light is at a moment (1 = as set) ---------------------------
+// The moment is the animation's time in the Animate tab and in a video (so it flickers the same every time it plays),
+// the clock everywhere else.
+let video_clock = null;
+const lightClock = () => video_clock !== null ? video_clock
+	: (typeof Modes != 'undefined' && Modes.animate && typeof Animation != 'undefined' && Animation.selected && typeof Timeline != 'undefined') ? Timeline.time
+	: performance.now() / 1000;
+const lhash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+// smooth value noise, 0..1
+const lnoise = t => { const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f); return lhash(i) * (1 - u) + lhash(i + 1) * u; };
+function flickerOf(d, t, seed) {
+	const a = Math.max(0, Math.min(1, d.flicker_amount ?? 0.5)), k = Math.max(0.05, d.flicker_speed ?? 1);
+	const T = t * k + seed * 17.3;
+	switch (d.flicker) {
+		case 'candle': {
+			// a flame: a slow sway and a quicker unsteady flutter
+			const n = lnoise(T * 3) * 0.55 + lnoise(T * 9 + 5) * 0.3 + lnoise(T * 23 + 9) * 0.15;
+			return 1 - a * n;
+		}
+		case 'fire': {
+			const n = lnoise(T * 6) * 0.5 + lnoise(T * 15 + 3) * 0.3 + lnoise(T * 41 + 7) * 0.2;
+			return Math.max(0, 1 - a * 1.3 * n + a * 0.25 * lnoise(T * 2));
+		}
+		case 'fluorescent': {
+			// a failing tube: mostly on, now and then it stutters off for a moment, and it hums
+			const slot = Math.floor(T * 12), stutter = lhash(slot + 0.5) < 0.12 * a + 0.02 ? 0.1 + 0.4 * lhash(slot + 3.1) : 1;
+			const burst = lhash(Math.floor(T * 0.7) + 7.7) < 0.25 * a ? (Math.sin(T * 90) > 0 ? 1 : 0.15) : 1;
+			return Math.min(stutter, burst) * (1 - 0.04 * a * Math.sin(T * 314));
+		}
+		case 'broken': {
+			// a loose contact: goes off and comes back at random
+			const slot = Math.floor(T * 6);
+			return lhash(slot + 0.25) < 0.45 * a ? 0.05 : 1;
+		}
+		case 'strobe': return (T * 2) % 1 < 0.5 ? 1 : 1 - a;
+		case 'pulse': return 1 - a * (0.5 - 0.5 * Math.cos(T * Math.PI * 2 * 0.5));
+		default: return 1;
+	}
+}
+
+const FLICKER_OPTIONS = () => ({none: tr('fl_none'), candle: tr('fl_candle'), fire: tr('fl_fire'), fluorescent: tr('fl_fluorescent'), broken: tr('fl_broken'), strobe: tr('fl_strobe'), pulse: tr('fl_pulse')});
+
 function syncLights() {
 	const list = lightGroups().filter(g => g.mesh && g.visibility !== false);
 	const seen = new Set();
@@ -5799,7 +5843,7 @@ function syncLights() {
 		g.mesh.updateMatrixWorld(true);
 		light.position.copy(g.mesh.getWorldPosition(new THREE.Vector3()));
 		light.color.set(d.color);
-		light.intensity = d.strength;
+		light.intensity = d.strength * (d.flicker && d.flicker != 'none' ? flickerOf(d, lightClock(), lhash(g.uuid.length + g.uuid.charCodeAt(0) * 0.37 + g.uuid.charCodeAt(2) * 0.11)) : 1);
 		light.distance = Math.max(1, d.radius);
 		const cast = !!d.shadows && shadows < 3;
 		if (cast) shadows++;
@@ -5856,6 +5900,9 @@ function openSettings(group, kind) {
 		strength: {label: tr('light_strength'), type: 'range', value: d.strength, min: 0, max: 20, step: 0.1},
 		radius: {label: tr('light_radius'), type: 'range', value: d.radius, min: 4, max: 400, step: 1},
 		shadows: {label: tr('light_shadows'), type: 'checkbox', value: !!d.shadows},
+		flicker: {label: tr('light_flicker'), type: 'select', value: d.flicker || 'none', options: FLICKER_OPTIONS()},
+		flicker_amount: {label: tr('light_flicker_amount'), type: 'range', value: d.flicker_amount ?? 0.5, min: 0, max: 1, step: 0.05},
+		flicker_speed: {label: tr('light_flicker_speed'), type: 'range', value: d.flicker_speed ?? 1, min: 0.1, max: 5, step: 0.1},
 	};
 	const apply = values => {
 		const data = Object.assign({}, camera ? cameraOf(group) : lightOf(group));
@@ -6287,7 +6334,7 @@ let editing_group = null, add_light_action = null, add_camera_action = null, pol
 
 function panelComponent() {
 	return {
-		data() { return Object.assign({project: '', light: null, light_uuid: '', cam: null, cam_uuid: '', looking: false, focus_name: ''}, DEFAULT_SETTINGS); },
+		data() { return Object.assign({flicker_options: FLICKER_OPTIONS(), project: '', light: null, light_uuid: '', cam: null, cam_uuid: '', looking: false, focus_name: ''}, DEFAULT_SETTINGS); },
 		mounted() { this.load(); },
 		methods: {
 			t(key) { return tr(key); },
@@ -6458,6 +6505,15 @@ function panelComponent() {
 						<div class="render_slider"><span class="label">{{ t('light_strength') }}</span><input type="range" min="0" max="20" step="0.1" v-model.number="light.strength" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.strength }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('light_radius') }}</span><input type="range" min="4" max="400" step="1" v-model.number="light.radius" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.radius }}</span></div>
 						<label class="render_row">{{ t('light_shadows') }} <input type="checkbox" v-model="light.shadows" @change="liveLight(); endEdit('Edit light')"></label>
+						<label class="render_row">{{ t('light_flicker') }}
+							<select v-model="light.flicker" @change="liveLight(); endEdit('Edit light')">
+								<option v-for="(label, key) in flicker_options" :value="key">{{ label }}</option>
+							</select>
+						</label>
+						<template v-if="light.flicker && light.flicker != 'none'">
+							<div class="render_slider"><span class="label">{{ t('light_flicker_amount') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="light.flicker_amount" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.flicker_amount }}</span></div>
+							<div class="render_slider"><span class="label">{{ t('light_flicker_speed') }}</span><input type="range" min="0.1" max="5" step="0.1" v-model.number="light.flicker_speed" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.flicker_speed }}</span></div>
+						</template>
 					</div>
 					<div v-else class="render_hint">{{ t('light_hint') }}</div>
 
@@ -6632,6 +6688,7 @@ async function renderVideo(o) {
 			camera.updateMatrixWorld(true);
 		};
 		const at = time => {
+			video_clock = time;   // (a flickering light flickers by the video's time)
 			if (Animation.selected) {
 				Timeline.setTime(time);
 				Animator.preview();
@@ -6693,6 +6750,7 @@ async function renderVideo(o) {
 		Project.render_active_camera = saved_camera;
 		Project.render_settings = saved_settings;
 		if (o.camera) o.camera.render_camera = saved_camera_data;
+		video_clock = null;
 		if (Animation.selected) { Timeline.setTime(saved_time); Animator.preview(); }
 		if (!was_enabled) setEnabled(false);
 		dialog.close();
