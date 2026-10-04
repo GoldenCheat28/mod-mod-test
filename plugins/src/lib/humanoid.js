@@ -15,6 +15,7 @@
 const HG = 9.81;
 const BLOOD_MAX = 5000.0;
 const HEADSHOT_SPASM = 1.5;
+const HIT_PART_SPEED = 12;   // m/s: the most a hit throws the part it struck (the rest of its push goes on into the body)
 const POSTURES = ['stand', 'crouch', 'hands_up', 'cover_head', 'aim', 'kneel', 'squat', 'sit'];
 
 const gv = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -395,6 +396,9 @@ class Humanoid {
 
 	// a part of a person squeezed into something can be shot out of it at silly speeds: no part moves faster than a blast throws it
 	_limit_speed() {
+		// (not right after a hit: the joints must first pass its push on to the rest of the body - a head shot moves the
+		// whole person, not only the head; clipping it here threw most of a strong hit away)
+		if (this._time < (this._hit_until || 0)) return;
 		const cap = this._time < this._blast_until ? 60 : 22;
 		for (const p of this.parts) {
 			const v = this.lin(p);
@@ -873,11 +877,13 @@ class Humanoid {
 	}
 
 	// how far into the spasm after a shot to the brain, 0..1: in almost at once, held a moment, then let go slowly
+	// how hard the arms draw in after a shot to the head (the Ragdoll panel: 1 = as in the game)
+	spasmScale() { const v = this.s && this.s.spasm; return clamp(v === undefined || v === null ? 0.5 : +v, 0, 1); }
 	_spasm() { const t = this._death_t; return gsmooth(0, 0.08, t) * (1 - gsmooth(0.35, HEADSHOT_SPASM, t)); }
 
 	// weak, involuntary arm posture right after a brain injury: the fists drawn in to the wound, the body draws in a little
 	_pose_decerebrate() {
-		const t = this._death_t, k = this._spasm();
+		const t = this._death_t, k = this._spasm() * this.spasmScale();
 		const wound = this.toWorld(this.head, this._head_wound || gv(0, 0, -0.08));
 		const hc = this.pos(this.head);
 		let out = wound.clone().sub(hc);
@@ -913,7 +919,7 @@ class Humanoid {
 			const qp = this.quat(p), qc = this.quat(c);
 			const err = gerr(qp.clone().multiply(gquat(c.target)).multiply(qc.clone().invert()));
 			let t_i = this.tone * c.weak * c.hit_weak;
-			if (this._death_kind == 'headshot' && this._death_t >= 0 && this._death_t < HEADSHOT_SPASM && c.arm == 1) t_i = Math.max(t_i, 0.95 * this._spasm());
+			if (this._death_kind == 'headshot' && this._death_t >= 0 && this._death_t < HEADSHOT_SPASM && c.arm == 1) t_i = Math.max(t_i, 0.95 * this._spasm() * this.spasmScale());
 			// trunk and legs go limp first; after a shot to the head they still draw in with the arms, only weaker
 			if (this._death_t >= 0 && c.arm == 0) t_i *= this._death_kind == 'headshot' && this._death_t < HEADSHOT_SPASM ? 0.4 : 0.15;
 			// (Jolt drives a 6DOF motor about the axes of the child's joint frame: the wanted turn is given in those axes. The
@@ -1048,9 +1054,25 @@ class Humanoid {
 	receive_hit(body, point, dir, impulse, weapon) {
 		this.wake();
 		// the impulse at the point it hit
-		const com = this.pos(body), imp = dir.clone().multiplyScalar(impulse);
-		this.world.tmp.Set(imp.x, imp.y, imp.z);
-		this.world.bodies.AddImpulse(body.id, this.world.tmp);
+		const com = this.pos(body);
+		// a part takes no more of the push than throws it at HIT_PART_SPEED; the rest goes on through the joints (neck, chest,
+		// belly, pelvis) as the skeleton would pass it, and what is still left moves the whole body. (Given all to one small
+		// part, the joints cannot catch up in a step: the neck stretched and most of a strong hit was lost)
+		const mass = p => { const im = p.body.GetMotionProperties().GetInverseMass(); return im > 0 ? 1 / im : 0; };
+		const push = (p, n) => { const v = dir.clone().multiplyScalar(n); this.world.tmp.Set(v.x, v.y, v.z); this.world.bodies.AddImpulse(p.id, this.world.tmp); };
+		let left = impulse, own = 0;
+		for (let p = body; p && left > 1e-6; p = p.parent >= 0 ? this.parts[p.parent] : null) {
+			const give = Math.min(left, mass(p) * HIT_PART_SPEED);
+			push(p, give);
+			if (p === body) own = give;
+			left -= give;
+		}
+		if (left > 1e-6) {
+			const all = this.parts.reduce((m, p) => m + mass(p), 0);
+			for (const p of this.parts) push(p, left * mass(p) / all);
+		}
+		this._hit_until = this._time + 0.05;
+		const imp = dir.clone().multiplyScalar(own);
 		const L = point.clone().sub(com).cross(imp);
 		this.world.tmp.Set(L.x, L.y, L.z);
 		this.world.bodies.AddAngularImpulse(body.id, this.world.tmp);
