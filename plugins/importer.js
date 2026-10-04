@@ -17208,6 +17208,11 @@ const TEXTS = {
 		quake_palette: 'Quake MDL: no palette.lmp found next to the model, the skin is shown in grey (select palette.lmp to get the colours)',
 		source_mdl: 'This is a Source engine MDL (version %): only Half-Life (GoldSrc) and Quake MDL can be read. Export it to SMD/FBX with Crowbar first.',
 		too_big: 'This model is very big (% triangles): Blockbench may be slow with it',
+		rt_action: 'Retarget animation…', rt_action_desc: 'Play an animation of one skeleton on another (an imported dance on the ragdoll)', rt_title: 'Retarget animation',
+		rt_anim: 'Animation', rt_source: 'From the skeleton', rt_target: 'To the skeleton', rt_root: 'Hips travel too (walking, jumping)', rt_name: 'New animation',
+		rt_hint: 'The bones are paired by what they are (hips, spine, arms, legs, left / right) for Mixamo, Half-Life, Blender, the ragdoll and most other skeletons. Each bone turns the way its partner turns; T pose and A pose are lined up; the travel is scaled by the length of the legs.',
+		rt_none: 'There is no animation to retarget', rt_two: 'Two skeletons are needed (groups with bones, or armatures)', rt_pick: 'Pick an animation and two different skeletons',
+		rt_few: 'Too few bones could be paired (the names say nothing about what they are)', rt_done: 'Retargeted: % of % bones',
 	},
 	ru: {
 		action: '3D-модель (OBJ, FBX, glTF, DAE, 3DS, STL, PLY, MDL…)', action_desc: 'Импорт геометрии, текстур, скелета и анимаций из файла 3D-модели',
@@ -17223,6 +17228,11 @@ const TEXTS = {
 		quake_palette: 'Quake MDL: рядом с моделью нет palette.lmp, скин будет серым (выберите palette.lmp, чтобы получить цвета)',
 		source_mdl: 'Это MDL движка Source (версия %): читаются только MDL из Half-Life (GoldSrc) и Quake. Сначала переведите его в SMD/FBX через Crowbar.',
 		too_big: 'Модель очень большая (треугольников: %): Blockbench может с ней тормозить',
+		rt_action: 'Перенести анимацию…', rt_action_desc: 'Проиграть анимацию одного скелета на другом (импортированный танец на регдолле)', rt_title: 'Перенос анимации',
+		rt_anim: 'Анимация', rt_source: 'Со скелета', rt_target: 'На скелет', rt_root: 'Переносить и движение таза (ходьба, прыжки)', rt_name: 'Новая анимация',
+		rt_hint: 'Кости сопоставляются по смыслу (таз, позвоночник, руки, ноги, лево / право) для Mixamo, Half-Life, Blender, регдолла и большинства других скелетов. Каждая кость поворачивается так же, как её пара; T-поза и A-поза выравниваются; перемещение масштабируется по длине ног.',
+		rt_none: 'Нет анимации для переноса', rt_two: 'Нужны два скелета (группы с костями или арматуры)', rt_pick: 'Выберите анимацию и два разных скелета',
+		rt_few: 'Удалось сопоставить слишком мало костей (по именам непонятно, что это за кости)', rt_done: 'Перенесено: % из % костей',
 	},
 };
 const tr = key => {
@@ -18121,6 +18131,265 @@ function convertScene(root, clips, o, model_name, notes, res) {
 }
 
 // ---------------------------------------------------------------------------
+// Retargeting: an animation of one skeleton played by another (a Mixamo dance on the ragdoll, a Half-Life walk on an
+// imported character). The bones are paired by what they are (hips, spine, upper arm left...), whatever their names.
+// Every bone of the target turns in the world the way its partner turns, measured from the rest poses (so a T pose and an
+// A pose still fit: each bone is first lined up with its partner), seen from the way each model faces. The hips also take
+// the travel, scaled by the length of the legs.
+// ---------------------------------------------------------------------------
+
+// what a bone is, from its name: {part, side, index}
+function boneMeaning(raw) {
+	let n = String(raw || '').replace(/^.*[:|]/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+	n = n.replace(/mixamorig|valve ?biped|bip ?0?1|\bdef\b|\borg\b|\bmch\b|\bjnt\b|\bjoint\b|\bbone\b|\bb\b/g, ' ').replace(/[_.\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+	const tokens = n.split(' ').filter(Boolean);
+	let side = 0;
+	const out = [];
+	for (const t of tokens) {
+		if (t == 'left' || t == 'l' || t == 'lft') side = -1;
+		else if (t == 'right' || t == 'r' || t == 'rgt') side = 1;
+		else if (/^left./.test(t)) { side = -1; out.push(t.slice(4)); }
+		else if (/^right./.test(t)) { side = 1; out.push(t.slice(5)); }
+		else out.push(t);
+	}
+	const s = ' ' + out.join(' ') + ' ';
+	const num = (s.match(/(\d+)/) || [, '0'])[1];
+	const has = re => re.test(s);
+	let part = '';
+	if (has(/thumb|index|middle|ring|pinky|finger|toe|eye|jaw|tongue|teeth|twist|roll|end|nub|tip|ik|pole|target|prop|weapon/)) part = '';
+	else if (has(/ (hips?|pelvis) /)) part = 'pelvis';
+	else if (has(/ (abdomen|belly|waist|stomach) /)) part = 'abdomen';
+	else if (has(/ (chest|torso|ribs|breast|upper ?chest) /)) part = 'chest';
+	else if (has(/ spine/)) part = 'spine';
+	else if (has(/ neck/)) part = 'neck';
+	else if (has(/ head /)) part = 'head';
+	else if (has(/ (clavicle|collar|shoulder) /)) part = 'clavicle';
+	else if (has(/ (fore ?arm|lower ?arm|elbow) /)) part = 'forearm';
+	else if (has(/ (upper ?arm|arm) /)) part = 'upperarm';
+	else if (has(/ (hand|wrist|palm) /)) part = 'hand';
+	else if (has(/ (thigh|up ?leg|upper ?leg) /)) part = 'thigh';
+	else if (has(/ (calf|shin|lower ?leg|knee|leg) /)) part = 'shin';
+	else if (has(/ (foot|ankle|feet) /)) part = 'foot';
+	return {part, side: ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'foot', 'clavicle'].includes(part) ? side : 0, index: +num};
+}
+
+// pairs: target bone -> source bone (the spine bones of the source are shared out: the lowest to the abdomen, the highest to the chest)
+function pairBones(src, tgt) {
+	const meaning = list => list.map(b => Object.assign({b}, boneMeaning(b.name)));
+	const S = meaning(src), T = meaning(tgt);
+	const depth = b => { let d = 0; for (let p = b.parent; p; p = p.parent) d++; return d; };
+	const spineOf = list => list.filter(x => x.part == 'spine' || x.part == 'abdomen' || x.part == 'chest').sort((a, b) => depth(a.b) - depth(b.b) || a.index - b.index);
+	const pick = (list, part, side) => list.find(x => x.part == part && x.side == side);
+	const map = new Map();
+	const s_spine = spineOf(S), t_spine = spineOf(T);
+	for (const t of T) {
+		let s = null;
+		if (t.part == 'spine' || t.part == 'abdomen' || t.part == 'chest') {
+			if (s_spine.length) {
+				const i = t_spine.indexOf(t), f = t_spine.length > 1 ? i / (t_spine.length - 1) : 0;
+				s = s_spine[Math.round(f * (s_spine.length - 1))];
+			}
+		} else if (t.part) s = pick(S, t.part, t.side);
+		if (!s) s = S.find(x => x.b.name.toLowerCase() == t.b.name.toLowerCase());
+		if (s && t.part != 'clavicle') map.set(t.b, s.b);
+	}
+	return map;
+}
+
+// The core, on plain data. src/tgt: [{name, parent (bone|null), rest: Matrix4 (world), frames: [Matrix4] (source only)}];
+// returns for every target bone and frame its world matrix
+function retargetWorlds(src, tgt, map, frames, o = {}) {
+	const pos = m => new THREE.Vector3().setFromMatrixPosition(m), rot = m => new THREE.Quaternion().setFromRotationMatrix(m);
+	const find = (list, part, side) => list.find(b => boneMeaning(b.name).part == part && boneMeaning(b.name).side == side);
+	// which way a model faces: up × right, right = from its left hip to its right hip (or shoulders)
+	const facingOf = (list, at) => {
+		const r = find(list, 'thigh', 1) || find(list, 'upperarm', 1), l = find(list, 'thigh', -1) || find(list, 'upperarm', -1);
+		if (!r || !l) return new THREE.Vector3(0, 0, -1);
+		const right = pos(at(r)).sub(pos(at(l))); right.y = 0;
+		if (right.lengthSq() < 1e-9) return new THREE.Vector3(0, 0, -1);
+		return new THREE.Vector3(0, 1, 0).cross(right.normalize()).normalize();
+	};
+	const H = new THREE.Quaternion().setFromUnitVectors(facingOf(src, b => b.rest), facingOf(tgt, b => b.rest));
+	const H_inv = H.clone().invert();
+	// how long the legs are (hips to ankle): the travel of the hips is scaled by it
+	const legOf = list => { const th = find(list, 'thigh', 1) || find(list, 'thigh', -1), ft = find(list, 'foot', 1) || find(list, 'foot', -1); return th && ft ? pos(th.rest).distanceTo(pos(ft.rest)) : 0; };
+	const ls = legOf(src), lt = legOf(tgt), scale = o.scale || (ls > 1e-6 && lt > 1e-6 ? lt / ls : 1);
+	// each bone lined up with its partner at rest: the way to its next paired bone
+	const kids = b => tgt.filter(c => c.parent === b);
+	const align = new Map();
+	const order = tgt.slice().sort((a, b) => { const d = x => { let k = 0; for (let p = x.parent; p; p = p.parent) k++; return k; }; return d(a) - d(b); });
+	for (const b of order) {
+		const s = map.get(b);
+		let A = b.parent && align.has(b.parent) ? align.get(b.parent).clone() : new THREE.Quaternion();
+		if (s) {
+			const child = kids(b).find(c => map.get(c) && map.get(c) !== s);
+			if (child) {
+				const dt = pos(child.rest).sub(pos(b.rest)), ds = pos(map.get(child).rest).sub(pos(s.rest)).applyQuaternion(H);
+				if (dt.lengthSq() > 1e-9 && ds.lengthSq() > 1e-9) {
+					// the turn that takes the target's rest direction onto the source's, worked out in the target's rest frame
+					A = new THREE.Quaternion().setFromUnitVectors(dt.normalize(), ds.normalize());
+				}
+			} else A = new THREE.Quaternion();
+		}
+		align.set(b, A);
+	}
+	const top = order.find(b => map.get(b) && ['pelvis', 'spine', 'abdomen'].includes(boneMeaning(b.name).part)) || order.find(b => map.get(b));
+	const out = new Map(tgt.map(b => [b, []]));
+	for (let f = 0; f < frames; f++) {
+		const W = new Map();
+		for (const b of order) {
+			const s = map.get(b);
+			let world;
+			const restR = rot(b.rest);
+			if (s) {
+				// the source's turn since its rest pose, seen from the target's side, applied to the lined-up target bone
+				const d = rot(s.frames[f]).multiply(rot(s.rest).invert());
+				const q = H.clone().multiply(d).multiply(H_inv).multiply(align.get(b)).multiply(restR);
+				let p;
+				if (b === top && o.root_motion !== false) {
+					const move = pos(s.frames[f]).sub(pos(s.rest)).applyQuaternion(H).multiplyScalar(scale);
+					p = pos(b.rest).add(move);
+				} else {
+					// carried by its parent like at rest
+					const pw = b.parent ? W.get(b.parent) : null;
+					p = pw ? pos(b.parent.rest).negate().add(pos(b.rest)).applyQuaternion(rot(b.parent.rest).invert()).applyQuaternion(rot(pw)).add(pos(pw)) : pos(b.rest);
+				}
+				world = new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1));
+			} else {
+				// a bone without a partner keeps its rest place on its parent
+				const pw = b.parent ? W.get(b.parent) : null;
+				world = pw ? pw.clone().multiply(new THREE.Matrix4().copy(b.parent.rest).invert().multiply(b.rest)) : b.rest.clone();
+			}
+			W.set(b, world);
+			out.get(b).push(world);
+		}
+	}
+	return {worlds: out, top, scale, H};
+}
+
+// --- retargeting inside Blockbench: Blockbench plays the source animation itself (so every kind of keyframe, easing and
+// expression counts), the world turns of the bones are read from its scene, and the target's keys are written ---
+
+const isBone = n => (typeof ArmatureBone == 'function' && n instanceof ArmatureBone) || n instanceof Group;
+function skeletonNodes(root) {
+	const out = [];
+	const walk = n => { if (isBone(n)) out.push(n); (n.children || []).forEach(c => { if (c && typeof c == 'object' && isBone(c)) walk(c); }); };
+	if (typeof Armature == 'function' && root instanceof Armature) (root.children || []).forEach(c => { if (isBone(c)) walk(c); });
+	else walk(root);
+	return out;
+}
+// the top nodes that hold a skeleton (a group with bone groups, or an armature)
+function skeletonRoots() {
+	const tops = [...Group.all.filter(g => !(g.parent instanceof Group)), ...(typeof Armature == 'function' ? Armature.all : [])];
+	return tops.filter(r => skeletonNodes(r).filter(n => n !== r).length >= 3);
+}
+const worldOfNode = n => { const m = n.mesh || n.scene_object; return m ? m.matrixWorld.clone() : new THREE.Matrix4(); };
+
+function retargetAnimation(o) {
+	const anim = Animation.all.find(a => a.uuid == o.anim);
+	const src_root = [...Group.all, ...(typeof Armature == 'function' ? Armature.all : [])].find(n => n.uuid == o.source);
+	const tgt_root = [...Group.all, ...(typeof Armature == 'function' ? Armature.all : [])].find(n => n.uuid == o.target);
+	if (!anim || !src_root || !tgt_root || src_root === tgt_root) throw new Error(tr('rt_pick'));
+	const src_nodes = skeletonNodes(src_root), tgt_nodes = skeletonNodes(tgt_root).filter(n => n !== tgt_root);
+	const was_mode = Modes.selected, was_anim = Animation.selected, was_time = Timeline.time;
+	if (!Modes.animate) Modes.options.animate.select();
+	// rest poses
+	Animator.showDefaultPose && Animator.showDefaultPose();
+	if (typeof Canvas != 'undefined') Canvas.updateAllBones && Canvas.updateAllBones();
+	scene.updateMatrixWorld(true);
+	const wrap = (nodes, root) => {
+		const list = nodes.map(n => ({name: n.name, node: n, parent: null, rest: worldOfNode(n), frames: []}));
+		list.forEach(x => { x.parent = list.find(y => y.node === x.node.parent) || null; });
+		return list;
+	};
+	const src = wrap(src_nodes), tgt = wrap(tgt_nodes);
+	const static_parent = new Map(tgt.map(t => [t, t.node.parent && t.node.parent !== 'root' ? worldOfNode(t.node.parent) : new THREE.Matrix4()]));
+	// the source, frame by frame, as Blockbench plays it
+	const fps = Math.max(1, Math.min(120, Math.round(o.fps || 30)));
+	const frames = Math.max(1, Math.round(anim.length * fps) + 1);
+	anim.select();
+	for (let f = 0; f < frames; f++) {
+		Timeline.setTime(Math.min(anim.length, f / fps));
+		Animator.preview();
+		scene.updateMatrixWorld(true);
+		src.forEach(s => s.frames.push(worldOfNode(s.node)));
+	}
+	const map = pairBones(src, tgt);
+	if (map.size < 3) throw new Error(tr('rt_few'));
+	const {worlds, top} = retargetWorlds(src, tgt, map, frames, {root_motion: o.root_motion});
+	// the keys: every paired bone turns, the hips also travel
+	const order = (typeof Format != 'undefined' && Format.euler_order) || 'ZYX';
+	const signs = rotationSigns();
+	const result = new Animation({name: o.name || anim.name + ' (retarget)', length: anim.length, loop: anim.loop || 'loop', snapping: fps}).add(false);
+	const r4 = x => Math.round(x * 1e4) / 1e4;
+	for (const t of tgt) {
+		if (!map.has(t)) continue;
+		const node = t.node, arm = typeof ArmatureBone == 'function' && node instanceof ArmatureBone;
+		const sg = arm ? [1, 1, 1] : signs;
+		const rest_local = arm ? new THREE.Vector3(...node.origin) : new THREE.Vector3(...node.origin).sub(node.parent instanceof Group ? new THREE.Vector3(...node.parent.origin) : new THREE.Vector3());
+		const rot = [], pos = [];
+		let prev = null;
+		for (let f = 0; f < frames; f++) {
+			const parent_w = t.parent ? worlds.get(t.parent)[f] : static_parent.get(t);
+			const local = parent_w.clone().invert().multiply(worlds.get(t)[f]);
+			const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+			local.decompose(p, q, s);
+			const e = new THREE.Euler().setFromQuaternion(q, order);
+			let deg = [e.x, e.y, e.z].map((r, i) => r * 180 / Math.PI * sg[i] - (node.rotation ? node.rotation[i] : 0));
+			if (prev) deg = deg.map((d, i) => d + 360 * Math.round((prev[i] - d) / 360));
+			prev = deg;
+			rot.push(deg);
+			pos.push(p.sub(rest_local).toArray());
+		}
+		const animator = result.getBoneAnimator(node);
+		if (!animator) continue;
+		for (const fi of reduceKeys(rot, 0.15)) animator.addKeyframe({channel: 'rotation', time: r4(fi / fps), interpolation: 'linear', data_points: [{x: r4(rot[fi][0]), y: r4(rot[fi][1]), z: r4(rot[fi][2])}]});
+		if (t === top && o.root_motion !== false) for (const fi of reduceKeys(pos, 0.01)) animator.addKeyframe({channel: 'position', time: r4(fi / fps), interpolation: 'linear', data_points: [{x: r4(pos[fi][0]), y: r4(pos[fi][1]), z: r4(pos[fi][2])}]});
+	}
+	Timeline.setTime(was_time || 0);
+	result.select();
+	Animator.preview();
+	return {animation: result, pairs: map.size, bones: tgt.length, worlds, tgt, fps};
+}
+
+function openRetargetDialog() {
+	if (!Project || !Animation.all.length) { Blockbench.showQuickMessage(tr('rt_none'), 3000); return; }
+	const roots = skeletonRoots();
+	if (roots.length < 2) { Blockbench.showQuickMessage(tr('rt_two'), 3500); return; }
+	const anims = {}; Animation.all.forEach(a => { anims[a.uuid] = a.name; });
+	const root_options = {}; roots.forEach(r => { root_options[r.uuid] = r.name; });
+	// the source is the skeleton the selected animation moves
+	const first = Animation.selected || Animation.all[0];
+	const moved = new Set(Object.keys(first.animators || {}));
+	const src_guess = roots.find(r => skeletonNodes(r).some(n => moved.has(n.uuid))) || roots[0];
+	const tgt_guess = roots.find(r => r !== src_guess) || roots[0];
+	new Dialog({
+		id: 'retarget_animation', title: tr('rt_title'), width: 460,
+		form: {
+			anim: {label: tr('rt_anim'), type: 'select', options: anims, value: first.uuid},
+			source: {label: tr('rt_source'), type: 'select', options: root_options, value: src_guess.uuid},
+			target: {label: tr('rt_target'), type: 'select', options: root_options, value: tgt_guess.uuid},
+			root_motion: {label: tr('rt_root'), type: 'checkbox', value: true},
+			fps: {label: tr('fps'), type: 'number', value: 30, min: 1, max: 120, step: 1},
+			name: {label: tr('rt_name'), type: 'text', value: first.name + ' (' + tgt_guess.name + ')'},
+			hint: {type: 'info', text: tr('rt_hint')},
+		},
+		onConfirm(form) {
+			try {
+				Undo.initEdit({animations: []});
+				const res = retargetAnimation(form);
+				Undo.finishEdit('Retarget animation', {animations: [res.animation]});
+				Blockbench.showQuickMessage(fill(tr('rt_done'), res.pairs, res.bones), 3500);
+			} catch (err) {
+				Undo.cancelEdit && Undo.cancelEdit();
+				console.error('[Import] retarget', err);
+				Blockbench.showMessageBox({title: tr('rt_title'), message: String(err && err.message || err), icon: 'error'});
+			}
+		},
+	}).show();
+}
+
+// ---------------------------------------------------------------------------
 // The import: pick files, options, read, convert
 // ---------------------------------------------------------------------------
 
@@ -18217,9 +18486,9 @@ async function runImport(main, files, o) {
 
 // ---------------------------------------------------------------------------
 
-let import_action = null;
+let import_action = null, retarget_action = null;
 
-if (typeof __IMPORT_EXPORT !== 'undefined') __IMPORT_EXPORT({L, loadModel, convertScene, parseGoldSrc, parseQuake, Resources, mergeQuads, reduceKeys, runImport, hlQuat, TextureBank});
+if (typeof __IMPORT_EXPORT !== 'undefined') __IMPORT_EXPORT({retargetAnimation, skeletonRoots, boneMeaning, pairBones, retargetWorlds, L, loadModel, convertScene, parseGoldSrc, parseQuake, Resources, mergeQuads, reduceKeys, runImport, hlQuat, TextureBank});
 
 Plugin.register('model_import', {
 	title: 'Model import',
@@ -18227,7 +18496,7 @@ Plugin.register('model_import', {
 	description: 'Import 3D models with textures, skeleton and animations: OBJ (+MTL), FBX, glTF/GLB, Collada, 3DS, STL, PLY, 3MF, MD2, Half-Life and Quake MDL.',
 	about: 'File > Import > **3D model**. Pick the model (and its textures, .mtl or .bin if Blockbench cannot read its folder). The geometry becomes mesh elements, the textures and material colours become textures, a skeleton becomes bone groups (or an armature with vertex weights in Blockbench 5 for smooth skins), and every animation of the file becomes a Blockbench animation. Uses the three.js r129 loaders (MIT).',
 	icon: 'file_download',
-	version: '0.1.0',
+	version: '0.2.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Import'],
@@ -18237,8 +18506,14 @@ Plugin.register('model_import', {
 			click() { pickFiles(); },
 		});
 		try { MenuBar.addAction(import_action, 'file.import'); } catch (err) { MenuBar.addAction(import_action, 'file'); }
+		retarget_action = new Action('retarget_animation', {
+			name: tr('rt_action'), description: tr('rt_action_desc'), icon: 'transfer_within_a_station', category: 'animation',
+			click() { openRetargetDialog(); },
+		});
+		try { MenuBar.addAction(retarget_action, 'animation'); } catch (err) { console.warn('[Import] menu', err); }
 	},
 	onunload() {
+		if (retarget_action) { try { MenuBar.removeAction('animation.retarget_animation'); } catch (err) { /* not there */ } retarget_action.delete(); retarget_action = null; }
 		if (import_action) {
 			try { MenuBar.removeAction('file.import.import_3d_model'); } catch (err) { /* not there */ }
 			try { MenuBar.removeAction('file.import_3d_model'); } catch (err) { /* not there */ }
