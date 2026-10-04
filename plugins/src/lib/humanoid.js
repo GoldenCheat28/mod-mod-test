@@ -115,7 +115,7 @@ class Humanoid {
 		this.is_humanoid = true;
 		// --- Control inputs (no mind here: standing where he was put, looking ahead) ---
 		this.move_velocity = gv();
-		this.posture = POSTURES.includes(this.s.posture) ? this.s.posture : 'stand';
+		this.posture = POSTURES.includes(this.s.posture) || this.s.posture == 'custom' ? this.s.posture : 'stand';
 		this.clutch_part = '';
 		this.has_look_target = false;
 		// --- State ---
@@ -135,17 +135,21 @@ class Humanoid {
 		this.seat = null;
 		this.rng = mulberry(hashString(root.uuid));
 		this.build(bones);
-		// already settled in a held pose (sat on his chair, down on his knees): placed at once, not got down into
-		if (this._hold_kind()) { this._hold_t = 0.3; this._compose_pose(0); this._update_squat_hold(0, true); }
+		// the pose he is made in (as the bones are turned in Blockbench): the joint angles and how the hips are turned.
+		// A held pose (sat, knelt, squatting) keeps it as it is, a hand put on the knee or up by the face included
+		this.start_angles = this.parts.map(p => p.parent < 0 ? gv() : geuler(this.quat(this.parts[p.parent]).invert().multiply(this.quat(p))));
+		const look = glook(this.facing(), gv(0, 1, 0)).invert();
+		this.start_pelvis = look.clone().multiply(this.quat(this.pelvis));
 		// a pose made with the skeleton: its joint angles are what the muscles hold, the hips are held at the height they are
 		if (this.posture == 'custom') {
-			this.custom_targets = this.parts.map(p => p.parent < 0 ? gv() : geuler(this.quat(this.parts[p.parent]).invert().multiply(this.quat(p))));
-			const look = glook(this.facing(), gv(0, 1, 0)).invert();
-			this.custom_pelvis = look.clone().multiply(this.quat(this.pelvis));
+			this.custom_targets = this.start_angles.map(a => a.clone());
+			this.custom_pelvis = this.start_pelvis.clone();
 			this.custom_chest = look.clone().multiply(this.quat(this.chest));
 			const h = this._ground_distance();
 			this.custom_h = h > 0 ? h : this.stand_height;
 		}
+		// already settled in a held pose (sat on his chair, down on his knees): placed at once, not got down into
+		if (this._hold_kind()) { this._hold_t = 0.3; this._compose_pose(0); this._update_squat_hold(0, true); }
 	}
 
 	// ---- Construction: the parts made by the Physics tab get the game's shapes, masses, damping and joints ----
@@ -250,7 +254,7 @@ class Humanoid {
 		for (const p of this.parts) if (p.parent >= 0) this.makeJoint(p);
 		this._set_limp(false, true);
 		// a seat under him (sat on a chair)
-		if (this.posture == 'sit') {
+		if (this.posture == 'sit' || this.posture == 'custom') {
 			const pp = this.pos(this.pelvis);
 			const hit = this.ray(pp, gv(0, -0.8 * s, 0));
 			// (the seat is a little behind the hips: the held pose puts them 6 cm ahead of it, where they are now)
@@ -467,8 +471,8 @@ class Humanoid {
 		// (squatting the trunk leans well forward over the knees on purpose)
 		const tipped = up_p.y < 0.45 || up_c.y < (this.posture == 'squat' ? 0.2 : 0.35);
 		if (!this.fallen) {
-			const low = ['crouch', 'kneel', 'squat', 'sit'].includes(this.posture) || (this.custom_targets && this.custom_h < this.stand_height * 0.6);
-			if (tipped || (h > 0 && h < this.stand_height * 0.42 && !low) || this.mobility() < 0.2) this._fall(tipped ? 'tipped' : h > 0 && h < this.stand_height * 0.42 ? 'low' : 'mobility');
+			const low = ['crouch', 'kneel', 'squat', 'sit'].includes(this.posture) || (this.posture == 'custom' && (!!this.seat || this.custom_h < this.stand_height * 0.6));
+			if (tipped || (h > 0 && h < this.stand_height * 0.42 && !low) || this.mobility() < 0.2) this._fall(tipped ? 'tipped' : this.mobility() < 0.2 ? 'mobility' : 'low');
 			else if (!(this.posture == 'sit' && this.seat) && this._out_of_balance(delta)) this._fall('balance');   // (sat on a chair he is not balancing on his feet)
 		} else {
 			this._fallen_time += delta;
@@ -499,7 +503,7 @@ class Humanoid {
 	// Balance has a budget: where the body's weight is going to come to rest (the capture point) must be somewhere the
 	// feet can get to. Beyond that for a moment, he goes over.
 	_out_of_balance(delta) {
-		if (['kneel', 'crouch', 'squat', 'sit'].includes(this.posture)) { this._unbalanced_t = 0; return false; }
+		if (['kneel', 'crouch', 'squat', 'sit'].includes(this.posture) || (this.posture == 'custom' && this.seat)) { this._unbalanced_t = 0; return false; }
 		const com = gv(), vel = gv();
 		let m = 0;
 		for (const p of this.parts) { if (p.severed) continue; com.addScaledVector(this.pos(p), p.mass); vel.addScaledVector(this.lin(p), p.mass); m += p.mass; }
@@ -555,9 +559,11 @@ class Humanoid {
 		const walk = clamp(speed / 1.0, 0, 1);
 		const cadence = 0.55 + speed * 0.22;
 		this._phase += delta * Math.PI * 2 * cadence * (backwards ? -1 : 1);
-		if (this.custom_targets) {
-			// a pose made with the skeleton: held as it was made
-			this.parts.forEach((p, i) => { p.target = this.custom_targets[i].clone(); });
+		const base = this.custom_targets || (this.posture == 'sit' && this.seat ? this.start_angles : null);
+		if (base) {
+			// a pose made with the skeleton, or sat on a chair: the muscles hold the pose he was made in (sat, he does not
+			// straighten his legs and rise off the chair when something happens to him)
+			this.parts.forEach((p, i) => { p.target = base[i].clone(); });
 		} else for (const side of ['r', 'l']) {
 			const ph = this._phase + (side == 'r' ? 0 : Math.PI);
 			const limp = 1 - this.leg_health[side];
@@ -572,7 +578,7 @@ class Humanoid {
 			this._side('forearm', side, gv(glerp(0.2, 1.4, run) + 0.1 * walk, 0, 0));
 			this._side('hand', side, gv(0.1, 0, 0));
 		}
-		if (!this.custom_targets) {
+		if (!base) {
 			this._pose_set('abdomen', gv(-0.02 * run, 0.07 * Math.sin(this._phase) * walk, 0));
 			this._pose_set('chest', gv(-0.025 * run + 0.015 * Math.sin(this._time * 1.7), -0.05 * Math.sin(this._phase) * walk, 0));
 		}
@@ -873,7 +879,7 @@ class Humanoid {
 		else if (this.posture == 'squat') target_h = 0.41 * s;
 		// (not in the game: there his mind makes him get up when he is hit on a chair. Without one he stays sat, the seat
 		// under him, until the held pose takes him back - not heaved up to standing height over the chair)
-		else if (this.posture == 'sit' && this.seat) target_h = 0.13 * s;
+		else if ((this.posture == 'sit' || this.posture == 'custom') && this.seat) target_h = 0.13 * s;
 		else if (this.custom_targets) target_h = this.custom_h;
 		const limp = 1 - Math.min(this.leg_health.l, this.leg_health.r);
 		target_h -= limp * 0.08 + 0.02 * Math.abs(Math.sin(this._phase * 2)) * limp;
@@ -1113,7 +1119,7 @@ class Humanoid {
 	_hold_kind() {
 		if (this.posture == 'squat') return 'squat';
 		if (this.posture == 'kneel') return 'kneel';
-		if (this.posture == 'sit' && this.seat) return 'sit';
+		if ((this.posture == 'sit' || this.posture == 'custom') && this.seat) return 'sit';
 		return '';
 	}
 
@@ -1137,17 +1143,12 @@ class Humanoid {
 		// arms and head follow the pose targets smoothly; the legs are the pose's
 		const k = Math.min(delta * 6, 1);
 		this.parts.forEach((p, i) => this._hold_angle[i].lerp(p.target, k));
-		const legs = holdLegs()[kind];
-		const ang = this._hold_angle.map(a => a.clone());
-		for (const side of ['r', 'l']) {
-			const m = side == 'r' ? gv(1, 1, 1) : gv(1, -1, -1);
-			ang[this.part_index['thigh_' + side]] = legs[1].clone().multiply(m);
-			ang[this.part_index['shin_' + side]] = legs[2].clone().multiply(m);
-			ang[this.part_index['foot_' + side]] = legs[3].clone().multiply(m);
-		}
+		// (in the game the arms and head follow what he is doing; here nobody makes him do anything, so the whole body
+		// keeps the pose it was made in - with the legs the game gives the held pose unless they were posed by hand)
+		const ang = this.start_angles.map(a => a.clone());
 		const fwd = this.facing();
 		const yaw_b = glook(fwd, gv(0, 1, 0));
-		const root_b = yaw_b.clone().multiply(new THREE.Quaternion().setFromAxisAngle(gv(1, 0, 0), -legs[0]));
+		const root_b = yaw_b.clone().multiply(this.start_pelvis);
 		const xfs = this._fk({p: gv(), q: root_b}, ang);
 		if (kind != 'kneel') {
 			// feet flat on the ground
