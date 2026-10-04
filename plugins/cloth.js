@@ -256,11 +256,13 @@ const physicsHook = {
 		this.stop();
 		restPose();
 		const items = allCloth().map(el => { try { return makeItem(el, rt); } catch (err) { console.warn('[Cloth]', el.name, err); return null; } }).filter(Boolean);
-		hooked = items.length ? {rt, items, step: 0, record: rt.baking ? {times: [], frames: items.map(() => [])} : null} : null;
+		// a cloth mesh ticked as Ground / Physics object in an older physics.js is a box where the cloth was: never collide with it
+		const own = new Set((rt.world && rt.world.entries || []).filter(e => e.desc && ((e.desc.node && isCloth(e.desc.node)) || (e.desc.parts || []).some(pt => pt.el && isCloth(pt.el)))));
+		hooked = items.length ? {rt, items, step: 0, own, record: rt.baking ? {times: [], frames: items.map(() => [])} : null} : null;
 	},
 	step(rt, dt) {
 		if (!hooked || hooked.rt !== rt) return;
-		const boxes = hooked.step++ % 2 == 0 || !hooked.boxes ? (hooked.boxes = rt.colliders ? rt.colliders(new Set()) : []) : hooked.boxes;
+		const boxes = hooked.step++ % 2 == 0 || !hooked.boxes ? (hooked.boxes = rt.colliders ? rt.colliders(hooked.own) : []) : hooked.boxes;
 		const ground = groundY(rt.ws);
 		for (const it of hooked.items) {
 			const targets = it.pins.map((pin, k) => { const to = pinWorld(pin), from = it.last[k]; it.last[k] = to; return {i: pin.i, from, to}; });
@@ -541,7 +543,7 @@ Plugin.register('cloth', {
 	description: 'Cloth for meshes (capes, flags, curtains): hangs, drapes over physics bodies and ragdolls, faces can be frozen or attached to objects. Runs and bakes in the Physics tab.',
 	about: 'Select a mesh and open the **Cloth** panel (or right click → **Cloth…**, or **Add cloth** for a ready sheet). Pick faces in Edit mode and **Freeze** them or **Attach** them to an object. Press Play in the **Physics** tab to see it; **Bake** records it for the Animate tab and for videos from the Render view. Needs the Physics plugin.',
 	icon: 'texture',
-	version: '0.1.0',
+	version: '0.1.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation', 'Physics'],
