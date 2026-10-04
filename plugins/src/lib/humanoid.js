@@ -137,6 +137,15 @@ class Humanoid {
 		this.build(bones);
 		// already settled in a held pose (sat on his chair, down on his knees): placed at once, not got down into
 		if (this._hold_kind()) { this._hold_t = 0.3; this._compose_pose(0); this._update_squat_hold(0, true); }
+		// a pose made with the skeleton: its joint angles are what the muscles hold, the hips are held at the height they are
+		if (this.posture == 'custom') {
+			this.custom_targets = this.parts.map(p => p.parent < 0 ? gv() : geuler(this.quat(this.parts[p.parent]).invert().multiply(this.quat(p))));
+			const look = glook(this.facing(), gv(0, 1, 0)).invert();
+			this.custom_pelvis = look.clone().multiply(this.quat(this.pelvis));
+			this.custom_chest = look.clone().multiply(this.quat(this.chest));
+			const h = this._ground_distance();
+			this.custom_h = h > 0 ? h : this.stand_height;
+		}
 	}
 
 	// ---- Construction: the parts made by the Physics tab get the game's shapes, masses, damping and joints ----
@@ -184,7 +193,11 @@ class Humanoid {
 		this.items = [];
 		for (const node of items) {
 			const entry = entryOf(node), holder = this.parts.find(pp => pp.group.uuid == node.attach.bone);
-			if (entry && holder) this.items.push({node, entry, holder, drop: node.attach.drop !== false, constraint: null});
+			if (entry && holder) {
+				const other = node.attach.hands == 'both' ? this.parts[this.part_index[holder.name == 'hand_l' ? 'hand_r' : 'hand_l']] : null;
+				this.items.push({node, entry, holder, drop: node.attach.drop !== false, constraint: null, other, other_constraint: null,
+					grip: node.attach.grip ? gv(...node.attach.grip).divideScalar(SCALE) : null, grip_other: node.attach.grip_other ? gv(...node.attach.grip_other).divideScalar(SCALE) : null});
+			}
 		}
 		const n = this.parts.length;
 		const filter = new J.GroupFilterTable(n + this.items.length);
@@ -215,6 +228,14 @@ class Humanoid {
 			world.bodies.SetLinearVelocity(it.entry.id, world.tmp);
 			world.bodies.SetAngularVelocity(it.entry.id, world.tmp);
 			try {
+				// in the hand: its grip is put in the fist (the hand closes on it), then it is held there
+				if (it.grip) {
+					const grip_w = this.itemPoint(it, it.grip), palm = this.pos(it.holder);
+					const bp = it.entry.body.GetPosition();
+					const np = new J.RVec3(bp.GetX() + palm.x - grip_w.x, bp.GetY() + palm.y - grip_w.y, bp.GetZ() + palm.z - grip_w.z);
+					world.bodies.SetPosition(it.entry.id, np, J.EActivation_Activate);
+					J.destroy(np);
+				}
 				const st = new J.FixedConstraintSettings();
 				st.mSpace = J.EConstraintSpace_WorldSpace;
 				st.mAutoDetectPoint = true;
@@ -224,7 +245,8 @@ class Humanoid {
 		});
 		this.filter = filter;
 		this.ray_exclude = new Set(this.parts.map(p => p.id.GetIndexAndSequenceNumber()));
-		addPeopleToRays(this.rt, this.parts.map(p => p.id));
+		// (what he holds is part of him for the rays that look for the ground under him)
+		addPeopleToRays(this.rt, this.parts.map(p => p.id).concat(this.items.map(it => it.entry.id)));
 		for (const p of this.parts) if (p.parent >= 0) this.makeJoint(p);
 		this._set_limp(false, true);
 		// a seat under him (sat on a chair)
@@ -320,6 +342,32 @@ class Humanoid {
 	// A ray against the world (not against this body): {position, normal, id} or null
 	ray(from, dir_len) { return castRay(this.rt, from, dir_len, rayFilters(this.rt).people); }
 
+	// a point of a held item (in its own frame, metres) in the world
+	itemPoint(it, local) {
+		const b = it.entry.body, p = b.GetPosition(), r = b.GetRotation();
+		return local.clone().applyQuaternion(new THREE.Quaternion(r.GetX(), r.GetY(), r.GetZ(), r.GetW())).add(gv(p.GetX(), p.GetY(), p.GetZ()));
+	}
+
+	// held in both hands: the other hand reaches for its grip (as the game's hands reach for a gun's forend) and closes on it
+	_update_grips() {
+		const J = this.J;
+		for (const it of this.items) {
+			if (!it.other || !it.grip_other || !it.constraint || it.other_constraint) continue;
+			const goal = this.itemPoint(it, it.grip_other);
+			if (this.pos(it.other).distanceTo(goal) > 0.05 * this.scale_factor) continue;
+			try {
+				const st = new J.PointConstraintSettings();
+				st.mSpace = J.EConstraintSpace_WorldSpace;
+				// (the fist itself goes onto the grip: its middle to that point)
+				const fist = this.pos(it.other);
+				st.mPoint1 = new J.RVec3(fist.x, fist.y, fist.z);
+				st.mPoint2 = new J.RVec3(goal.x, goal.y, goal.z);
+				it.other_constraint = J.castObject(st.Create(it.other.body, it.entry.body), J.PointConstraint);
+				this.world.system.AddConstraint(it.other_constraint);
+			} catch (err) { console.warn('[Ragdoll] grip', err); it.other = null; }
+		}
+	}
+
 	// ---- Simulation ----
 
 	step(dt) {
@@ -332,6 +380,7 @@ class Humanoid {
 		this._apply_muscles();
 		if (this.support > 0.001) this._apply_balance();
 		this._update_squat_hold(dt);
+		this._update_grips();
 		this._limit_speed();
 		this.time += dt;
 	}
@@ -418,7 +467,7 @@ class Humanoid {
 		// (squatting the trunk leans well forward over the knees on purpose)
 		const tipped = up_p.y < 0.45 || up_c.y < (this.posture == 'squat' ? 0.2 : 0.35);
 		if (!this.fallen) {
-			const low = ['crouch', 'kneel', 'squat', 'sit'].includes(this.posture);
+			const low = ['crouch', 'kneel', 'squat', 'sit'].includes(this.posture) || (this.custom_targets && this.custom_h < this.stand_height * 0.6);
 			if (tipped || (h > 0 && h < this.stand_height * 0.42 && !low) || this.mobility() < 0.2) this._fall(tipped ? 'tipped' : h > 0 && h < this.stand_height * 0.42 ? 'low' : 'mobility');
 			else if (!(this.posture == 'sit' && this.seat) && this._out_of_balance(delta)) this._fall('balance');   // (sat on a chair he is not balancing on his feet)
 		} else {
@@ -506,7 +555,10 @@ class Humanoid {
 		const walk = clamp(speed / 1.0, 0, 1);
 		const cadence = 0.55 + speed * 0.22;
 		this._phase += delta * Math.PI * 2 * cadence * (backwards ? -1 : 1);
-		for (const side of ['r', 'l']) {
+		if (this.custom_targets) {
+			// a pose made with the skeleton: held as it was made
+			this.parts.forEach((p, i) => { p.target = this.custom_targets[i].clone(); });
+		} else for (const side of ['r', 'l']) {
 			const ph = this._phase + (side == 'r' ? 0 : Math.PI);
 			const limp = 1 - this.leg_health[side];
 			const hip = Math.sin(ph) * glerp(0.35, 0.8, run) * walk + run * 0.12;
@@ -520,8 +572,10 @@ class Humanoid {
 			this._side('forearm', side, gv(glerp(0.2, 1.4, run) + 0.1 * walk, 0, 0));
 			this._side('hand', side, gv(0.1, 0, 0));
 		}
-		this._pose_set('abdomen', gv(-0.02 * run, 0.07 * Math.sin(this._phase) * walk, 0));
-		this._pose_set('chest', gv(-0.025 * run + 0.015 * Math.sin(this._time * 1.7), -0.05 * Math.sin(this._phase) * walk, 0));
+		if (!this.custom_targets) {
+			this._pose_set('abdomen', gv(-0.02 * run, 0.07 * Math.sin(this._phase) * walk, 0));
+			this._pose_set('chest', gv(-0.025 * run + 0.015 * Math.sin(this._time * 1.7), -0.05 * Math.sin(this._phase) * walk, 0));
+		}
 
 		switch (this.posture) {
 			case 'crouch': case 'cover_head':
@@ -588,6 +642,12 @@ class Humanoid {
 				const cur = this._t('upper_arm_' + side);
 				this._pose_set('upper_arm_' + side, cur.lerp(gv(0.9, 0, side == 'r' ? 0.1 : -0.1), f * 0.35));
 			}
+		}
+		// hands on a held thing (both hands: the other hand on its grip)
+		if (!this.fallen) for (const it of this.items) {
+			if (!it.other || !it.grip_other || !it.constraint) continue;
+			const side = it.other.name.endsWith('_r') ? 'r' : 'l';
+			if (this.arm_health[side] > 0.15) this._arm_ik(side, this.itemPoint(it, it.grip_other));
 		}
 		// fallen but conscious: catch the fall, then curl or push up
 		if (this.fallen) {
@@ -814,6 +874,7 @@ class Humanoid {
 		// (not in the game: there his mind makes him get up when he is hit on a chair. Without one he stays sat, the seat
 		// under him, until the held pose takes him back - not heaved up to standing height over the chair)
 		else if (this.posture == 'sit' && this.seat) target_h = 0.13 * s;
+		else if (this.custom_targets) target_h = this.custom_h;
 		const limp = 1 - Math.min(this.leg_health.l, this.leg_health.r);
 		target_h -= limp * 0.08 + 0.02 * Math.abs(Math.sin(this._phase * 2)) * limp;
 		if (this.fallen && this._getup > 0) {
@@ -869,11 +930,12 @@ class Humanoid {
 		const target = glook(fwd, up);
 		const rotAbout = (q, axis, a) => new THREE.Quaternion().setFromAxisAngle(axis, a).multiply(q);
 		const tx = gaxis(target, 0);
-		const p_target = this.posture == 'squat' ? rotAbout(target, tx, -this.SQ_LEAN) : target;
+		const p_target = this.custom_pelvis ? target.clone().multiply(this.custom_pelvis) : this.posture == 'squat' ? rotAbout(target, tx, -this.SQ_LEAN) : target;
 		this._upright_torque(this.pelvis, p_target, 9.0, 7.0 * sup);
 		let ch_target = target;
 		if (this.posture == 'crouch' || this.posture == 'cover_head') ch_target = rotAbout(target, tx, -0.6);
 		else if (this.posture == 'squat') ch_target = rotAbout(target, tx, -0.55);
+		else if (this.custom_chest) ch_target = target.clone().multiply(this.custom_chest);
 		this._upright_torque(this.chest, ch_target, 3.0, 5.0 * sup);
 	}
 
@@ -1038,8 +1100,8 @@ class Humanoid {
 		this.has_look_target = false;
 		// what he holds is dropped (if the item is set to drop)
 		for (const it of this.items) if (it.drop && it.constraint) {
-			try { this.world.system.RemoveConstraint(it.constraint); } catch (err) { console.warn('[Ragdoll]', err); }
-			it.constraint = null;
+			try { this.world.system.RemoveConstraint(it.constraint); if (it.other_constraint) this.world.system.RemoveConstraint(it.other_constraint); } catch (err) { console.warn('[Ragdoll]', err); }
+			it.constraint = null; it.other_constraint = null;
 			it.entry.body.SetAllowSleeping(true);
 		}
 	}

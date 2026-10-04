@@ -854,7 +854,8 @@ class BloodSim {
 		else if (n.y > 0.7) this._add_pool(p, n, 25 * strength);
 	}
 
-	splash(at, dir, size, dur = 0.32) { if (this.view) this.view.splash(at, dir, size, dur); }
+	// (the animated splash sprite of the game is left out: only the drops and the mist show a hit)
+	splash() {}
 	_mist_burst(pos, dir, strength) { if (this.view) this.view.mist(pos, dir, strength); }
 	later(t, fn) { this._timers.push({t: this._time + t, fn}); }
 

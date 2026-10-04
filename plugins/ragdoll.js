@@ -893,6 +893,15 @@ class Humanoid {
 		this.build(bones);
 		// already settled in a held pose (sat on his chair, down on his knees): placed at once, not got down into
 		if (this._hold_kind()) { this._hold_t = 0.3; this._compose_pose(0); this._update_squat_hold(0, true); }
+		// a pose made with the skeleton: its joint angles are what the muscles hold, the hips are held at the height they are
+		if (this.posture == 'custom') {
+			this.custom_targets = this.parts.map(p => p.parent < 0 ? gv() : geuler(this.quat(this.parts[p.parent]).invert().multiply(this.quat(p))));
+			const look = glook(this.facing(), gv(0, 1, 0)).invert();
+			this.custom_pelvis = look.clone().multiply(this.quat(this.pelvis));
+			this.custom_chest = look.clone().multiply(this.quat(this.chest));
+			const h = this._ground_distance();
+			this.custom_h = h > 0 ? h : this.stand_height;
+		}
 	}
 
 	// ---- Construction: the parts made by the Physics tab get the game's shapes, masses, damping and joints ----
@@ -940,7 +949,11 @@ class Humanoid {
 		this.items = [];
 		for (const node of items) {
 			const entry = entryOf(node), holder = this.parts.find(pp => pp.group.uuid == node.attach.bone);
-			if (entry && holder) this.items.push({node, entry, holder, drop: node.attach.drop !== false, constraint: null});
+			if (entry && holder) {
+				const other = node.attach.hands == 'both' ? this.parts[this.part_index[holder.name == 'hand_l' ? 'hand_r' : 'hand_l']] : null;
+				this.items.push({node, entry, holder, drop: node.attach.drop !== false, constraint: null, other, other_constraint: null,
+					grip: node.attach.grip ? gv(...node.attach.grip).divideScalar(SCALE) : null, grip_other: node.attach.grip_other ? gv(...node.attach.grip_other).divideScalar(SCALE) : null});
+			}
 		}
 		const n = this.parts.length;
 		const filter = new J.GroupFilterTable(n + this.items.length);
@@ -971,6 +984,14 @@ class Humanoid {
 			world.bodies.SetLinearVelocity(it.entry.id, world.tmp);
 			world.bodies.SetAngularVelocity(it.entry.id, world.tmp);
 			try {
+				// in the hand: its grip is put in the fist (the hand closes on it), then it is held there
+				if (it.grip) {
+					const grip_w = this.itemPoint(it, it.grip), palm = this.pos(it.holder);
+					const bp = it.entry.body.GetPosition();
+					const np = new J.RVec3(bp.GetX() + palm.x - grip_w.x, bp.GetY() + palm.y - grip_w.y, bp.GetZ() + palm.z - grip_w.z);
+					world.bodies.SetPosition(it.entry.id, np, J.EActivation_Activate);
+					J.destroy(np);
+				}
 				const st = new J.FixedConstraintSettings();
 				st.mSpace = J.EConstraintSpace_WorldSpace;
 				st.mAutoDetectPoint = true;
@@ -980,7 +1001,8 @@ class Humanoid {
 		});
 		this.filter = filter;
 		this.ray_exclude = new Set(this.parts.map(p => p.id.GetIndexAndSequenceNumber()));
-		addPeopleToRays(this.rt, this.parts.map(p => p.id));
+		// (what he holds is part of him for the rays that look for the ground under him)
+		addPeopleToRays(this.rt, this.parts.map(p => p.id).concat(this.items.map(it => it.entry.id)));
 		for (const p of this.parts) if (p.parent >= 0) this.makeJoint(p);
 		this._set_limp(false, true);
 		// a seat under him (sat on a chair)
@@ -1076,6 +1098,32 @@ class Humanoid {
 	// A ray against the world (not against this body): {position, normal, id} or null
 	ray(from, dir_len) { return castRay(this.rt, from, dir_len, rayFilters(this.rt).people); }
 
+	// a point of a held item (in its own frame, metres) in the world
+	itemPoint(it, local) {
+		const b = it.entry.body, p = b.GetPosition(), r = b.GetRotation();
+		return local.clone().applyQuaternion(new THREE.Quaternion(r.GetX(), r.GetY(), r.GetZ(), r.GetW())).add(gv(p.GetX(), p.GetY(), p.GetZ()));
+	}
+
+	// held in both hands: the other hand reaches for its grip (as the game's hands reach for a gun's forend) and closes on it
+	_update_grips() {
+		const J = this.J;
+		for (const it of this.items) {
+			if (!it.other || !it.grip_other || !it.constraint || it.other_constraint) continue;
+			const goal = this.itemPoint(it, it.grip_other);
+			if (this.pos(it.other).distanceTo(goal) > 0.05 * this.scale_factor) continue;
+			try {
+				const st = new J.PointConstraintSettings();
+				st.mSpace = J.EConstraintSpace_WorldSpace;
+				// (the fist itself goes onto the grip: its middle to that point)
+				const fist = this.pos(it.other);
+				st.mPoint1 = new J.RVec3(fist.x, fist.y, fist.z);
+				st.mPoint2 = new J.RVec3(goal.x, goal.y, goal.z);
+				it.other_constraint = J.castObject(st.Create(it.other.body, it.entry.body), J.PointConstraint);
+				this.world.system.AddConstraint(it.other_constraint);
+			} catch (err) { console.warn('[Ragdoll] grip', err); it.other = null; }
+		}
+	}
+
 	// ---- Simulation ----
 
 	step(dt) {
@@ -1088,6 +1136,7 @@ class Humanoid {
 		this._apply_muscles();
 		if (this.support > 0.001) this._apply_balance();
 		this._update_squat_hold(dt);
+		this._update_grips();
 		this._limit_speed();
 		this.time += dt;
 	}
@@ -1174,7 +1223,7 @@ class Humanoid {
 		// (squatting the trunk leans well forward over the knees on purpose)
 		const tipped = up_p.y < 0.45 || up_c.y < (this.posture == 'squat' ? 0.2 : 0.35);
 		if (!this.fallen) {
-			const low = ['crouch', 'kneel', 'squat', 'sit'].includes(this.posture);
+			const low = ['crouch', 'kneel', 'squat', 'sit'].includes(this.posture) || (this.custom_targets && this.custom_h < this.stand_height * 0.6);
 			if (tipped || (h > 0 && h < this.stand_height * 0.42 && !low) || this.mobility() < 0.2) this._fall(tipped ? 'tipped' : h > 0 && h < this.stand_height * 0.42 ? 'low' : 'mobility');
 			else if (!(this.posture == 'sit' && this.seat) && this._out_of_balance(delta)) this._fall('balance');   // (sat on a chair he is not balancing on his feet)
 		} else {
@@ -1262,7 +1311,10 @@ class Humanoid {
 		const walk = clamp(speed / 1.0, 0, 1);
 		const cadence = 0.55 + speed * 0.22;
 		this._phase += delta * Math.PI * 2 * cadence * (backwards ? -1 : 1);
-		for (const side of ['r', 'l']) {
+		if (this.custom_targets) {
+			// a pose made with the skeleton: held as it was made
+			this.parts.forEach((p, i) => { p.target = this.custom_targets[i].clone(); });
+		} else for (const side of ['r', 'l']) {
 			const ph = this._phase + (side == 'r' ? 0 : Math.PI);
 			const limp = 1 - this.leg_health[side];
 			const hip = Math.sin(ph) * glerp(0.35, 0.8, run) * walk + run * 0.12;
@@ -1276,8 +1328,10 @@ class Humanoid {
 			this._side('forearm', side, gv(glerp(0.2, 1.4, run) + 0.1 * walk, 0, 0));
 			this._side('hand', side, gv(0.1, 0, 0));
 		}
-		this._pose_set('abdomen', gv(-0.02 * run, 0.07 * Math.sin(this._phase) * walk, 0));
-		this._pose_set('chest', gv(-0.025 * run + 0.015 * Math.sin(this._time * 1.7), -0.05 * Math.sin(this._phase) * walk, 0));
+		if (!this.custom_targets) {
+			this._pose_set('abdomen', gv(-0.02 * run, 0.07 * Math.sin(this._phase) * walk, 0));
+			this._pose_set('chest', gv(-0.025 * run + 0.015 * Math.sin(this._time * 1.7), -0.05 * Math.sin(this._phase) * walk, 0));
+		}
 
 		switch (this.posture) {
 			case 'crouch': case 'cover_head':
@@ -1344,6 +1398,12 @@ class Humanoid {
 				const cur = this._t('upper_arm_' + side);
 				this._pose_set('upper_arm_' + side, cur.lerp(gv(0.9, 0, side == 'r' ? 0.1 : -0.1), f * 0.35));
 			}
+		}
+		// hands on a held thing (both hands: the other hand on its grip)
+		if (!this.fallen) for (const it of this.items) {
+			if (!it.other || !it.grip_other || !it.constraint) continue;
+			const side = it.other.name.endsWith('_r') ? 'r' : 'l';
+			if (this.arm_health[side] > 0.15) this._arm_ik(side, this.itemPoint(it, it.grip_other));
 		}
 		// fallen but conscious: catch the fall, then curl or push up
 		if (this.fallen) {
@@ -1570,6 +1630,7 @@ class Humanoid {
 		// (not in the game: there his mind makes him get up when he is hit on a chair. Without one he stays sat, the seat
 		// under him, until the held pose takes him back - not heaved up to standing height over the chair)
 		else if (this.posture == 'sit' && this.seat) target_h = 0.13 * s;
+		else if (this.custom_targets) target_h = this.custom_h;
 		const limp = 1 - Math.min(this.leg_health.l, this.leg_health.r);
 		target_h -= limp * 0.08 + 0.02 * Math.abs(Math.sin(this._phase * 2)) * limp;
 		if (this.fallen && this._getup > 0) {
@@ -1625,11 +1686,12 @@ class Humanoid {
 		const target = glook(fwd, up);
 		const rotAbout = (q, axis, a) => new THREE.Quaternion().setFromAxisAngle(axis, a).multiply(q);
 		const tx = gaxis(target, 0);
-		const p_target = this.posture == 'squat' ? rotAbout(target, tx, -this.SQ_LEAN) : target;
+		const p_target = this.custom_pelvis ? target.clone().multiply(this.custom_pelvis) : this.posture == 'squat' ? rotAbout(target, tx, -this.SQ_LEAN) : target;
 		this._upright_torque(this.pelvis, p_target, 9.0, 7.0 * sup);
 		let ch_target = target;
 		if (this.posture == 'crouch' || this.posture == 'cover_head') ch_target = rotAbout(target, tx, -0.6);
 		else if (this.posture == 'squat') ch_target = rotAbout(target, tx, -0.55);
+		else if (this.custom_chest) ch_target = target.clone().multiply(this.custom_chest);
 		this._upright_torque(this.chest, ch_target, 3.0, 5.0 * sup);
 	}
 
@@ -1794,8 +1856,8 @@ class Humanoid {
 		this.has_look_target = false;
 		// what he holds is dropped (if the item is set to drop)
 		for (const it of this.items) if (it.drop && it.constraint) {
-			try { this.world.system.RemoveConstraint(it.constraint); } catch (err) { console.warn('[Ragdoll]', err); }
-			it.constraint = null;
+			try { this.world.system.RemoveConstraint(it.constraint); if (it.other_constraint) this.world.system.RemoveConstraint(it.other_constraint); } catch (err) { console.warn('[Ragdoll]', err); }
+			it.constraint = null; it.other_constraint = null;
 			it.entry.body.SetAllowSleeping(true);
 		}
 	}
@@ -3296,7 +3358,8 @@ class BloodSim {
 		else if (n.y > 0.7) this._add_pool(p, n, 25 * strength);
 	}
 
-	splash(at, dir, size, dur = 0.32) { if (this.view) this.view.splash(at, dir, size, dur); }
+	// (the animated splash sprite of the game is left out: only the drops and the mist show a hit)
+	splash() {}
 	_mist_burst(pos, dir, strength) { if (this.view) this.view.mist(pos, dir, strength); }
 	later(t, fn) { this._timers.push({t: this._time + t, fn}); }
 
@@ -4029,9 +4092,11 @@ const physicsHook = {
 			} catch (err) { console.warn('[Ragdoll] blood', err); sim = null; }
 		}
 		current = {rt, list, blood, sim, last_show: null};
+		startMarkers();
 	},
 	step(rt, dt) {
 		if (!current || current.rt !== rt) return;
+		stepMarkers(dt);
 		for (const r of current.list) r.step(dt);
 		if (current.blood) current.blood.step(dt);
 		if (current.sim) current.sim.step(dt);
@@ -4396,7 +4461,13 @@ function autoRig(elements) {
 
 const TEXTS = {
 	en: {
-		mode: 'Ragdoll', build: 'Build ragdoll from the selected group', remove: 'Remove ragdoll', play: '▶ Play', pause: '❚❚ Pause', reset: '⟲ Reset', bake: '⏺ Bake to animation',
+		spawn: 'Spawn ragdoll', click_shot: 'Click shot', click_shot_on: 'Click shot: click the character… (press again to cancel)', click_shot_msg: 'Click the character: a shot is made there, at the current time',
+		msg_click_shot: 'Shot added', shots: 'Shots', add_shot2: 'Add shot', shot_name: 'Shot', shot_time2: 'Fires at (s)', shot_power: 'Power (N*s)',
+		grab_tip: 'Move it (W) and turn it (R) in the 3D view', grab_hint: 'A shot is a little gun: press ✥, then drag it (W) and turn it (R). It shoots along the dashed line.',
+		hands: 'In the hands', hands_hint: 'Select a thing (a group or cubes), then:', hand_r: 'Right hand', hand_l: 'Left hand', hand_both: 'Both hands', item_drop2: 'Dropped when he dies',
+		skeleton: 'Pose', edit_skeleton: 'Edit skeleton', edit_skeleton_hint: 'W: drag a joint (the limb follows). R: click a joint, then turn that bone alone with the rotate handles. The pose is the model\'s pose (the Edit tab shows it) and the one he holds when it runs.',
+		more: 'More settings', msg_spawn_first: 'Spawn a ragdoll first',
+		mode: 'Ragdoll', build: 'Build ragdoll from the selected group', remove: 'Remove ragdoll', play: '▶ Start', pause: '❚❚ Pause', reset: '⟲ Reset', bake: '⏺ Bake to animation',
 		select_hint: 'Select the group of a character (a group with bone groups inside: pelvis, torso, head, arms, legs…) and press Build.',
 		character: 'Character', bones: 'bones', mass_total: 'Total mass (kg)', tone: 'Muscle tone', tone_tip: '0 = limp like a rag, 1 = stiff muscles hold the pose',
 		power: 'Muscle power', flinch: 'Flinch', flinch_tip: 'How strongly the muscles around a hit tighten', radius: 'Flinch radius (px)',
@@ -4431,7 +4502,13 @@ const TEXTS = {
 		hit_on: 'Shoot mode on: press Play and click the character',
 	},
 	ru: {
-		mode: 'Регдолл', build: 'Создать регдолл из выбранной группы', remove: 'Убрать регдолл', play: '▶ Пуск', pause: '❚❚ Пауза', reset: '⟲ Сброс', bake: '⏺ Запечь в анимацию',
+		spawn: 'Спавн регдолла', click_shot: 'Click shot', click_shot_on: 'Click shot: кликните по персонажу… (ещё раз — отмена)', click_shot_msg: 'Кликните по персонажу: туда будет выстрел, в текущий момент времени',
+		msg_click_shot: 'Выстрел добавлен', shots: 'Выстрелы', add_shot2: 'Добавить выстрел', shot_name: 'Выстрел', shot_time2: 'Через (с)', shot_power: 'Сила (Н·с)',
+		grab_tip: 'Двигать (W) и вращать (R) в окне 3D', grab_hint: 'Выстрел — это маленький пистолет: нажмите ✥ и тащите его (W) и вращайте (R). Стреляет по пунктирной линии.',
+		hands: 'В руках', hands_hint: 'Выделите предмет (группу или кубы), затем:', hand_r: 'Правая рука', hand_l: 'Левая рука', hand_both: 'Обе руки', item_drop2: 'Выпадает при смерти',
+		skeleton: 'Поза', edit_skeleton: 'Редактировать скелет', edit_skeleton_hint: 'W — тянуть сустав (конечность идёт следом). R — клик по суставу, затем вращайте эту кость отдельно рукоятками поворота. Поза сохраняется в модели (видна во вкладке Edit) и её персонаж держит при запуске.',
+		more: 'Дополнительные настройки', msg_spawn_first: 'Сначала заспавните регдолл',
+		mode: 'Регдолл', build: 'Создать регдолл из выбранной группы', remove: 'Убрать регдолл', play: '▶ Старт', pause: '❚❚ Пауза', reset: '⟲ Сброс', bake: '⏺ Запечь в анимацию',
 		select_hint: 'Выделите группу персонажа (группа с костями-группами внутри: таз, торс, голова, руки, ноги…) и нажмите «Создать».',
 		character: 'Персонаж', bones: 'костей', mass_total: 'Общая масса (кг)', tone: 'Тонус мышц', tone_tip: '0 = обмякший как тряпка, 1 = жёсткие мышцы держат позу',
 		power: 'Сила мышц', flinch: 'Сокращение', flinch_tip: 'Насколько сильно напрягаются мышцы вокруг попадания', radius: 'Радиус сокращения (px)',
@@ -4565,6 +4642,20 @@ function updatePanel(force) {
 				hmax: boneOf(sel).hmax, strength: boneOf(sel).strength, zone: boneOf(sel).zone});
 		}
 	}
+	// the simple controls: the character, its shots, what it holds
+	const act = activeRoot();
+	vue.char_name = act ? act.name : '';
+	vue.click_shot = click_shot;
+	if (act) {
+		const sel_g = Group.first_selected;
+		const shots = shotsOf(act).map(g => ({uuid: g.uuid, name: g.name, t: g.ragdoll_shot.t, impulse: g.ragdoll_shot.impulse, selected: sel_g === g}));
+		const key2 = JSON.stringify(shots) + '|' + act.uuid;
+		if (force || vue.shots_key != key2) { vue.shots_key = key2; vue.shots = shots; }
+		const bones = bonesOf(act);
+		vue.held = itemsOf(act).map(n => ({uuid: n.uuid, name: n.name, drop: n.attach.drop !== false,
+			where: n.attach.hands == 'both' ? tr('hand_both') : ((bones.find(g => g.uuid == n.attach.bone) || {}).name || '?')}));
+		vue.char_blood = ragdollOf(act).blood !== false;
+	}
 	const sim = simNow();
 	vue.state = !sim ? 'stopped' : sim.playing ? 'playing' : 'paused';
 	vue.shoot = shoot_mode;
@@ -4577,7 +4668,7 @@ function panelComponent() {
 	return {
 		components: {'rope-num': NumberField},
 		data() {
-			return {selection_key: null, has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
+			return {selection_key: null, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
 				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
@@ -4620,7 +4711,7 @@ function panelComponent() {
 			deleteHit(i) { this.hits.splice(i, 1); this.saveHits(); },
 			clearHits() { this.hits = []; this.saveHits(); },
 			addHit() { addHitFromView(); },
-			toggleEdit() { pose_edit = !pose_edit; if (pose_edit) shoot_mode = false; syncSkeletonView(true); updatePanel(true); },
+			toggleEdit() { pose_edit = !pose_edit; if (pose_edit) { shoot_mode = false; click_shot = false; } syncSkeletonView(true); updatePanel(true); },
 			savePoseNow() { savePose(this.pose_name); },
 			usePose(i, rest) { applyPose(i, rest); },
 			removePose(i) { deletePose(i); },
@@ -4632,6 +4723,37 @@ function panelComponent() {
 			},
 			detach(uuid) { detachItem(uuid); },
 			addCharacter() { addCharacter(this.new_pose, num_(this.new_height, 28.6), this.new_model); },
+			spawn() { addCharacter(this.new_pose, 28.6, 'npc'); },
+			toggleClickShot() {
+				click_shot = !click_shot;
+				// a shot that was being moved is let go
+				if (click_shot) { pose_edit = false; syncSkeletonView(); if (Group.first_selected && isShot(Group.first_selected) && typeof unselectAllElements == 'function') unselectAllElements(); Blockbench.showQuickMessage(tr('click_shot_msg'), 2500); }
+				updatePanel(true);
+			},
+			addShot2() { const g = addShotFor(activeRoot()); if (g) { g.select(); if (BarItems.move_tool) BarItems.move_tool.select(); } },
+			grabShot(uuid) {
+				const g = Group.all.find(x => x.uuid == uuid);
+				if (!g) return;
+				click_shot = false; pose_edit = false; syncSkeletonView();
+				g.select();
+				if (BarItems.move_tool) BarItems.move_tool.select();
+				updatePanel(true);
+			},
+			deleteShot(uuid) {
+				const g = Group.all.find(x => x.uuid == uuid);
+				if (!g) return;
+				Undo.initEdit({outliner: true, elements: g.children.slice(), groups: [g]});
+				g.remove();
+				Undo.finishEdit('Delete shot', {outliner: true, elements: [], groups: []});
+				updatePanel(true);
+			},
+			saveShot(sh) {
+				const g = Group.all.find(x => x.uuid == sh.uuid);
+				if (!g) return;
+				edit([g], 'Change shot', () => { g.ragdoll_shot = Object.assign({}, g.ragdoll_shot, {t: Math.max(0, num_(sh.t, 0.5)), impulse: Math.max(0.1, num_(sh.impulse, 4))}); });
+			},
+			hand(side) { toHand(activeRoot(), side, this.item_drop, 1); },
+			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood}); }); },
 			autoBones() { autoBonesFromSelection(); },
 			setYaw(v) { this.shot_yaw = v; this.saveRoot(); },
 			fire() { fireShot(false); },
@@ -4662,6 +4784,50 @@ function panelComponent() {
 					<button @click="bake()">{{ t('bake') }}</button>
 				</div>
 				<div class="rd_dim">{{ sim_time }} s · {{ state }}</div>
+
+				<div class="rd_box rd_simple">
+					<div class="rd_row">
+						<button class="rd_big" @click="spawn()">{{ t('spawn') }}</button>
+						<select v-model="new_pose" :title="t('pose')"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
+					</div>
+					<button class="rd_full" :class="{rd_on: click_shot}" @click="toggleClickShot()">{{ click_shot ? t('click_shot_on') : t('click_shot') }}</button>
+					<template v-if="char_name">
+						<div class="rd_head">{{ t('shots') }}</div>
+						<button class="rd_full" @click="addShot2()">{{ t('add_shot2') }}</button>
+						<div class="rd_shot" v-for="(sh, i) in shots" :key="sh.uuid" :class="{rd_sel: sh.selected}">
+							<div class="rd_row">
+								<span>{{ sh.name }}</span>
+								<span>
+									<button :class="{rd_on: sh.selected}" :title="t('grab_tip')" @click="grabShot(sh.uuid)">✥</button>
+									<button class="rd_x" @click="deleteShot(sh.uuid)">✕</button>
+								</span>
+							</div>
+							<div class="rd_grid">
+								<rope-num :label="t('shot_time2')" v-model="sh.t" :min="0" :max="60" :step="0.05" :decimals="2" @change="saveShot(sh)"></rope-num>
+								<rope-num :label="t('shot_power')" v-model="sh.impulse" :min="0.1" :max="500" :step="0.5" :decimals="1" @change="saveShot(sh)"></rope-num>
+							</div>
+						</div>
+						<div class="rd_dim small" v-if="shots.length">{{ t('grab_hint') }}</div>
+
+						<div class="rd_head">{{ t('hands') }}</div>
+						<div class="rd_dim small">{{ t('hands_hint') }}</div>
+						<div class="rd_buttons">
+							<button @click="hand('r')">{{ t('hand_r') }}</button>
+							<button @click="hand('l')">{{ t('hand_l') }}</button>
+							<button @click="hand('both')">{{ t('hand_both') }}</button>
+						</div>
+						<label class="rd_row">{{ t('item_drop2') }}<input type="checkbox" v-model="item_drop"></label>
+						<div class="rd_row" v-for="it in held" :key="it.uuid"><span>{{ it.name }} → {{ it.where }}<template v-if="it.drop"> · {{ t('item_drops') }}</template></span><button class="rd_x" @click="detach(it.uuid)">✕</button></div>
+
+						<div class="rd_head">{{ t('skeleton') }}</div>
+						<button class="rd_full" :class="{rd_on: pose_edit}" @click="toggleEdit()">{{ t('edit_skeleton') }}</button>
+						<div class="rd_dim small" v-if="pose_edit">{{ t('edit_skeleton_hint') }}</div>
+						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="char_blood" @change="saveBlood()"></label>
+					</template>
+				</div>
+
+				<details class="rd_box">
+					<summary>{{ t('more') }}</summary>
 
 				<details class="rd_box" :open="!has_root">
 					<summary>{{ t('add_character') }}</summary>
@@ -4847,6 +5013,7 @@ function panelComponent() {
 					</details>
 				</template>
 				<div class="rd_dim small">{{ t('footnote') }}</div>
+				</details>
 			</div>`,
 	};
 }
@@ -4856,6 +5023,11 @@ const STYLE = `
 	#panel_ragdoll .rd_panel { overflow-y: auto !important; overflow-x: hidden !important; }
 	.rd_panel { padding: 4px 8px 10px; font-size: 0.92em; }
 	.rd_panel .rd_buttons { display: flex; gap: 4px; margin: 4px 0; }
+	.rd_panel .rd_big { flex: 1; font-weight: bold; padding: 6px; }
+	.rd_panel .rd_head { margin: 8px 0 2px; font-size: 0.85em; text-transform: uppercase; opacity: 0.7; }
+	.rd_panel .rd_on { background: var(--color-accent); color: var(--color-accent_text); }
+	.rd_panel .rd_shot { border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 4px; margin: 3px 0; }
+	.rd_panel .rd_shot.rd_sel { border-color: var(--color-accent); }
 	.rd_panel .rd_buttons button { flex: 1; min-width: 0; padding: 4px 6px; }
 	.rd_panel .rd_full { width: 100%; padding: 4px 6px; margin: 3px 0; }
 	.rd_panel .rd_full.active { background: var(--color-accent); color: var(--color-accent_text, #fff); }
@@ -4908,12 +5080,12 @@ function removeFromSelection() {
 // Held items: a weapon, a tool: fixed to a part of the body, dropped when the character is knocked down
 // ---------------------------------------------------------------------------
 
-function attachItem(root, bone_uuid, drop, mass) {
+function attachItem(root, bone_uuid, drop, mass, extra) {
 	const bone = bonesOf(root).find(g => g.uuid == bone_uuid);
 	if (!bone) { Blockbench.showQuickMessage(tr('msg_item_bone'), 3000); return; }
 	const bones = bonesOf(root), g = Group.first_selected;
 	const cubes = (Outliner.selected || []).filter(isPart).filter(c => !bones.includes(c.parent));
-	let item = null, wrap = false;
+	let item = null, wrap = false, wrap_center = null;
 	if (g && g !== root && !bones.includes(g) && (!cubes.length || cubes.every(c => c.parent === g))) item = g;
 	else if (cubes.length) wrap = true;
 	if (!item && !wrap) { Blockbench.showQuickMessage(tr('msg_item_select'), 3500); return; }
@@ -4923,10 +5095,11 @@ function attachItem(root, bone_uuid, drop, mass) {
 		cubes.forEach(c => { if (c.mesh) { c.mesh.updateMatrixWorld(true); box.union(new THREE.Box3().setFromObject(c.mesh)); } });
 		const center = box.isEmpty() ? [0, 0, 0] : box.getCenter(new THREE.Vector3()).toArray().map(v => Math.round(v * 100) / 100);
 		item = new Group({name: (cubes[0].name || 'item') + ' (held)', origin: center});
+		wrap_center = center;
 		item.addTo('root').init();
 		cubes.forEach(c => c.addTo(item));
 	}
-	item.attach = {root: root.uuid, bone: bone.uuid, drop: !!drop};
+	item.attach = Object.assign({root: root.uuid, bone: bone.uuid, drop: !!drop}, extra ? extra(item, wrap_center) : {});
 	item.physics = Object.assign({}, item.physics || {}, {type: 'dynamic', mass: Math.max(0.05, mass || 1), friction: 0.6, restitution: 0.1, velocity: [0, 0, 0]});
 	Undo.finishEdit('Attach item', {outliner: true, elements: cubes, groups: [root, bone, item]});
 	Canvas.updateAll && Canvas.updateAll();
@@ -5023,6 +5196,13 @@ function dragSkeleton(i, target, forward) {
 }
 
 let skeleton = null;   // {root, infos, group, handles, lines}
+
+// a pose made with the skeleton is the pose the character holds (its muscles keep it when the simulation runs)
+function markCustomPose(root) {
+	if (!root || !root.ragdoll || root.ragdoll.posture == 'custom') return;
+	root.ragdoll = Object.assign(ragdollOf(root), {posture: 'custom'});
+	Project.saved = false;
+}
 let pose_edit = false, drag = null;
 
 function removeSkeletonView() {
@@ -5030,7 +5210,7 @@ function removeSkeletonView() {
 	skeleton = null;
 }
 function syncSkeletonView(rebuild) {
-	const sel = Project && typeof Modes != 'undefined' && Modes.ragdoll ? Group.first_selected : null, root = sel && rootOf(sel);
+	const root = Project && typeof Modes != 'undefined' && Modes.ragdoll ? activeRoot() : null;
 	if (!pose_edit || !root) { removeSkeletonView(); return; }
 	if (!skeleton || skeleton.root !== root || rebuild) {
 		removeSkeletonView();
@@ -5078,6 +5258,8 @@ function onSkeletonDown(event) {
 	});
 	if (!best) return;
 	event.stopPropagation(); event.preventDefault();
+	// R (the rotate tool): the bone is picked, and Blockbench's own rotate handles turn it alone
+	if (typeof Toolbox != 'undefined' && Toolbox.selected && Toolbox.selected.id == 'rotate_tool') { best.g.select(); markCustomPose(skeleton.root); syncSkeletonView(); return; }
 	const camera_dir = preview.camera.getWorldDirection(new THREE.Vector3());
 	drag = {info: best, preview, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(camera_dir, endWorld(best))};
 	const groups = bonesOf(skeleton.root);
@@ -5098,6 +5280,7 @@ function onSkeletonUp(event) {
 	if (!drag) return;
 	event.stopPropagation();
 	Undo.finishEdit('Pose skeleton', {outliner: true, groups: drag.groups});
+	markCustomPose(skeleton.root);
 	drag = null;
 	syncSkeletonView();
 	updatePanel(true);
@@ -5334,6 +5517,168 @@ function addHitFromView() {
 	Blockbench.showQuickMessage(tr('msg_hit'), 1200);
 }
 
+
+// ---------------------------------------------------------------------------
+// Simple controls: shots as little guns in the scene (moved with W, turned with R), a click shot, things in the hands
+// ---------------------------------------------------------------------------
+
+let click_shot = false;
+const isShot = g => g instanceof Group && g.ragdoll_shot;
+const shotsOf = root => Group.all.filter(g => isShot(g) && (!root || g.ragdoll_shot.root == root.uuid));
+// the character the simple controls are for: the one the selection is in, else the first one in the project
+function activeRoot() {
+	if (!Project) return null;
+	const sel = Group.first_selected;
+	const r = sel && (rootOf(sel) || (isShot(sel) && Group.all.find(g => g.uuid == sel.ragdoll_shot.root)));
+	return r || Group.all.find(g => g.ragdoll && g.ragdoll.enabled) || null;
+}
+
+// where a shot marker is and where it shoots (Blockbench world, pixels): the muzzle is its pivot, it shoots along its -Z
+function shotRay(g) {
+	g.mesh.updateMatrixWorld(true);
+	return {origin: g.mesh.getWorldPosition(new THREE.Vector3()), dir: new THREE.Vector3(0, 0, -1).applyQuaternion(g.mesh.getWorldQuaternion(new THREE.Quaternion())).normalize()};
+}
+
+// a new shot: a small gun at `at` (model pixels) aimed along `dir`
+function addShotMarker(root, at, dir, t, impulse) {
+	const n = shotsOf(null).length + 1;
+	const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir.clone().normalize());
+	const e = new THREE.Euler().setFromQuaternion(q, eulerOrder());
+	const rotation = bbOfThree([e.x / D2R, e.y / D2R, e.z / D2R]);
+	const elements = [];
+	Undo.initEdit({outliner: true, elements: [], groups: []});
+	const g = new Group({name: tr('shot_name') + ' ' + n, origin: at.toArray().map(v => Math.round(v * 100) / 100), rotation});
+	g.ragdoll_shot = {root: root.uuid, t: Math.round(t * 100) / 100, impulse: impulse, weapon: ragdollOf(root).weapon || 'pistol'};
+	g.addTo('root').init();
+	const o = g.origin;
+	// the gun: the barrel back from the muzzle, a grip under the back of it
+	for (const [from, to] of [[[-0.3, -0.35, 0], [0.3, 0.35, 4]], [[-0.35, -2.2, 2.6], [0.35, -0.3, 3.6]]]) {
+		const c = new Cube({name: 'gun', from: from.map((v, i) => v + o[i]), to: to.map((v, i) => v + o[i]), origin: o.slice(), rotation: [0, 0, 0]});
+		c.addTo(g).init();
+		elements.push(c);
+	}
+	Undo.finishEdit('Add shot', {outliner: true, elements, groups: [g]});
+	if (typeof Canvas != 'undefined' && Canvas.updateAll) Canvas.updateAll();
+	return g;
+}
+
+// "Add shot": two metres in front of the chest, aimed at it
+function addShotFor(root) {
+	if (!root) { Blockbench.showQuickMessage(tr('msg_spawn_first'), 2500); return null; }
+	const chest = bonesOf(root).find(g => roleOf(g) == 'chest') || bonesOf(root)[0];
+	const target = boneCenter(chest), front = shotDirection(root, 0, 0).negate();   // (the way the character faces)
+	const at = target.clone().addScaledVector(front, 32).add(new THREE.Vector3(0, 2, 0));
+	const dir = target.clone().sub(at).normalize();
+	const g = addShotMarker(root, Project.model_3d ? Project.model_3d.worldToLocal(at.clone()) : at, dir, 0.5, ragdollOf(root).shot || 4);
+	updatePanel(true);
+	return g;
+}
+
+// fire a shot marker in the running simulation: the first thing its ray meets is hit
+function fireMarker(g) {
+	if (!current) return;
+	const {origin, dir} = g.marker_ray || shotRay(g);
+	const hit = castRay(current.rt, origin.clone().divideScalar(SCALE), dir.clone().multiplyScalar(60), null);
+	if (!hit) return;
+	for (const r of current.list) {
+		const part = r.is_humanoid ? r.parts.find(p => p.id.GetIndexAndSequenceNumber() == hit.id) : r.bones.find(b => b.entry.id.GetIndexAndSequenceNumber() == hit.id);
+		if (!part) continue;
+		const entry = part.entry, group = part.group;
+		const bp = entry.body.GetPosition(), br = entry.body.GetRotation();
+		const local = hit.position.clone().sub(new THREE.Vector3(bp.GetX(), bp.GetY(), bp.GetZ())).applyQuaternion(new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()).invert()).multiplyScalar(SCALE);
+		const sh = g.ragdoll_shot;
+		r.shoot({bone: group.uuid, name: group.name, dir: dir.toArray(), local: local.toArray(), impulse: sh.impulse, weapon: sh.weapon});
+		return;
+	}
+}
+
+// the shots of a run: each fires once at its time
+function startMarkers() {
+	if (!current) return;
+	current.markers = shotsOf(null).map(g => { g.marker_ray = shotRay(g); return {g, fired: false}; });
+	current.time = 0;
+}
+function stepMarkers(dt) {
+	if (!current || !current.markers) return;
+	for (const m of current.markers) if (!m.fired && m.g.ragdoll_shot && m.g.ragdoll_shot.t <= current.time + 1e-9) { m.fired = true; try { fireMarker(m.g); } catch (err) { console.warn('[Ragdoll] shot', err); } }
+	current.time += dt;
+}
+
+// a click on the character with "Click shot" on: a shot is made there, at the time the simulation is at
+function onClickShot(event) {
+	if (!click_shot || !Project || event.button !== 0) return;
+	const preview = previewOf(event);
+	if (!preview) return;
+	const ray = rayFor(event, preview);
+	for (const root of Group.all.filter(g => g.ragdoll && g.ragdoll.enabled)) {
+		const found = pickBone(root, ray.origin, ray.direction);
+		if (!found) continue;
+		event.stopPropagation(); event.preventDefault();
+		const sim = simNow();
+		const t = sim ? sim.time : 0;
+		const at = found.point.clone().addScaledVector(ray.direction, -24);
+		const g = addShotMarker(root, Project.model_3d ? Project.model_3d.worldToLocal(at.clone()) : at, ray.direction.clone(), t, ragdollOf(root).shot || 4);
+		g.marker_ray = {origin: at, dir: ray.direction.clone().normalize()};
+		// running: it fires now (and is replayed at this time in the next run and in the bake)
+		if (sim && current) { if (!current.markers) current.markers = []; current.markers.push({g, fired: true}); fireMarker(g); }
+		click_shot = false;
+		Blockbench.showQuickMessage(tr('msg_click_shot'), 1500);
+		updatePanel(true);
+		return;
+	}
+}
+
+// the lines of the shots in the 3D view: from each gun to what it hits
+let shot_lines = null;
+function removeShotLines() { if (shot_lines && shot_lines.parent) shot_lines.parent.remove(shot_lines); shot_lines = null; }
+function syncShotLines() {
+	if (!Project || typeof Modes == 'undefined' || !Modes.ragdoll) { removeShotLines(); return; }
+	const shots = shotsOf(null);
+	if (!shots.length) { removeShotLines(); return; }
+	if (!shot_lines) { shot_lines = new THREE.Group(); shot_lines.name = 'ragdoll_shot_lines'; scene.add(shot_lines); }
+	while (shot_lines.children.length < shots.length) {
+		const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]), new THREE.LineDashedMaterial({color: 0xff7a1a, dashSize: 1.2, gapSize: 0.8, depthTest: false, transparent: true}));
+		l.renderOrder = 998;
+		shot_lines.add(l);
+	}
+	shot_lines.children.forEach((l, i) => { l.visible = i < shots.length; });
+	const sel = Group.first_selected;
+	shots.forEach((g, i) => {
+		const {origin, dir} = shotRay(g);
+		const root = Group.all.find(x => x.uuid == g.ragdoll_shot.root);
+		const hit = root && pickBone(root, origin, dir);
+		const end = hit ? hit.point : origin.clone().addScaledVector(dir, 48);
+		const l = shot_lines.children[i], pos = l.geometry.attributes.position;
+		pos.setXYZ(0, origin.x, origin.y, origin.z); pos.setXYZ(1, end.x, end.y, end.z); pos.needsUpdate = true;
+		l.geometry.computeBoundingSphere();
+		l.computeLineDistances();
+		l.material.color.set(sel === g ? 0xffffff : hit ? 0xff7a1a : 0x888888);
+	});
+}
+
+// a thing into a hand ('r', 'l') or into both: its grip is the point of it nearest the fist
+function toHand(root, side, drop, mass) {
+	if (!root) { Blockbench.showQuickMessage(tr('msg_spawn_first'), 2500); return; }
+	const bones = bonesOf(root);
+	const hand = s => bones.find(g => roleOf(g) == 'hand' && sideOfGroup(g, bones) == (s == 'r' ? 1 : -1));
+	const main = hand(side == 'l' ? 'l' : 'r'), other = side == 'both' ? hand('l') : null;
+	if (!main) { Blockbench.showQuickMessage(tr('msg_item_bone'), 3000); return; }
+	// the thing: the selected group, or the selected cubes / meshes (put in a group of their own)
+	const g = Group.first_selected;
+	const els = (Outliner.selected || []).filter(isPart).filter(c => !bones.includes(c.parent));
+	const box = new THREE.Box3();
+	if (g && !bones.includes(g) && g !== root && !isShot(g)) { g.mesh.updateMatrixWorld(true); box.setFromObject(g.mesh); }
+	else els.forEach(c => { if (c.mesh) { c.mesh.updateMatrixWorld(true); box.union(new THREE.Box3().setFromObject(c.mesh)); } });
+	if (box.isEmpty()) { Blockbench.showQuickMessage(tr('msg_item_select'), 3500); return; }
+	const grip_w = box.clampPoint(boneCenter(main), new THREE.Vector3());
+	const other_w = other ? box.clampPoint(boneCenter(other), new THREE.Vector3()) : null;
+	attachItem(root, main.uuid, drop, mass, (item, wrap_center) => {
+		const toLocal = p => wrap_center ? p.clone().sub(new THREE.Vector3(...wrap_center)) : item.mesh.worldToLocal(p.clone());
+		const r2 = v => v.toArray().map(x => Math.round(x * 100) / 100);
+		return {hands: side, grip: r2(toLocal(grip_w)), grip_other: other_w ? r2(toLocal(other_w)) : null};
+	});
+}
+
 const onSelection = () => updatePanel();
 let poll = null;
 
@@ -5345,13 +5690,15 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.5.0',
+	version: '0.6.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
 	onload() {
 		properties.push(new Property(Group, 'object', 'ragdoll', {default: null}));
 		properties.push(new Property(Group, 'object', 'bone', {default: null}));
+		properties.push(new Property(Group, 'object', 'ragdoll_shot', {default: null}));
+		for (const type of [Group, Cube, Mesh]) properties.push(new Property(type, 'object', 'attach', {default: null}));
 		style_node = Blockbench.addCSS(STYLE);
 		mode = new Mode('ragdoll', {
 			name: tr('mode'),
@@ -5360,7 +5707,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 			condition: () => Project && Format && Format.id != 'image',
 			default_tool: 'move_tool',
 			onSelect() { updatePanel(true); },
-			onUnselect() { shoot_mode = false; pose_edit = false; removeSkeletonView(); removeArrow(); const a = api(); if (a) a.reset(); },
+			onUnselect() { shoot_mode = false; click_shot = false; pose_edit = false; removeSkeletonView(); removeArrow(); removeShotLines(); const a = api(); if (a) a.reset(); },
 		});
 		panel = new Panel('ragdoll', {
 			name: tr('mode'),
@@ -5391,17 +5738,19 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		}
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook).concat([physicsHook]);
 		document.addEventListener('pointerdown', onClick, true);
+		document.addEventListener('pointerdown', onClickShot, true);
 		document.addEventListener('pointerdown', onSkeletonDown, true);
 		document.addEventListener('pointermove', onSkeletonMove, true);
 		document.addEventListener('pointerup', onSkeletonUp, true);
-		poll = setInterval(() => { updatePanel(); syncArrow(); if (!drag) syncSkeletonView(); }, 250);
+		poll = setInterval(() => { updatePanel(); syncShotLines(); if (!drag) syncSkeletonView(); }, 250);
 		Blockbench.on('update_selection', onSelection);
 		Blockbench.on('select_project', onSelection);
 	},
 	onunload() {
 		if (poll) clearInterval(poll);
-		removeArrow(); pose_edit = false; removeSkeletonView();
+		removeArrow(); removeShotLines(); pose_edit = false; click_shot = false; removeSkeletonView();
 		document.removeEventListener('pointerdown', onClick, true);
+		document.removeEventListener('pointerdown', onClickShot, true);
 		document.removeEventListener('pointerdown', onSkeletonDown, true);
 		document.removeEventListener('pointermove', onSkeletonMove, true);
 		document.removeEventListener('pointerup', onSkeletonUp, true);
