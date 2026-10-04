@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -1501,7 +1501,7 @@ const TEXTS = {
 		msg_save_none: 'Select a character first', msg_saved_model: 'Saved: %', msg_save_big: 'The model is too big to keep (the storage is full); it is kept until Blockbench closes', msg_save_gone: 'This saved model is gone',
 		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
 		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
-		blood: 'Blood', blood_amount: 'Amount ×', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
+		blood: 'Blood', blood_high: 'High (every drop physical)', blood_high_tip: 'Every drop of blood flies on its own with physics and leaves its own stain where it lands: nothing is thinned out or skipped, a head shot is real drops too. Slower, much more blood on the walls.', blood_amount: 'Amount ×', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
 		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting on a chair', pose_kneel: 'Kneeling', pose_squat: 'Squatting', pose_crouch: 'Crouching', pose_hands_up: 'Hands up', pose_cover_head: 'Covering the head', pose_aim: 'Aiming',
 		npc_game: 'The person of the Blood game: its body, muscles, balance, wounds and blood, as in the game. A pistol in the game hits with 2-6 N*s.', weapon: 'Weapon', w_pistol: 'Pistol', w_revolver: 'Revolver', w_rifle: 'Rifle', w_akm: 'AKM', w_shotgun: 'Shotgun (pellet)', height: 'Height (px)', add_character_btn: 'Add the default character',
 		auto_bones: 'Place bones automatically on the selected model', auto_bones_hint: 'Select the cubes (or the group) of a standing person: they are sorted into head, spine, arms and legs, the joints are put in and the ragdoll is built.',
@@ -1553,7 +1553,7 @@ const TEXTS = {
 		msg_save_none: 'Сначала выделите персонажа', msg_saved_model: 'Сохранено: %', msg_save_big: 'Модель слишком большая для хранилища; она сохранена до закрытия Blockbench', msg_save_gone: 'Эта сохранённая модель удалена',
 		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
 		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
-		blood: 'Кровь', blood_amount: 'Количество ×', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
+		blood: 'Кровь', blood_high: 'High (каждая капля физическая)', blood_high_tip: 'Каждая капля крови летит сама по физике и оставляет своё пятно там, куда упала: ничего не прореживается и не пропускается, выстрел в голову — тоже настоящие капли. Медленнее, крови на стенах намного больше.', blood_amount: 'Количество ×', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
 		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит на стуле', pose_kneel: 'На коленях', pose_squat: 'На корточках', pose_crouch: 'Пригнулся', pose_hands_up: 'Руки вверх', pose_cover_head: 'Закрывает голову', pose_aim: 'Целится',
 		npc_game: 'Человек из игры Blood: тело, мышцы, баланс, ранения и кровь — как в игре. Пистолет в игре бьёт с силой 2–6 Н·с.', weapon: 'Оружие', w_pistol: 'Пистолет', w_revolver: 'Револьвер', w_rifle: 'Винтовка', w_akm: 'АКМ', w_shotgun: 'Дробовик (дробина)', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
 		auto_bones: 'Расставить кости автоматически на выбранной модели', auto_bones_hint: 'Выделите кубы (или группу) стоящего человека: они разложатся по голове, позвоночнику, рукам и ногам, суставы встанут на места и регдолл будет создан.',
@@ -1776,7 +1776,7 @@ function updatePanel(force) {
 		vue.sel_name = sel ? sel.name : '';
 		if (root) {
 			const s = ragdollOf(root);
-			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, posture: s.posture || 'stand', weapon: s.weapon || 'pistol', is_human: hasHumanoidParts(bonesOf(root)), blood: s.blood, blood_amount: s.blood_amount, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance,
+			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, posture: s.posture || 'stand', weapon: s.weapon || 'pistol', is_human: hasHumanoidParts(bonesOf(root)), blood: s.blood, blood_high: !!s.blood_high, blood_amount: s.blood_amount, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance,
 				bone_list: bonesOf(root).map(g => ({uuid: g.uuid, name: g.name})), poses: s.poses.map(p => ({name: p.name})), items: itemsOf(root).map(n => ({uuid: n.uuid, name: n.name, bone_name: ((bonesOf(root).find(g => g.uuid == n.attach.bone)) || {}).name || '?', drop: n.attach.drop !== false})),
 				root_name: root.name, bone_count: bonesOf(root).length, hits: s.hits.map(h => Object.assign({}, h)), reactions: s.reactions.map(r => Object.assign({name: '', zone: 'any', hold: 0.8, tension: 1}, r, {pose_count: Object.keys(r.pose || {}).length}))});
 			vue.is_bone = !!(sel && sel.bone && sel.bone.joint);
@@ -1798,6 +1798,7 @@ function updatePanel(force) {
 		vue.held = itemsOf(act).map(n => ({uuid: n.uuid, name: n.name, drop: n.attach.drop !== false,
 			where: n.attach.hands == 'both' ? tr('hand_both') : ((bones.find(g => g.uuid == n.attach.bone) || {}).name || '?')}));
 		vue.char_blood = ragdollOf(act).blood !== false;
+		vue.char_blood_high = !!ragdollOf(act).blood_high;
 		const rs = ragdollOf(act), route = routeOfRoot(act);
 		const anims = (typeof Animation != 'undefined' && Animation.all || []).map(a => ({uuid: a.uuid, name: a.name}));
 		if (JSON.stringify(anims) != JSON.stringify(vue.anim_list)) vue.anim_list = anims;
@@ -1827,8 +1828,8 @@ function panelComponent() {
 	return {
 		components: {'rope-num': NumberField},
 		data() {
-			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
+			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -1843,7 +1844,7 @@ function panelComponent() {
 					root.ragdoll = Object.assign(ragdollOf(root), {total_mass: clamp(num_(this.total_mass, 70), 1, 5000), tone: clamp(num_(this.tone, 0.6), 0, 1.5), power: clamp(num_(this.power, 1), 0, 4),
 						flinch: clamp(num_(this.flinch, 0.7), 0, 1), radius: clamp(num_(this.radius, 32), 0, 400), pin: this.pin, limp: Math.max(0, num_(this.limp, 0)), limp_time: Math.max(0, num_(this.limp_time, 0)), shot: clamp(num_(this.shot, 40), 1, 2000), auto_react: !!this.auto_react, react_scale: clamp(num_(this.react_scale, 1), 0, 3), facing: this.facing,
 						shot_part: this.shot_part, shot_yaw: clamp(num_(this.shot_yaw, 0), -360, 360), shot_pitch: clamp(num_(this.shot_pitch, 8), -85, 85), shot_time: Math.max(0, num_(this.shot_time, 0.5)),
-						npc: !!this.npc, posture: this.posture, weapon: this.weapon, blood: !!this.blood, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2)});
+						npc: !!this.npc, posture: this.posture, weapon: this.weapon, blood: !!this.blood, blood_high: !!this.blood_high, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2)});
 				});
 				updatePanel(true);
 			},
@@ -1951,7 +1952,7 @@ function panelComponent() {
 				});
 				syncRouteView(true);
 			},
-			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood}); }); },
+			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood, blood_high: !!this.char_blood_high}); }); },
 			// how long the bake records, and how many frames a second (the Physics tab's world settings)
 			saveRecTime() {
 				if (!Project) return;
@@ -2067,6 +2068,7 @@ function panelComponent() {
 						<div class="rd_dim small" v-if="pose_edit">{{ t('edit_skeleton_hint') }}</div>
 						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="char_blood" @change="saveBlood()"></label>
 						<label class="rd_row" v-if="char_blood" :title="t('rec_blood_tip')">{{ t('rec_blood') }}<input type="checkbox" v-model="char_rec_blood" @change="saveBlood()"></label>
+						<label class="rd_row" v-if="char_blood" :title="t('blood_high_tip')">{{ t('blood_high') }}<input type="checkbox" v-model="char_blood_high" @change="saveBlood()"></label>
 					</template>
 				</div>
 
@@ -2138,6 +2140,7 @@ function panelComponent() {
 							</div>
 						</template>
 						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="blood" @change="saveRoot()"></label>
+						<label class="rd_row" v-if="blood" :title="t('blood_high_tip')">{{ t('blood_high') }}<input type="checkbox" v-model="blood_high" @change="saveRoot()"></label>
 						<div class="rd_grid" v-if="blood && !is_human">${num('blood_amount', 'blood_amount', 0, 5, 0.1, 1, null, 'saveRoot()')}</div>
 						<div class="rd_dim" v-if="blood">{{ t('blood_note') }}</div>
 					</details>
@@ -3079,7 +3082,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.9.3',
+	version: '0.9.4',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

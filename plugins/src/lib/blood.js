@@ -10,7 +10,7 @@
 // The logic is here (BloodSim); what is drawn is in BloodView. Units: metres, seconds, ml.
 // ---------------------------------------------------------------------------
 
-const B_MAX_DROPS = 560, B_MAX_RUNS = 160, B_MAX_BODY_RUNS = 70, B_MAX_POOLS = 160;
+const B_MAX_DROPS = 560, B_MAX_DROPS_HIGH = 20000, B_MAX_RUNS = 160, B_MAX_BODY_RUNS = 70, B_MAX_POOLS = 160;
 const B_GRAVITY = 9.81;
 const B_FILM = 1.4e-3;            // pool film thickness on hard ground, m (blood is thick)
 const B_DEPOSIT_WALL = 3.0;       // ml left behind per metre by a 12 mm run on hard surfaces
@@ -39,6 +39,10 @@ class BloodSim {
 		this._time = 0; this._tick = 0; this._smear_t = 0; this._since_sim = 0;
 		this._timers = [];
 		this.view = null;
+		// High: every drop of it flies on its own and lands where its flight takes it (nothing is thinned out, no drop
+		// is dropped for want of room, a burst is drops and not rays painted at once)
+		this.high = people.some(r => r.s && r.s.blood_high);
+		this.max_drops = this.high ? B_MAX_DROPS_HIGH : B_MAX_DROPS;
 		this.ground = groundLevel(rt);
 		// rays: what is "world" (the level: static bodies and the ground) and "props" (moving things that are not people)
 		const J = this.J;
@@ -208,8 +212,8 @@ class BloodSim {
 	// --- Droplets ---
 
 	_spray(origin, dir, cone_deg, v_min, v_max, count, total, ignore) {
-		// fewer, somewhat bigger drops carry the same blood
-		count = Math.ceil(count * 0.45);
+		// fewer, somewhat bigger drops carry the same blood (High: all of them)
+		if (!this.high) count = Math.ceil(count * 0.45);
 		if (count <= 0) return;
 		const weights = [];
 		let sum = 0;
@@ -223,9 +227,9 @@ class BloodSim {
 	}
 
 	spawn_drop(pos, vel, vol, ignore = null, ignore_t = 0, drip = false, streak = 0.003) {
-		if (vol < 0.005) return;
+		if (vol < (this.high ? 0.0005 : 0.005)) return;
 		let d;
-		if (this._drops.length >= B_MAX_DROPS) d = this._drops[brandi(this._drops.length)];
+		if (this._drops.length >= this.max_drops) d = this._drops[brandi(this._drops.length)];
 		else { d = {}; this._drops.push(d); }
 		Object.assign(d, {pos: pos.clone(), vel: vel.clone(), vol: Math.min(vol, 12), age: 0, drip, ignore, ignore_t, streak});
 	}
@@ -302,7 +306,7 @@ class BloodSim {
 	// --- Runs on world surfaces ---
 
 	_start_run(pos, n, vol) {
-		if (this._runs.length >= B_MAX_RUNS) return;
+		if (this._runs.length >= (this.high ? B_MAX_RUNS * 6 : B_MAX_RUNS)) return;
 		const g = gv(0, -1, 0).addScaledVector(n, -n.dot(gv(0, -1, 0)));
 		const dir = g.length() > 0.01 ? g.normalize() : anyTangent(n);
 		this._runs.push({pos: pos.clone(), n: n.clone(), dir, vol, width: clamp(0.006 + 0.006 * Math.sqrt(vol), 0.006, 0.022), age: 0, hang: -1, wobble: brange(3, 9), v: 0, s_dir: dir.clone()});
@@ -475,7 +479,7 @@ class BloodSim {
 
 	_new_pool(p, n, vol) {
 		let pool;
-		if (this._pools.length >= B_MAX_POOLS) {
+		if (this._pools.length >= (this.high ? B_MAX_POOLS * 4 : B_MAX_POOLS)) {
 			// out of pools: feed the nearest one if it is close, otherwise reuse the smallest (never wipe out a big pool)
 			let nearest = null, smallest = this._pools[0];
 			for (const q of this._pools) {
@@ -564,7 +568,7 @@ class BloodSim {
 	_add_soak(part, ml) { this._soak.set(part, Math.min((this._soak.get(part) || 0) + ml, 40)); }
 
 	_start_body_run(bot, part, world_p, vol) {
-		if (this._body_runs.length >= B_MAX_BODY_RUNS) {
+		if (this._body_runs.length >= (this.high ? B_MAX_BODY_RUNS * 4 : B_MAX_BODY_RUNS)) {
 			// too much going on: send it straight down instead
 			this._drip(world_p.clone().add(gv(0, -0.02, 0)), bot.lin(part), vol, bot);
 			return null;
@@ -811,7 +815,14 @@ class BloodSim {
 		this.later(0.05, () => this._mist_burst(origin.clone().addScaledVector(d, 0.45), d, clamp(strength * 0.8, 0.3, 1.0)));
 		// the middle of it
 		const hit = this.ray(origin, origin.clone().addScaledVector(d, 8), 'world_props');
-		if (hit) {
+		if (hit && this.high) {
+			// High: the heavy middle is a tight bunch of big drops that fly there, splash and run down
+			const n_mid = Math.floor(24 * strength), total = 9 * strength;
+			for (let i = 0; i < n_mid; i++) {
+				const vol = total * (0.4 + brand() * 1.2) / n_mid;
+				this.spawn_drop(origin.clone().add(jitter(0.01)), cone(d, deg(7)).multiplyScalar(speed * brange(0.75, 1.05)), vol, ignore, 0.12);
+			}
+		} else if (hit) {
 			const dist = origin.distanceTo(hit.position);
 			const spread = clamp(0.18 + dist * 0.12, 0.2, 0.6) * Math.sqrt(strength) * 0.85;
 			this.later(dist / speed, () => this._splash_at(hit, d, spread, strength));
@@ -821,6 +832,12 @@ class BloodSim {
 		for (let i = 0; i < n_rays; i++) {
 			const a = brand() * Math.PI * 2, r = Math.pow(brand(), 0.7) * deg(32);
 			const rd = gv(Math.cos(a) * Math.sin(r), Math.sin(a) * Math.sin(r), -Math.cos(r)).applyQuaternion(fwd).normalize();
+			if (this.high) {
+				// High: a real drop along the ray, as big as the stain it would have left
+				const w = brange(0.006, 0.02) * (1.3 - r / deg(32) * 0.6);
+				this.spawn_drop(origin.clone(), rd.clone().multiplyScalar(speed * brange(0.7, 1.1)), clamp(w * w * 500, 0.003, 0.4), ignore, 0.12);
+				continue;
+			}
 			const h = this.ray(origin, origin.clone().addScaledVector(rd, 9), 'world_props');
 			if (!h) continue;
 			const dist2 = origin.distanceTo(h.position);

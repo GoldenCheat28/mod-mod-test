@@ -528,7 +528,8 @@ class BloodView {
 		};
 		mat.customProgramCacheKey = () => 'ragdoll_blood_drop';
 		mat.envMap = this.env;
-		this.drops = new THREE.InstancedMesh(geo, mat, B_MAX_DROPS);
+		this.drop_cap = this.sim.max_drops || B_MAX_DROPS;
+		this.drops = new THREE.InstancedMesh(geo, mat, this.drop_cap);
 		this.drops.count = 0;
 		this.drops.frustumCulled = false;
 		this.drops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -536,7 +537,7 @@ class BloodView {
 	}
 
 	drawDrops(extra) {
-		const list = this.sim._drops, n = Math.min(list.length, B_MAX_DROPS), m = new THREE.Matrix4();
+		const list = this.sim._drops, n = Math.min(list.length, this.drop_cap), m = new THREE.Matrix4();
 		for (let i = 0; i < n; i++) {
 			const d = list[i];
 			const p = d.pos.clone().addScaledVector(d.vel, extra);
