@@ -212,6 +212,25 @@ function ownerOf(node) {
 	return null;
 }
 
+// How this Blockbench turns the rotation of a group into three.js angles: some versions mirror x and y. It is measured once, on a real group.
+let rotation_signs = null;
+function rotationSigns() {
+	if (rotation_signs) return rotation_signs;
+	try {
+		const g = Group.all.find(x => x.mesh);
+		if (g && Canvas.updateAllBones) {
+			const saved = g.rotation.slice();
+			g.rotation = [10, 20, 30];
+			Canvas.updateAllBones([g]);
+			const e = g.mesh.rotation, found = [Math.sign(e.x), Math.sign(e.y), Math.sign(e.z)];
+			g.rotation = saved;
+			Canvas.updateAllBones([g]);
+			if (found.every(v => v !== 0)) rotation_signs = found;
+		}
+	} catch (err) { /* keep the guess */ }
+	return rotation_signs || [1, 1, 1];
+}
+
 function restPose() {
 	Canvas.updateAllPositions();
 	Canvas.updateAllBones();
@@ -1722,7 +1741,7 @@ async function bake() {
 			if (direct) {
 				// an axle only turns: the keys come straight from the counted angle (no jumps, however fast it spins)
 				const deg = [0, 0, 0];
-				deg[axleIndex(desc.settings)] = axle_angles.get(group)[f] * 180 / Math.PI;
+				deg[axleIndex(desc.settings)] = axle_angles.get(group)[f] * 180 / Math.PI * rotationSigns()[axleIndex(desc.settings)];
 				positions.push([0, 0, 0]);
 				rotations.push(deg);
 				continue;
@@ -1731,7 +1750,7 @@ async function bake() {
 			const {pos, quat} = decompose(local);
 			positions.push([0, 1, 2].map(i => pos.getComponent(i) - desc.rest_position.getComponent(i)));
 			const e = new THREE.Euler().setFromQuaternion(quat, Format.euler_order || 'ZYX');
-			let deg = [e.x, e.y, e.z].map((r, i) => r * 180 / Math.PI - group.rotation[i]);
+			let deg = [e.x, e.y, e.z].map((r, i) => r * 180 / Math.PI * rotationSigns()[i] - group.rotation[i]);
 			if (prev) deg = deg.map((d, i) => d + 360 * Math.round((prev[i] - d) / 360));   // no jumps between frames
 			rotations.push(deg);
 			prev = deg;
@@ -2393,7 +2412,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.0',
+	version: '0.8.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

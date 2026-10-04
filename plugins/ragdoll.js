@@ -17,8 +17,8 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, hits: [], reactions: []};
-const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', rest: null};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: []};
+const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
 const ragdollOf = g => Object.assign({}, DEFAULT_RAGDOLL, g.ragdoll || {});
@@ -26,7 +26,27 @@ const boneOf = g => Object.assign({}, DEFAULT_BONE, g.bone || {});
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const num = (v, d) => isFinite(parseFloat(v)) ? parseFloat(v) : d;
 const eulerOrder = () => (typeof Format != 'undefined' && Format && Format.euler_order) || 'ZYX';
-const quatOfDeg = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(r[0] * D2R, r[1] * D2R, r[2] * D2R, eulerOrder()));
+// How this Blockbench turns the rotation of a group into three.js angles: some versions mirror x and y. It is measured once, on a real group.
+let signs_cache = null;
+function rotationSigns() {
+	if (signs_cache) return signs_cache;
+	try {
+		const g = (typeof Group != 'undefined' && Group.all || []).find(x => x.mesh);
+		if (g && typeof Canvas != 'undefined' && Canvas.updateAllBones) {
+			const saved = g.rotation.slice();
+			g.rotation = [10, 20, 30];
+			Canvas.updateAllBones([g]);
+			const e = g.mesh.rotation, found = [Math.sign(e.x), Math.sign(e.y), Math.sign(e.z)];
+			g.rotation = saved;
+			Canvas.updateAllBones([g]);
+			if (found.every(v => v !== 0)) signs_cache = found;
+		}
+	} catch (err) { /* keep the guess */ }
+	return signs_cache || [1, 1, 1];
+}
+const bbOfThree = deg => deg.map((v, i) => Math.round(v * rotationSigns()[i] * 100) / 100);   // a physical angle (three.js terms) -> the rotation of a group
+const quatOfDeg = r => { const s = rotationSigns(); return new THREE.Quaternion().setFromEuler(new THREE.Euler(r[0] * s[0] * D2R, r[1] * s[1] * D2R, r[2] * s[2] * D2R, eulerOrder())); };
+const quatOfThree = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(r[0] * D2R, r[1] * D2R, r[2] * D2R, 'ZYX'));
 
 // what a bone is for the reactions: guessed from its name, or set by hand
 function zoneOfName(name) {
@@ -38,6 +58,33 @@ function zoneOfName(name) {
 }
 const zoneOf = g => { const b = boneOf(g); return b.zone && b.zone != 'auto' ? b.zone : zoneOfName(g.name); };
 const hingeByName = name => /forearm|lower.?arm|elbow|shin|calf|knee|lower.?leg|предплеч|голен|локт|колен/i.test(String(name));
+
+// what part of the body a bone is (from its name): the built-in reactions need it
+const ROLES = ['pelvis', 'abdomen', 'chest', 'neck', 'head', 'upperarm', 'forearm', 'hand', 'thigh', 'shin', 'foot'];
+function roleOfName(name) {
+	const n = String(name).toLowerCase();
+	if (/head|skull|голов|череп/.test(n)) return 'head';
+	if (/neck|шея/.test(n)) return 'neck';
+	if (/fore.?arm|lower.?arm|elbow|предплеч|локт/.test(n)) return 'forearm';
+	if (/hand|palm|finger|wrist|кист|ладон|палец|запяст/.test(n)) return 'hand';
+	if (/upper.?arm|shoulder|(^|[^a-z])arm([^a-z]|$)|плеч|рука/.test(n)) return 'upperarm';
+	if (/thigh|upper.?leg|бедр/.test(n)) return 'thigh';
+	if (/shin|calf|lower.?leg|knee|голен|колен/.test(n)) return 'shin';
+	if (/foot|feet|ankle|toe|стоп|ступн|лодыж/.test(n)) return 'foot';
+	if (/chest|torso|ribs|breast|грудь|торс|груд/.test(n)) return 'chest';
+	if (/abdomen|spine|belly|waist|stomach|живот|поясниц|спина/.test(n)) return 'abdomen';
+	if (/pelvis|hips?|таз|бедра/.test(n)) return 'pelvis';
+	return '';
+}
+const roleOf = g => { const b = boneOf(g); return b.role || roleOfName(g.name); };
+const zoneOfRole = role => ({head: 'head', neck: 'head', chest: 'torso', abdomen: 'torso', pelvis: 'torso', upperarm: 'arms', forearm: 'arms', hand: 'arms', thigh: 'legs', shin: 'legs', foot: 'legs'})[role] || '';
+
+// the joint a part of the body normally has (swing and twist in degrees, hinges have a range)
+const JOINTS = {
+	abdomen: {joint: 'ball', swing: 25, twist: 25}, chest: {joint: 'ball', swing: 20, twist: 25}, neck: {joint: 'ball', swing: 35, twist: 40}, head: {joint: 'ball', swing: 40, twist: 45},
+	upperarm: {joint: 'ball', swing: 120, twist: 60}, forearm: {joint: 'hinge', hmin: -5, hmax: 150}, hand: {joint: 'ball', swing: 45, twist: 30},
+	thigh: {joint: 'ball', swing: 95, twist: 25}, shin: {joint: 'hinge', hmin: -150, hmax: 5}, foot: {joint: 'ball', swing: 35, twist: 15}, pelvis: {joint: 'ball', swing: 30, twist: 20},
+};
 
 // ---------------------------------------------------------------------------
 // Muscle and reaction timing (pure functions)
@@ -105,13 +152,18 @@ class RagdollRuntime {
 			const entry = entryOf(g);
 			let bone = null;
 			if (entry) {
-				bone = {group: g, entry, parent, b: boneOf(g), children: [], tension: 0, constraint: null, kind: 'none', rest_local: null, axis: null, length: 8, load: 0, zone: zoneOf(g)};
+				bone = {group: g, entry, parent, b: boneOf(g), children: [], tension: 0, constraint: null, kind: 'none', rest_local: null, axis: null, length: 8, load: 0, zone: zoneOf(g), role: roleOf(g), side: 0};
 				this.bones.push(bone);
 				if (parent) parent.children.push(bone);
 			}
 			for (const child of g.children || []) if (child instanceof Group) visit(child, bone || parent);
 		};
 		visit(this.root, null);
+		// which side of the body a limb is on (the character's right is +x when it looks toward -z)
+		const top = this.bones.find(b => !b.parent);
+		const cx = top ? top.entry.desc.pos.x : 0;
+		for (const b of this.bones) b.side = ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'foot'].includes(b.role) ? (b.entry.desc.pos.x >= cx ? 1 : -1) : 0;
+		this.face = this.s.facing == 'south' ? -1 : 1;
 		// the weight a joint has to carry: the bone and everything below it
 		const total = b => { b.load = b.entry.desc.settings.mass + b.children.reduce((s, c) => s + total(c), 0); return b.load; };
 		this.bones.filter(b => !b.parent).forEach(total);
@@ -119,6 +171,18 @@ class RagdollRuntime {
 		const ids = new Map(this.bones.map((b, i) => [b, i]));
 		const filter = new J.GroupFilterTable(this.bones.length);
 		const group_id = Math.floor(Math.random() * 1e6) + 1;
+		// bones that touch each other in the rest pose (a hand on a knee) must not push each other apart
+		const boxes = new Map(this.bones.map(b => {
+			const box = new THREE.Box3();
+			for (const part of b.entry.desc.parts) {
+				const pts = part.kind == 'box' ? [-1, 1].flatMap(x => [-1, 1].flatMap(y => [-1, 1].map(z => new THREE.Vector3(x * part.half[0], y * part.half[1], z * part.half[2]).applyQuaternion(part.rot).add(part.center)))) : (part.points || []);
+				pts.forEach(p => box.expandByPoint(p.clone().applyQuaternion(b.entry.desc.quat).add(b.entry.desc.pos)));
+			}
+			return [b, box.expandByScalar(0.15)];
+		}));
+		for (let i = 0; i < this.bones.length; i++) for (let j = i + 1; j < this.bones.length; j++) {
+			if (boxes.get(this.bones[i]).intersectsBox(boxes.get(this.bones[j]))) filter.DisableCollision(ids.get(this.bones[i]), ids.get(this.bones[j]));
+		}
 		for (const b of this.bones) {
 			if (b.parent) filter.DisableCollision(ids.get(b), ids.get(b.parent));
 			b.entry.body.GetCollisionGroup().SetGroupFilter(filter);
@@ -210,6 +274,57 @@ class RagdollRuntime {
 		return pool[this.log.length % pool.length];
 	}
 
+
+	// ---- reactions that every part of the body has by itself (no pose to save) ----
+	// An arm or a leg gets a pose (in three.js angles, as in the character spec), the spine bends away from the shot.
+	builtinReaction(hit_bone, dir, impulse) {
+		const f = this.face, sc = clamp(impulse / 40, 0.5, 1.6) * (this.s.react_scale || 1);
+		const targets = new Map(), bends = [];
+		const q = (x, y, z) => quatOfThree([x * f, y, z]);
+		const byRole = (role, side) => this.bones.find(b => b.role == role && (!side || b.side == side));
+		const set = (role, side, x, y, z) => { const b = byRole(role, side); if (b) targets.set(b, q(x, y, z)); };
+		// arm poses found for the character: [upper arm x, z], [forearm x, z], hand x (z is mirrored for the other arm)
+		const ARM = {
+			head: [[72, -14], [126, -4], 0], chest: [[0, -2], [150, -36], -10], belly: [[0, -20], [150, -60], 0],
+			pull: [[18, 10], [100, -25], 0], balance: [[0, -40], [8, 0], 0], guard: [[40, -10], [120, -10], 0],
+		};
+		const arm = (side, name) => { const [u, fo, h] = ARM[name]; set('upperarm', side, u[0], 0, -side * u[1]); set('forearm', side, fo[0], 0, -side * fo[1]); set('hand', side, h, 0, 0); };
+		const bothArms = name => { arm(1, name); arm(-1, name); };
+		const legs = (thigh, shin, foot) => { for (const side of [1, -1]) { set('thigh', side, thigh, 0, -side * 2); set('shin', side, shin, 0, 0); set('foot', side, foot, 0, 0); } };
+		const bend = (axis, angle, roles) => { if (axis) bends.push({axis, angle: angle * D2R * sc, roles}); };
+		// the spine bends away from the shot: about the horizontal axis across the direction of the hit
+		const up = new THREE.Vector3(0, 1, 0), d = new THREE.Vector3(dir.x, 0, dir.z);
+		const away = d.lengthSq() > 1e-4 ? new THREE.Vector3().crossVectors(up, d.normalize()) : null;
+		const forward = (name, angle) => { const b = byRole(name); if (b) targets.set(b, q(-angle * sc, 0, 0)); };
+		const role = hit_bone.role, side = hit_bone.side;
+		if (role == 'head' || role == 'neck') {
+			bend(away, 24, {head: 1, neck: 0.8, chest: 0.4, abdomen: 0.25});
+			bothArms('head');
+			legs(6, -10, 0);
+		} else if (role == 'chest') {
+			bend(away, 16, {chest: 0.9, head: 0.8, neck: 0.6, abdomen: 0.5});
+			bothArms('chest');
+			legs(5, -8, 0);
+		} else if (role == 'abdomen' || role == 'pelvis') {
+			// doubled over, hands on the belly, knees give way
+			forward('abdomen', 28); forward('chest', 22); forward('neck', -10);
+			bothArms('belly');
+			legs(22, -38, 6);
+		} else if (['upperarm', 'forearm', 'hand'].includes(role)) {
+			// the arm is pulled in, the other hand goes to it, the body turns away
+			arm(side, 'pull'); arm(-side, 'chest');
+			const c = byRole('chest'); if (c) targets.set(c, q(2, -side * 18, 0));
+			bend(away, 8, {chest: 0.6, head: 0.5, abdomen: 0.3});
+		} else if (['thigh', 'shin', 'foot'].includes(role)) {
+			// the leg is drawn up, the other leg takes the weight, the arms go out for balance, a little bent over
+			legs(5, -6, 0);
+			set('thigh', side, 32, 0, -side * 4); set('shin', side, -58, 0, 0); set('foot', side, 18, 0, 0);
+			bothArms('balance');
+			forward('abdomen', 10); forward('chest', 8);
+		} else return null;
+		return {name: role, zone: zoneOfRole(role), targets, bends, attack: 0.1, hold: 1.0 * Math.max(0.6, sc), release: 1.0, tension: 1.3};
+	}
+
 	// a hit: {t, bone: uuid, dir: [x,y,z], local: [x,y,z] (point in the bone), impulse}
 	applyHit(hit) {
 		const b = this.bones.find(x => x.group.uuid == hit.bone) || this.bones[0];
@@ -228,8 +343,10 @@ class RagdollRuntime {
 		world.tmp.Set(L.x, L.y, L.z);
 		world.bodies.AddAngularImpulse(entry.id, world.tmp);
 		this.events.push({t0: this.time, center: point, amount: this.s.flinch});
+		// a reaction you saved for this zone comes first; otherwise the built-in one for this part of the body
 		const reaction = this.reactionFor(b.zone);
 		if (reaction) this.reactions.push({def: Object.assign({}, DEFAULT_REACTION, reaction), t0: this.time});
+		else if (this.s.auto_react) { const def = this.builtinReaction(b, dir, hit.impulse); if (def) this.reactions.push({def, t0: this.time}); }
 		if (this.s.limp > 0 && hit.impulse >= this.s.limp) {
 			this.limp_since = this.time;
 			this.limp_until = this.s.limp_time > 0 ? this.time + this.s.limp_time : Infinity;
@@ -275,28 +392,43 @@ class RagdollRuntime {
 				const w = s.radius > 0 ? clamp(1 - dist / s.radius, 0, 1) : 1;
 				tension += (1 - tension) * clamp(ev.amount * flinchEnvelope(age) * Math.max(w, 0.35 * ev.amount), 0, 1);
 			}
-			// the pose of a reaction
-			let delta = null;
-			if (reaction && blend > 0 && reaction.def.pose && reaction.def.pose[b.group.uuid]) {
-				const d = reaction.def.pose[b.group.uuid];
-				const rest = b.b.rest || b.group.rotation || [0, 0, 0];
-				delta = quatOfDeg([rest[0] + d[0], rest[1] + d[1], rest[2] + d[2]]).multiply(quatOfDeg(rest).invert());
-				tension = Math.max(tension, reaction.def.tension * blend);
-				delta = new THREE.Quaternion().slerp(delta, blend);
+			// the pose of a reaction: a saved one (turns from the rest pose) or a built-in one (poses and bends)
+			let target = null;
+			if (reaction && blend > 0) {
+				const def = reaction.def;
+				if (def.pose && def.pose[b.group.uuid]) {
+					const d = def.pose[b.group.uuid];
+					const rest = b.b.rest || b.group.rotation || [0, 0, 0];
+					const delta = new THREE.Quaternion().slerp(quatOfDeg([rest[0] + d[0], rest[1] + d[1], rest[2] + d[2]]).multiply(quatOfDeg(rest).invert()), blend);
+					target = delta.multiply(b.rest_local);
+					tension = Math.max(tension, def.tension * blend);
+				}
+				if (def.targets && def.targets.has(b)) {
+					target = b.rest_local.clone().slerp(def.targets.get(b), blend);
+					tension = Math.max(tension, def.tension * blend);
+				}
+				if (def.bends) for (const bend of def.bends) {
+					const k = bend.roles[b.role];
+					if (!k) continue;
+					const qp = bodyQuat(b.parent.entry);
+					const rw = new THREE.Quaternion().setFromAxisAngle(bend.axis, bend.angle * k * blend);
+					target = qp.clone().invert().multiply(rw).multiply(qp).multiply(target || b.rest_local);
+					tension = Math.max(tension, 0.9 * blend);
+				}
 			}
 			tension = clamp(tension * limp * s.power, 0, 4);
-			this.motor(b, tension, delta);
+			this.motor(b, tension, target);
 		}
 	}
 
 	// The muscle: a spring and a damper that turn the bone toward its pose (rest pose, or the pose of a reaction), as torques on
 	// the bone and, the other way, on its parent. tension 0 = limp, 1 = the muscle tone as set.
-	motor(b, tension, delta) {
+	motor(b, tension, target) {
 		if (tension <= 0.01) return;
 		const {world} = this;
 		const p = b.parent.entry, c = b.entry;
 		const qp = bodyQuat(p), qc = bodyQuat(c);
-		const target = delta ? delta.clone().multiply(b.rest_local) : b.rest_local;
+		if (!target) target = b.rest_local;
 		const err = qp.clone().multiply(target).multiply(qc.clone().invert());
 		if (err.w < 0) { err.x = -err.x; err.y = -err.y; err.z = -err.z; err.w = -err.w; }
 		const angle = 2 * Math.acos(clamp(err.w, -1, 1)), s = Math.sqrt(Math.max(0, 1 - err.w * err.w));
@@ -366,9 +498,9 @@ function buildRagdoll(root, total_mass) {
 	root.ragdoll = Object.assign(ragdollOf(root), {enabled: true, total_mass: mass});
 	for (const g of bones) {
 		g.physics = Object.assign({}, g.physics || {}, {type: 'dynamic', mass: Math.max(0.2, Math.round(mass * Math.max(volumeOf(g), 1) / sum * 100) / 100), friction: 0.7, restitution: 0.05, velocity: (g.physics && g.physics.velocity) || [0, 0, 0]});
-		const old = g.bone || {};
-		g.bone = Object.assign({}, DEFAULT_BONE, old, {joint: old.joint || (hingeByName(g.name) ? 'hinge' : 'ball'), rest: (old.rest || g.rotation || [0, 0, 0]).slice(), hinge_axis: old.hinge_axis || 'x'});
-		if (hingeByName(g.name) && !old.joint) { g.bone.hmin = -140; g.bone.hmax = 140; }
+		const old = g.bone || {}, role = old.role || roleOfName(g.name), jd = (!old.joint && JOINTS[role]) || null;
+		g.bone = Object.assign({}, DEFAULT_BONE, old, jd || {}, {role, joint: old.joint || (jd && jd.joint) || (hingeByName(g.name) ? 'hinge' : 'ball'), rest: (old.rest || g.rotation || [0, 0, 0]).slice(), hinge_axis: old.hinge_axis || 'x'});
+		if (!jd && !old.joint && hingeByName(g.name)) { g.bone.hmin = -140; g.bone.hmax = 140; }
 	}
 	return {bones};
 }
@@ -376,6 +508,206 @@ function buildRagdoll(root, total_mass) {
 function removeRagdoll(root) {
 	for (const g of bonesOf(root)) { g.physics = null; g.bone = null; }
 	root.ragdoll = null;
+}
+
+// ---------------------------------------------------------------------------
+// The default character: a minimal mannequin with the bones already in place
+// ---------------------------------------------------------------------------
+
+// angles are in three.js terms (degrees): x tips a limb that hangs down toward -Z (the front), z swings it sideways
+const POSES = {
+	stand: {   // relaxed: arms hang with a little bend at the elbows, the feet turned out a little, knees not locked
+		upperarm: {x: -4, z: -6}, forearm: {x: 14, z: 0}, hand: {x: 4, z: 0}, thigh: {x: 2, z: 2}, shin: {x: -3, z: 0}, foot: {x: 1, y: 8},
+		abdomen: {x: 0}, chest: {x: 1}, neck: {x: 2}, head: {x: -1}, pelvis: {x: 0},
+	},
+	sit: {     // on a stool, hands resting on the knees
+		thigh: {x: 90, z: 3}, shin: {x: -90, z: 0}, foot: {x: 0, y: 6}, pelvis: {x: 0}, abdomen: {x: -3}, chest: {x: -2}, neck: {x: 4}, head: {x: 2},
+		upperarm: {x: 0, z: 20}, forearm: {x: 93, z: 0}, hand: {x: 0},
+	},
+};
+
+function characterSpec(o = {}) {
+	const k = (o.height || 28.6) / 28.6, pose = POSES[o.pose] ? o.pose : 'stand', P = POSES[pose], sit = pose == 'sit';
+	const y = v => v * k;
+	const drop = sit ? y(6.9) : 0;   // sitting: the whole body comes down by the length of the thigh
+	const Y = v => y(v) - drop;
+	const hipY = sit ? y(8.1) : y(15);
+	const bones = [];
+	const rnd = v => Math.round(v * 1000) / 1000;
+	const add = (name, role, parent, pivot, cubes, rot) => bones.push({name, role, parent, pivot: pivot.map(rnd), cubes, rot: rot || [0, 0, 0]});
+	const box = (cx, y0, y1, cz, w, d) => ({from: [cx - w / 2, y0, cz - d / 2].map(rnd), to: [cx + w / 2, y1, cz + d / 2].map(rnd)});
+	const r = (p, ax) => (p && p[ax]) || 0;
+	add('Pelvis', 'pelvis', null, [0, hipY + y(0.2), 0], [box(0, hipY - y(1), hipY + y(1.4), 0, y(6.0), y(3.4))], [r(P.pelvis, 'x'), 0, 0]);
+	add('Abdomen', 'abdomen', 'Pelvis', [0, Y(16.4), 0], [box(0, Y(16.4), Y(19.6), 0, y(5.6), y(3.1))], [r(P.abdomen, 'x'), 0, 0]);
+	add('Chest', 'chest', 'Abdomen', [0, Y(19.6), 0], [box(0, Y(19.6), Y(23.5), 0, y(7.2), y(3.7))], [r(P.chest, 'x'), 0, 0]);
+	add('Neck', 'neck', 'Chest', [0, Y(23.5), 0], [box(0, Y(23.5), Y(24.9), 0, y(1.5), y(1.5))], [r(P.neck, 'x'), 0, 0]);
+	add('Head', 'head', 'Neck', [0, Y(24.9), 0], [box(0, Y(24.9), Y(28.6), -y(0.1), y(3.7), y(4.1))], [r(P.head, 'x'), 0, 0]);
+	for (const s of [1, -1]) {
+		const L = s > 0 ? 'R' : 'L';
+		const sh = [s * y(4.1), Y(22.5), 0];
+		add('Upper Arm ' + L, 'upperarm', 'Chest', sh, [box(s * y(4.1), sh[1] - y(5.2), sh[1] + y(0.8), 0, y(1.9), y(1.9))], [r(P.upperarm, 'x'), 0, -s * r(P.upperarm, 'z')]);
+		const el = [s * y(4.1), sh[1] - y(5.2), 0];
+		add('Forearm ' + L, 'forearm', 'Upper Arm ' + L, el, [box(s * y(4.1), el[1] - y(4.6), el[1] + y(0.6), 0, y(1.6), y(1.6))], [r(P.forearm, 'x'), 0, -s * r(P.forearm, 'z')]);
+		const wr = [s * y(4.1), el[1] - y(4.6), 0];
+		add('Hand ' + L, 'hand', 'Forearm ' + L, wr, [box(s * y(4.1), wr[1] - y(2.1), wr[1] + y(0.3), 0, y(1.4), y(0.9))], [r(P.hand, 'x'), 0, 0]);
+		const hp = [s * y(1.9), hipY, 0];
+		add('Thigh ' + L, 'thigh', 'Pelvis', hp, [box(s * y(1.9), hp[1] - y(6.9), hp[1] + y(0.4), 0, y(2.9), y(2.9))], [r(P.thigh, 'x'), 0, -s * r(P.thigh, 'z')]);
+		const kn = [s * y(1.9), hp[1] - y(6.9), 0];
+		add('Shin ' + L, 'shin', 'Thigh ' + L, kn, [box(s * y(1.9), kn[1] - y(7.0), kn[1] + y(0.4), 0, y(2.3), y(2.3))], [r(P.shin, 'x'), 0, 0]);
+		const an = [s * y(1.9), kn[1] - y(7.0), 0];
+		add('Foot ' + L, 'foot', 'Shin ' + L, an, [box(s * y(1.9), an[1] - y(1.1), an[1] + y(0.2), -y(1.5), y(2.3), y(4.7))], [r(P.foot, 'x'), s * r(P.foot, 'y'), 0]);
+	}
+	let chair = null;
+	if (sit) {
+		const top = hipY - y(1.45), t = y(1.4);   // the thighs lie on the seat
+		const post = (sx, zc) => ({from: [sx * y(3.9) - y(0.5), 0, zc - y(0.5)].map(rnd), to: [sx * y(3.9) + y(0.5), top - t, zc + y(0.5)].map(rnd)});
+		const back = {from: [-y(4.0), top, y(3.5)].map(rnd), to: [y(4.0), top + y(11), y(4.6)].map(rnd)};   // a low back so a hit does not tip the person off
+		chair = {name: 'Chair', cubes: [{from: [-y(4.6), top - t, y(4.6)].map(rnd), to: [y(4.6), top, -y(8.2)].map(rnd)}, back, post(1, y(3.6)), post(-1, y(3.6)), post(1, -y(7.0)), post(-1, -y(7.0))]};
+	}
+	return {bones, chair, pose};
+}
+
+// makes the groups and cubes of the character; returns the group that holds the character
+function createCharacter(o = {}) {
+	const spec = characterSpec(o), made = new Map();
+	Undo.initEdit({outliner: true, elements: [], groups: [], selection: true});
+	const root = new Group({name: 'Character', origin: [0, 0, 0]});
+	root.addTo('root').init();
+	const groups = [root], elements = [];
+	for (const b of spec.bones) {
+		const g = new Group({name: b.name, origin: b.pivot.slice(), rotation: bbOfThree(b.rot)});
+		g.addTo(b.parent ? made.get(b.parent) : root).init();
+		made.set(b.name, g);
+		groups.push(g);
+		for (const c of b.cubes) {
+			const el = new Cube({name: b.name.toLowerCase().replace(/ /g, '_'), from: c.from, to: c.to, origin: [0, 1, 2].map(i => (c.from[i] + c.to[i]) / 2)});
+			el.addTo(g).init();
+			elements.push(el);
+		}
+	}
+	let chair = null;
+	if (spec.chair) {
+		chair = new Group({name: spec.chair.name, origin: [0, 0, 0]});
+		chair.addTo('root').init();
+		chair.physics = {type: 'static', friction: 0.8, restitution: 0.05};
+		groups.push(chair);
+		for (const c of spec.chair.cubes) {
+			const el = new Cube({name: 'chair', from: c.from, to: c.to, origin: [0, 1, 2].map(i => (c.from[i] + c.to[i]) / 2)});
+			el.addTo(chair).init();
+			elements.push(el);
+		}
+	}
+	const bones = bonesOf(root);
+	buildRagdoll(root, o.mass || 70);
+	root.ragdoll = Object.assign(ragdollOf(root), {pin: 'until_limp', limp: 120});
+	bones.forEach(g => { const b = boneOf(g), role = roleOfName(g.name); g.bone = Object.assign(b, {role, rest: g.rotation.slice()}); });
+	Undo.finishEdit('Add character', {outliner: true, elements, groups, selection: true});
+	if (typeof Canvas != 'undefined') { Canvas.updateAllBones(); Canvas.updateAllPositions(); }
+	root.select();
+	return {root, chair, spec};
+}
+
+// ---------------------------------------------------------------------------
+// Automatic bones: loose cubes of a standing person are sorted into body parts, and the joints are put in
+// ---------------------------------------------------------------------------
+
+const centerOf = el => {
+	if (el.mesh) { el.mesh.updateMatrixWorld(true); return new THREE.Box3().setFromObject(el.mesh); }
+	return new THREE.Box3(new THREE.Vector3(...el.from), new THREE.Vector3(...el.to));
+};
+
+// which part of the body (and which side) an element is, from where it sits in the body box
+function classifyParts(boxes) {
+	const all = new THREE.Box3();
+	boxes.forEach(b => all.union(b));
+	const H = Math.max(1e-3, all.max.y - all.min.y), cx = (all.min.x + all.max.x) / 2;
+	const out = [];
+	for (const box of boxes) {
+		const c = box.getCenter(new THREE.Vector3());
+		const ny = (c.y - all.min.y) / H, nx = (c.x - cx) / H, side = nx >= 0 ? 1 : -1;
+		let role;
+		if (ny >= 0.86) role = 'head';
+		else if (ny >= 0.82 && Math.abs(nx) < 0.05) role = 'neck';
+		else if (Math.abs(nx) > 0.115 && ny >= 0.36) {
+			// an arm: by how far from the shoulder it is (the arm may hang or stick out)
+			const shoulder = new THREE.Vector3(cx + side * 0.13 * H, all.min.y + 0.80 * H, c.z);
+			const d = c.distanceTo(shoulder) / (0.4 * H);
+			role = d < 0.5 ? 'upperarm' : d < 0.86 ? 'forearm' : 'hand';
+		} else if (ny >= 0.82) role = 'chest';
+		else if (ny >= 0.67) role = 'chest';
+		else if (ny >= 0.57) role = 'abdomen';
+		else if (ny >= 0.5) role = 'pelvis';
+		else if (ny >= 0.27) role = 'thigh';
+		else if (ny >= 0.07) role = 'shin';
+		else role = 'foot';
+		const sided = ['upperarm', 'forearm', 'hand', 'thigh', 'shin', 'foot'].includes(role);
+		out.push({role, side: sided ? side : 0, box});
+	}
+	return {parts: out, H, cx, bounds: all};
+}
+
+const PARENT_ROLE = {abdomen: 'pelvis', chest: 'abdomen', neck: 'chest', head: 'neck', upperarm: 'chest', forearm: 'upperarm', hand: 'forearm', thigh: 'pelvis', shin: 'thigh', foot: 'shin'};
+const PART_NAMES = {pelvis: 'Pelvis', abdomen: 'Abdomen', chest: 'Chest', neck: 'Neck', head: 'Head', upperarm: 'Upper Arm', forearm: 'Forearm', hand: 'Hand', thigh: 'Thigh', shin: 'Shin', foot: 'Foot'};
+
+// the joints of every part: where the bone turns
+function placeJoints(parts) {
+	const groups = new Map();
+	parts.forEach((p, i) => {
+		const key = p.role + ':' + p.side;
+		if (!groups.has(key)) groups.set(key, {role: p.role, side: p.side, items: [], box: new THREE.Box3()});
+		const g = groups.get(key);
+		g.items.push(i);
+		g.box.union(p.box);
+	});
+	const list = [...groups.values()];
+	const find = (role, side) => list.find(g => g.role == role && (g.side == side || !g.side || !side)) || list.find(g => g.role == role);
+	for (const g of list) {
+		let parent = null, role = PARENT_ROLE[g.role];
+		while (role && !parent) { parent = find(role, g.side); if (!parent) role = PARENT_ROLE[role]; }
+		g.parent = parent;
+		const c = g.box.getCenter(new THREE.Vector3()), size = g.box.getSize(new THREE.Vector3());
+		const pc = parent ? parent.box.getCenter(new THREE.Vector3()) : c;
+		const vertical = ['abdomen', 'chest', 'neck', 'head'].includes(g.role);
+		if (g.role == 'pelvis') g.pivot = c.clone();
+		else if (vertical) g.pivot = new THREE.Vector3(c.x, g.box.min.y, c.z);
+		else if (g.role == 'foot') g.pivot = new THREE.Vector3(c.x, g.box.max.y, THREE.MathUtils.clamp(pc.z, g.box.min.z, g.box.max.z));
+		else {
+			// a limb turns at its end that is nearest to the parent, in the middle of its thickness
+			const axis = size.x >= size.y && size.x >= size.z ? 'x' : size.z > size.y ? 'z' : 'y';
+			g.pivot = c.clone();
+			g.pivot[axis] = Math.abs(pc[axis] - g.box.min[axis]) < Math.abs(pc[axis] - g.box.max[axis]) ? g.box.min[axis] : g.box.max[axis];
+		}
+		g.name = (PART_NAMES[g.role] || g.role) + (g.side ? (g.side > 0 ? ' R' : ' L') : '');
+	}
+	return list;
+}
+
+// makes the groups and puts the elements in them; returns {root, count}
+function autoRig(elements) {
+	const els = elements.filter(el => el instanceof Cube || el instanceof Mesh);
+	if (els.length < 6) return {error: 'few'};
+	const boxes = els.map(centerOf);
+	const {parts} = classifyParts(boxes);
+	const joints = placeJoints(parts);
+	Undo.initEdit({outliner: true, elements: els, groups: [], selection: true});
+	const root = new Group({name: 'Character', origin: [0, 0, 0]});
+	root.addTo('root').init();
+	const made = new Map(), order = [];
+	const depth = j => { let d = 0; for (let p = j.parent; p; p = p.parent) d++; return d; };
+	for (const j of joints.slice().sort((a, b) => depth(a) - depth(b))) {
+		const g = new Group({name: j.name, origin: j.pivot.toArray().map(v => Math.round(v * 100) / 100)});
+		g.addTo(j.parent ? made.get(j.parent) : root).init();
+		made.set(j, g);
+		order.push(g);
+		j.items.forEach(i => els[i].addTo(g));
+	}
+	const all = [root, ...order];
+	buildRagdoll(root, 70);
+	order.forEach(g => { g.bone = Object.assign(boneOf(g), {role: roleOfName(g.name), rest: g.rotation.slice()}); });
+	Undo.finishEdit('Auto bones', {outliner: true, elements: els, groups: all, selection: true});
+	if (typeof Canvas != 'undefined') { Canvas.updateAllBones(); Canvas.updateAllPositions(); }
+	root.select();
+	return {root, count: order.length};
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +725,12 @@ const TEXTS = {
 		bone: 'Selected bone', joint: 'Joint', j_ball: 'Ball (shoulder, hip, neck)', j_hinge: 'Hinge (elbow, knee)', j_fixed: 'Stiff',
 		swing: 'Swing (°)', twist: 'Twist (±°)', axis: 'Hinge axis', hmin: 'Hinge from (°)', hmax: 'Hinge to (°)', strength: 'Muscle strength', zone: 'Zone',
 		z_auto: 'Automatic', z_head: 'Head', z_torso: 'Torso', z_arms: 'Arms', z_legs: 'Legs', z_any: 'Any',
+		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting, hands on knees', height: 'Height (px)', add_character_btn: 'Add the default character',
+		auto_bones: 'Place bones automatically on the selected model', auto_bones_hint: 'Select the cubes (or the group) of a standing person: they are sorted into head, spine, arms and legs, the joints are put in and the ragdoll is built.',
+		auto_react: 'Every part of the body reacts by itself', react_scale: 'Reaction strength', facing: 'The character looks toward', facing_north: 'North (−Z, the front in Blockbench)', facing_south: 'South (+Z)',
+		shot_box: 'Shot', shot_at: 'Hits the part', shot_auto: 'Chest', shot_from: 'The shot comes from (the orange arrow in 3D)', d_front: 'Front', d_right: 'Right', d_back: 'Back', d_left: 'Left',
+		shot_yaw: 'Around (°)', shot_pitch: 'Above (°)', fire: '🎯 Fire now (while playing)', add_shot: '➕ Put the shot on the timeline',
+		msg_char: 'Character added: press Play, then shoot it', msg_auto: 'Bones placed: % body parts', msg_auto_few: 'Select at least 6 cubes of a standing person (or their group)',
 		hits: 'Hits (shots)', hits_hint: 'While playing, turn Shoot on and click the character in the 3D view: the shot is recorded here. You can also add a hit by hand.',
 		shoot: 'Shoot with a click (while playing)', shoot_on: 'Shooting: click the character', add_hit: 'Add hit on the selected bone', clear_hits: 'Clear hits',
 		time: 'Time (s)', impulse: 'Strength (N·s)', hit_bone: 'Bone', no_hits: 'No hits yet',
@@ -413,6 +751,12 @@ const TEXTS = {
 		bone: 'Выбранная кость', joint: 'Сустав', j_ball: 'Шаровой (плечо, бедро, шея)', j_hinge: 'Шарнир (локоть, колено)', j_fixed: 'Жёсткий',
 		swing: 'Отклонение (°)', twist: 'Кручение (±°)', axis: 'Ось шарнира', hmin: 'Шарнир от (°)', hmax: 'Шарнир до (°)', strength: 'Сила мышцы', zone: 'Зона',
 		z_auto: 'Автоматически', z_head: 'Голова', z_torso: 'Торс', z_arms: 'Руки', z_legs: 'Ноги', z_any: 'Любая',
+		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит, руки на коленях', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
+		auto_bones: 'Расставить кости автоматически на выбранной модели', auto_bones_hint: 'Выделите кубы (или группу) стоящего человека: они разложатся по голове, позвоночнику, рукам и ногам, суставы встанут на места и регдолл будет создан.',
+		auto_react: 'Каждая часть тела реагирует по-своему', react_scale: 'Сила реакции', facing: 'Персонаж смотрит на', facing_north: 'Север (−Z, перед в Blockbench)', facing_south: 'Юг (+Z)',
+		shot_box: 'Выстрел', shot_at: 'Попадает в часть', shot_auto: 'Грудь', shot_from: 'Откуда летит выстрел (оранжевая стрелка в 3D)', d_front: 'Спереди', d_right: 'Справа', d_back: 'Сзади', d_left: 'Слева',
+		shot_yaw: 'Вокруг (°)', shot_pitch: 'Сверху (°)', fire: '🎯 Выстрелить сейчас (во время Пуска)', add_shot: '➕ Поставить выстрел на время',
+		msg_char: 'Персонаж добавлен: нажмите Пуск и стреляйте', msg_auto: 'Кости расставлены: частей тела — %', msg_auto_few: 'Выделите минимум 6 кубов стоящего человека (или его группу)',
 		hits: 'Попадания (выстрелы)', hits_hint: 'Во время Пуска включите «Стрелять» и кликайте по персонажу в 3D: выстрел запишется сюда. Можно и добавить попадание вручную.',
 		shoot: 'Стрелять кликом (во время Пуска)', shoot_on: 'Стрельба: кликайте по персонажу', add_hit: 'Добавить попадание в выбранную кость', clear_hits: 'Убрать все',
 		time: 'Время (с)', impulse: 'Сила (Н·с)', hit_bone: 'Кость', no_hits: 'Попаданий пока нет',
@@ -514,7 +858,8 @@ function updatePanel(force) {
 		vue.sel_name = sel ? sel.name : '';
 		if (root) {
 			const s = ragdollOf(root);
-			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot,
+			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time,
+				bone_list: bonesOf(root).map(g => ({uuid: g.uuid, name: g.name})),
 				root_name: root.name, bone_count: bonesOf(root).length, hits: s.hits.map(h => Object.assign({}, h)), reactions: s.reactions.map(r => Object.assign({name: '', zone: 'any', hold: 0.8, tension: 1}, r, {pose_count: Object.keys(r.pose || {}).length}))});
 			vue.is_bone = !!(sel && sel.bone && sel.bone.joint);
 			if (vue.is_bone) Object.assign(vue, {joint: boneOf(sel).joint, swing: boneOf(sel).swing, twist: boneOf(sel).twist, hinge_axis: boneOf(sel).hinge_axis, hmin: boneOf(sel).hmin,
@@ -533,7 +878,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], new_pose: 'stand', new_height: 28.6,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -546,7 +891,8 @@ function panelComponent() {
 				if (!root) return;
 				edit([root], 'Change ragdoll', () => {
 					root.ragdoll = Object.assign(ragdollOf(root), {total_mass: clamp(num_(this.total_mass, 70), 1, 5000), tone: clamp(num_(this.tone, 0.6), 0, 1.5), power: clamp(num_(this.power, 1), 0, 4),
-						flinch: clamp(num_(this.flinch, 0.7), 0, 1), radius: clamp(num_(this.radius, 32), 0, 400), pin: this.pin, limp: Math.max(0, num_(this.limp, 0)), limp_time: Math.max(0, num_(this.limp_time, 0)), shot: clamp(num_(this.shot, 40), 1, 2000)});
+						flinch: clamp(num_(this.flinch, 0.7), 0, 1), radius: clamp(num_(this.radius, 32), 0, 400), pin: this.pin, limp: Math.max(0, num_(this.limp, 0)), limp_time: Math.max(0, num_(this.limp_time, 0)), shot: clamp(num_(this.shot, 40), 1, 2000), auto_react: !!this.auto_react, react_scale: clamp(num_(this.react_scale, 1), 0, 3), facing: this.facing,
+						shot_part: this.shot_part, shot_yaw: clamp(num_(this.shot_yaw, 0), -360, 360), shot_pitch: clamp(num_(this.shot_pitch, 8), -85, 85), shot_time: Math.max(0, num_(this.shot_time, 0.5))});
 				});
 				updatePanel(true);
 			},
@@ -573,6 +919,11 @@ function panelComponent() {
 			deleteHit(i) { this.hits.splice(i, 1); this.saveHits(); },
 			clearHits() { this.hits = []; this.saveHits(); },
 			addHit() { addHitFromView(); },
+			addCharacter() { addCharacter(this.new_pose, num_(this.new_height, 28.6)); },
+			autoBones() { autoBonesFromSelection(); },
+			setYaw(v) { this.shot_yaw = v; this.saveRoot(); },
+			fire() { fireShot(false); },
+			addShot() { fireShot(true); },
 			toggleShoot() { shoot_mode = !shoot_mode; if (shoot_mode) Blockbench.showQuickMessage(tr('hit_on'), 2500); updatePanel(true); },
 			capture() { capturePose(this.new_name, this.new_zone); },
 			saveReactions() {
@@ -600,6 +951,17 @@ function panelComponent() {
 				</div>
 				<div class="rd_dim">{{ sim_time }} s · {{ state }}</div>
 
+				<details class="rd_box" :open="!has_root">
+					<summary>{{ t('add_character') }}</summary>
+					<label class="rd_row">{{ t('pose') }}
+						<select v-model="new_pose"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option></select>
+					</label>
+					<div class="rd_grid"><rope-num :label="t('height')" v-model="new_height" :min="8" :max="200" :step="0.5" :decimals="1"></rope-num></div>
+					<button class="rd_full" @click="addCharacter()">{{ t('add_character_btn') }}</button>
+					<button class="rd_full" @click="autoBones()">{{ t('auto_bones') }}</button>
+					<div class="rd_dim small">{{ t('auto_bones_hint') }}</div>
+				</details>
+
 				<template v-if="!has_root">
 					<div class="rd_dim">{{ t('select_hint') }}</div>
 					<button class="rd_full" :disabled="!has_selection" @click="build()">{{ t('build') }}</button>
@@ -615,8 +977,12 @@ function panelComponent() {
 							${num('radius', 'radius', 0, 200, 1, 0, null, 'saveRoot()')}
 							${num('limp', 'limp', 0, 500, 1, 0, 'limp_tip', 'saveRoot()')}
 							${num('limp_time', 'limp_time', 0, 30, 0.5, 1, 'limp_time_tip', 'saveRoot()')}
-							${num('shot', 'shot', 1, 500, 1, 0, 'shot_tip', 'saveRoot()')}
 						</div>
+						<label class="rd_row">{{ t('auto_react') }}<input type="checkbox" v-model="auto_react" @change="saveRoot()"></label>
+						<div class="rd_grid"><rope-num :label="t('react_scale')" v-model="react_scale" :min="0" :max="3" :step="0.1" :decimals="1" @change="saveRoot()"></rope-num></div>
+						<label class="rd_row">{{ t('facing') }}
+							<select v-model="facing" @change="saveRoot()"><option value="north">{{ t('facing_north') }}</option><option value="south">{{ t('facing_south') }}</option></select>
+						</label>
 						<label class="rd_row">{{ t('pin') }}
 							<select v-model="pin" @change="saveRoot()">
 								<option value="none">{{ t('pin_none') }}</option>
@@ -657,6 +1023,25 @@ function panelComponent() {
 								<option value="arms">{{ t('z_arms') }}</option><option value="legs">{{ t('z_legs') }}</option>
 							</select>
 						</label>
+					</details>
+
+					<details class="rd_box" open>
+						<summary>{{ t('shot_box') }}</summary>
+						<label class="rd_row">{{ t('shot_at') }}
+							<select v-model="shot_part" @change="saveRoot()"><option value="auto">{{ t('shot_auto') }}</option><option v-for="b in bone_list" :value="b.uuid">{{ b.name }}</option></select>
+						</label>
+						<div class="rd_dim small">{{ t('shot_from') }}</div>
+						<div class="rd_quick">
+							<button @click="setYaw(0)">{{ t('d_front') }}</button><button @click="setYaw(90)">{{ t('d_right') }}</button><button @click="setYaw(180)">{{ t('d_back') }}</button><button @click="setYaw(-90)">{{ t('d_left') }}</button>
+						</div>
+						<div class="rd_grid">
+							<rope-num :label="t('shot_yaw')" v-model="shot_yaw" :min="-180" :max="180" :step="1" :decimals="0" @change="saveRoot()"></rope-num>
+							<rope-num :label="t('shot_pitch')" v-model="shot_pitch" :min="-85" :max="85" :step="1" :decimals="0" @change="saveRoot()"></rope-num>
+							<rope-num :label="t('shot')" v-model="shot" :min="1" :max="500" :step="1" :decimals="0" :title="t('shot_tip')" @change="saveRoot()"></rope-num>
+							<rope-num :label="t('time')" v-model="shot_time" :min="0" :max="60" :step="0.05" :decimals="2" @change="saveRoot()"></rope-num>
+						</div>
+						<button class="rd_full" @click="fire()">{{ t('fire') }}</button>
+						<button class="rd_full" @click="addShot()">{{ t('add_shot') }}</button>
 					</details>
 
 					<details class="rd_box" open>
@@ -722,6 +1107,8 @@ const STYLE = `
 	.rd_panel .rd_item.col { display: block; }
 	.rd_panel .rd_item_name { grid-column: 1 / 4; font-size: 0.85em; opacity: 0.8; }
 	.rd_panel .rd_x { padding: 1px 6px; }
+	.rd_panel .rd_quick { display: flex; gap: 4px; margin: 3px 0 5px; }
+	.rd_panel .rd_quick button { flex: 1; min-width: 0; padding: 3px 4px; }
 	.rd_panel select { background: var(--color-dark); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 3px; padding: 2px 4px; max-width: 62%; }
 	.rd_num { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 8px; background: var(--color-dark); border: 1px solid var(--color-border);
 		border-radius: 3px; cursor: ew-resize; user-select: none; touch-action: none; min-width: 0; }
@@ -844,6 +1231,86 @@ function onClick(event) {
 }
 
 // a hit added by hand: from the direction the view looks, on the selected bone
+
+// ---- the shot you aim: where it comes from, how hard, at which part ----
+
+// the direction a shot travels: the shooter stands round the character (0 = in front, 90 = on its right) and above or below it
+function shotDirection(root, yaw, pitch) {
+	const a = yaw * D2R, p = pitch * D2R, south = ragdollOf(root).facing == 'south' ? -1 : 1;
+	const from = new THREE.Vector3(Math.sin(a) * Math.cos(p) * south, Math.sin(p), -Math.cos(a) * Math.cos(p) * south);
+	if (root.mesh) { root.mesh.updateMatrixWorld(true); from.applyQuaternion(root.mesh.getWorldQuaternion(new THREE.Quaternion())); }
+	return from.negate().normalize();
+}
+
+function shotTarget(root) {
+	const s = ragdollOf(root), bones = bonesOf(root);
+	return bones.find(g => g.uuid == s.shot_part) || bones.find(g => roleOf(g) == 'chest') || bones[0] || null;
+}
+
+const boneCenter = g => { g.mesh.updateMatrixWorld(true); return new THREE.Box3().setFromObject(g.mesh).getCenter(new THREE.Vector3()); };
+
+// fire the shot now (while the simulation runs) or put it on the timeline at the chosen time
+function fireShot(on_timeline) {
+	const sel = Project && Group.first_selected, root = sel && rootOf(sel);
+	if (!root) { Blockbench.showQuickMessage(tr('msg_select'), 2500); return; }
+	const target = shotTarget(root), s = ragdollOf(root);
+	if (!target) return;
+	const dir = shotDirection(root, s.shot_yaw, s.shot_pitch);
+	const sim = simNow();
+	if (!on_timeline && sim && sim.playing && current) {
+		const r = current.list.find(x => x.root === root);
+		if (r) {
+			const entry = r.bones.find(b => b.group === target).entry;
+			const M = new THREE.Matrix4().compose(bodyPos(entry), bodyQuat(entry), new THREE.Vector3(1, 1, 1));
+			const local = boneCenter(target).applyMatrix4(M.invert());
+			const hit = {t: Math.round(r.time * 1000) / 1000, bone: target.uuid, name: target.name, dir: dir.toArray().map(v => Math.round(v * 1e4) / 1e4), local: local.toArray().map(v => Math.round(v * 100) / 100), impulse: s.shot};
+			r.shoot(hit);
+			root.ragdoll = Object.assign(ragdollOf(root), {hits: ragdollOf(root).hits.concat([hit]).sort((a, b) => a.t - b.t)});
+			Project.saved = false;
+			updatePanel(true);
+			return;
+		}
+	}
+	const time = on_timeline ? s.shot_time : (sim ? sim.time : s.shot_time);
+	recordHit(root, makeHit(target, boneCenter(target), dir, s.shot, time));
+	Blockbench.showQuickMessage(tr('msg_hit'), 1200);
+}
+
+// the arrow in the 3D view: where the shot comes from, and the part it hits
+let shot_arrow = null;
+function removeArrow() { if (shot_arrow) { if (shot_arrow.parent) shot_arrow.parent.remove(shot_arrow); shot_arrow = null; } }
+function syncArrow() {
+	const sel = Project && typeof Modes != 'undefined' && Modes.ragdoll ? Group.first_selected : null, root = sel && rootOf(sel);
+	const target = root && shotTarget(root);
+	if (!target || !target.mesh) { removeArrow(); return; }
+	const s = ragdollOf(root), dir = shotDirection(root, s.shot_yaw, s.shot_pitch), center = boneCenter(target);
+	const length = 12 + Math.min(20, s.shot * 0.12);
+	if (!shot_arrow) { shot_arrow = new THREE.ArrowHelper(dir, center, length, 0xff7a1a, 3, 2); shot_arrow.name = 'ragdoll_shot_arrow'; shot_arrow.renderOrder = 999; scene.add(shot_arrow); }
+	shot_arrow.setDirection(dir);
+	shot_arrow.position.copy(center).addScaledVector(dir, -length);
+	shot_arrow.setLength(length, 3, 2);
+}
+
+function addCharacter(pose, height) {
+	if (!Project) return;
+	const res = createCharacter({pose, height});
+	Blockbench.showQuickMessage(tr('msg_char'), 1800);
+	updatePanel(true);
+	return res;
+}
+
+function autoBonesFromSelection() {
+	if (!Project) return;
+	// everything selected, or all the cubes inside the selected group
+	let els = (Outliner.selected || []).filter(e => e instanceof Cube || e instanceof Mesh);
+	const group = Group.first_selected;
+	if (!els.length && group) { const out = []; const visit = g => (g.children || []).forEach(c => (c instanceof Group ? visit(c) : (c instanceof Cube || c instanceof Mesh) && out.push(c))); visit(group); els = out; }
+	const res = autoRig(els);
+	if (res.error) { Blockbench.showQuickMessage(tr('msg_auto_few'), 3500); return; }
+	Blockbench.showQuickMessage(tr('msg_auto').replace('%', res.count), 2500);
+	updatePanel(true);
+}
+
 function addHitFromView() {
 	const sel = Project && Group.first_selected, root = sel && rootOf(sel);
 	if (!root || !sel.bone) { Blockbench.showQuickMessage(tr('msg_nobone'), 2500); return; }
@@ -859,7 +1326,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({RagdollRuntime, physicsHook, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -867,7 +1334,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.1.0',
+	version: '0.2.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -882,7 +1349,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 			condition: () => Project && Format && Format.id != 'image',
 			default_tool: 'move_tool',
 			onSelect() { updatePanel(true); },
-			onUnselect() { shoot_mode = false; const a = api(); if (a) a.reset(); },
+			onUnselect() { shoot_mode = false; removeArrow(); const a = api(); if (a) a.reset(); },
 		});
 		panel = new Panel('ragdoll', {
 			name: tr('mode'),
@@ -905,12 +1372,13 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		}
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook).concat([physicsHook]);
 		document.addEventListener('pointerdown', onClick, true);
-		poll = setInterval(() => updatePanel(), 250);
+		poll = setInterval(() => { updatePanel(); syncArrow(); }, 250);
 		Blockbench.on('update_selection', onSelection);
 		Blockbench.on('select_project', onSelection);
 	},
 	onunload() {
 		if (poll) clearInterval(poll);
+		removeArrow();
 		document.removeEventListener('pointerdown', onClick, true);
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook);
 		for (const tool of [BarItems.move_tool, BarItems.rotate_tool]) if (tool && tool.__ragdoll_condition !== undefined) { tool.condition = tool.__ragdoll_condition; delete tool.__ragdoll_condition; }
