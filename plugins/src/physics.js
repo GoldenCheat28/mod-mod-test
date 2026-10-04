@@ -1983,18 +1983,41 @@ function onFieldIconPress(event) {
 
 // the Move / Rotate tools have to work in the physics tab (to aim sources and winds and to place empties)
 let tool_patches = [];
-function allowToolInPhysics(tool) {
+// The Move / Rotate tools are let into this tab. Both the Physics and the Ragdoll plugin do this, so they share one wrapper
+// on the tool (the modes it is let into, and its own condition, kept on the tool): loaded or unloaded in any order, they
+// never wrap each other, and the tool's own condition (a function or Blockbench's condition object) is asked safely.
+function letToolIntoMode(tool, mode_id, patches) {
 	if (!tool) return;
 	const c = tool.condition;
-	if (c && typeof c == 'object' && c.modes instanceof Array) {
-		if (c.modes.includes('physics')) return;
-		c.modes.push('physics');
-		tool_patches.push(() => c.modes.remove('physics'));
-	} else if (typeof c == 'function') {
-		tool.condition = (...args) => (Modes.physics && Project && Format && Format.id != 'image') || c(...args);
-		tool_patches.push(() => { tool.condition = c; });
+	if (!tool.__extra_modes && c && typeof c == 'object' && c.modes instanceof Array) {
+		if (c.modes.includes(mode_id)) return;
+		c.modes.push(mode_id);
+		patches.push(() => { const i = c.modes.indexOf(mode_id); if (i >= 0) c.modes.splice(i, 1); });
+		return;
 	}
+	if (!tool.__extra_modes) {
+		tool.__extra_modes = new Set();
+		tool.__original_condition = c;
+		tool.condition = function (...args) {
+			try {
+				if (typeof Project != 'undefined' && Project && typeof Format != 'undefined' && Format && Format.id != 'image' && typeof Modes != 'undefined' && [...tool.__extra_modes].some(m => Modes[m])) return true;
+			} catch (err) { /* ask the tool itself */ }
+			const o = tool.__original_condition;
+			try {
+				if (typeof o == 'function') return o.apply(this, args);
+				if (o && typeof o == 'object' && typeof Condition == 'function') return Condition(o);
+				return o === undefined ? true : !!o;
+			} catch (err) { return true; }
+		};
+	}
+	tool.__extra_modes.add(mode_id);
+	patches.push(() => {
+		if (!tool.__extra_modes) return;
+		tool.__extra_modes.delete(mode_id);
+		if (!tool.__extra_modes.size) { tool.condition = tool.__original_condition; delete tool.__extra_modes; delete tool.__original_condition; }
+	});
 }
+function allowToolInPhysics(tool) { letToolIntoMode(tool, 'physics', tool_patches); }
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -2453,7 +2476,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.3',
+	version: '0.8.4',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

@@ -2202,6 +2202,41 @@ const itemsOf = root => [...Group.all, ...Cube.all, ...Mesh.all].filter(n => n.a
 // Skeleton poses: drag the joints, the parts follow and stay joined (no part is moved by itself)
 // ---------------------------------------------------------------------------
 
+// The Move / Rotate tools are let into this tab. Both the Physics and the Ragdoll plugin do this, so they share one wrapper
+// on the tool (the modes it is let into, and its own condition, kept on the tool): loaded or unloaded in any order, they
+// never wrap each other, and the tool's own condition (a function or Blockbench's condition object) is asked safely.
+function letToolIntoMode(tool, mode_id, patches) {
+	if (!tool) return;
+	const c = tool.condition;
+	if (!tool.__extra_modes && c && typeof c == 'object' && c.modes instanceof Array) {
+		if (c.modes.includes(mode_id)) return;
+		c.modes.push(mode_id);
+		patches.push(() => { const i = c.modes.indexOf(mode_id); if (i >= 0) c.modes.splice(i, 1); });
+		return;
+	}
+	if (!tool.__extra_modes) {
+		tool.__extra_modes = new Set();
+		tool.__original_condition = c;
+		tool.condition = function (...args) {
+			try {
+				if (typeof Project != 'undefined' && Project && typeof Format != 'undefined' && Format && Format.id != 'image' && typeof Modes != 'undefined' && [...tool.__extra_modes].some(m => Modes[m])) return true;
+			} catch (err) { /* ask the tool itself */ }
+			const o = tool.__original_condition;
+			try {
+				if (typeof o == 'function') return o.apply(this, args);
+				if (o && typeof o == 'object' && typeof Condition == 'function') return Condition(o);
+				return o === undefined ? true : !!o;
+			} catch (err) { return true; }
+		};
+	}
+	tool.__extra_modes.add(mode_id);
+	patches.push(() => {
+		if (!tool.__extra_modes) return;
+		tool.__extra_modes.delete(mode_id);
+		if (!tool.__extra_modes.size) { tool.condition = tool.__original_condition; delete tool.__extra_modes; delete tool.__original_condition; }
+	});
+}
+
 const PRINCIPAL = {pelvis: ['abdomen', 'chest'], abdomen: ['chest'], chest: ['neck', 'head'], neck: ['head'], upperarm: ['forearm', 'hand'], forearm: ['hand'], thigh: ['shin', 'foot'], shin: ['foot']};
 
 // The far end of a bone that has no next bone (head, hand, foot): straight out of the joint through the middle of its
@@ -2878,7 +2913,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.8.0',
+	version: '0.9.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -2914,15 +2949,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		for (const tool of [BarItems.move_tool, BarItems.rotate_tool]) {
 			try {
 				if (!tool) continue;
-				const c = tool.condition;
-				if (c && typeof c == 'object' && c.modes instanceof Array) {
-					if (c.modes.includes('ragdoll')) continue;
-					c.modes.push('ragdoll');
-					tool_patches.push(() => c.modes.remove('ragdoll'));
-				} else if (typeof c == 'function') {
-					tool.condition = (...args) => (Modes.ragdoll && Project && Format && Format.id != 'image') || c(...args);
-					tool_patches.push(() => { tool.condition = c; });
-				}
+				letToolIntoMode(tool, 'ragdoll', tool_patches);
 			} catch (err) { console.warn('[Ragdoll] tool', err); }
 		}
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook).concat([physicsHook]);
