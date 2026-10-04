@@ -4519,7 +4519,8 @@ const TEXTS = {
 		select_material: 'Select a material on the left.',
 		msg_assigned: 'Material assigned', msg_select: 'Select cubes or meshes first',
 		maps_hint: 'Maps can be any texture of the project (paint your normal or roughness map in Blockbench) or an image file.',
-		act_add_light: 'Add light', act_add_light_desc: 'Add a light (an empty group that shines in the Render view)', act_add_camera: 'Add camera', act_add_camera_desc: 'Add a camera with lens and look effects at the current view',
+		act_camera_fx: 'Camera effects…', act_light_settings: 'Light settings…', act_make_camera: 'Turn into camera', act_make_light: 'Turn into light',
+			act_add_light: 'Add light', act_add_light_desc: 'Add a light (an empty group that shines in the Render view)', act_add_camera: 'Add camera', act_add_camera_desc: 'Add a camera with lens and look effects at the current view',
 			skybox: 'Skybox', sky_mode: 'Sky', sky_off: 'Off (plain color)', sky_day: 'Day', sky_sunset: 'Sunset', sky_night: 'Night', sky_overcast: 'Overcast',
 		sky_custom: 'Custom colors', sky_image_mode: 'Image (360° panorama)', sky_top: 'Top color', sky_horizon: 'Horizon color', sky_ground: 'Ground color',
 		sky_sun: 'Sun / moon disc', sky_clouds: 'Clouds', sky_image: 'Panorama image', sky_rotation: 'Rotation', sky_load: 'Load image…', sky_none: 'no image',
@@ -4552,7 +4553,8 @@ const TEXTS = {
 		select_material: 'Выберите материал слева.',
 		msg_assigned: 'Материал назначен', msg_select: 'Сначала выделите кубы или меши',
 		maps_hint: 'Картой может быть любая текстура проекта (нарисуйте карту нормалей или шероховатости прямо в Blockbench) или файл-картинка.',
-		act_add_light: 'Добавить свет', act_add_light_desc: 'Добавить свет (пустая группа, светит в Рендер-виде)', act_add_camera: 'Добавить камеру', act_add_camera_desc: 'Добавить камеру с линзой и эффектами в текущем ракурсе',
+		act_camera_fx: 'Эффекты камеры…', act_light_settings: 'Настройки света…', act_make_camera: 'Сделать камерой', act_make_light: 'Сделать светом',
+			act_add_light: 'Добавить свет', act_add_light_desc: 'Добавить свет (пустая группа, светит в Рендер-виде)', act_add_camera: 'Добавить камеру', act_add_camera_desc: 'Добавить камеру с линзой и эффектами в текущем ракурсе',
 			skybox: 'Скайбокс', sky_mode: 'Небо', sky_off: 'Выкл (просто цвет)', sky_day: 'День', sky_sunset: 'Закат', sky_night: 'Ночь', sky_overcast: 'Пасмурно',
 		sky_custom: 'Свои цвета', sky_image_mode: 'Картинка (панорама 360°)', sky_top: 'Цвет сверху', sky_horizon: 'Цвет горизонта', sky_ground: 'Цвет земли',
 		sky_sun: 'Диск солнца / луны', sky_clouds: 'Облака', sky_image: 'Панорама', sky_rotation: 'Поворот', sky_load: 'Загрузить картинку…', sky_none: 'нет картинки',
@@ -5582,6 +5584,111 @@ function syncLights() {
 	}
 }
 
+// --- settings windows (right click a camera / light group) --------------------------
+
+let open_settings = null;
+function openSettings(group, kind) {
+	if (!group || !Project) return;
+	if (open_settings) open_settings.cancel();
+	const camera = kind == 'camera';
+	const d = camera ? cameraOf(group) : lightOf(group);
+	const was_looking = activeCameraGroup() === group;
+	Undo.initEdit({outliner: true, groups: [group]});
+	const options = {'': tr('cam_focus_none')};
+	if (camera) [...Cube.all, ...Mesh.all, ...Group.all].filter(n => n !== group).forEach(n => { options[n.uuid] = n.name; });
+	const form = camera ? {
+		look: {label: tr('cam_look'), type: 'checkbox', value: was_looking},
+		fov: {label: tr('cam_fov'), type: 'range', value: d.fov, min: 10, max: 120, step: 1},
+		lens: {type: 'info', text: tr('cam_lens')},
+		distortion: {label: tr('cam_distortion'), type: 'range', value: d.distortion, min: -1, max: 1, step: 0.02},
+		chroma: {label: tr('cam_chroma'), type: 'range', value: d.chroma, min: 0, max: 1, step: 0.02},
+		look_fx: {type: 'info', text: tr('cam_look_fx')},
+		vignette: {label: tr('cam_vignette'), type: 'range', value: d.vignette, min: 0, max: 1, step: 0.02},
+		grain: {label: tr('cam_grain'), type: 'range', value: d.grain, min: 0, max: 1, step: 0.02},
+		saturation: {label: tr('cam_saturation'), type: 'range', value: d.saturation, min: 0, max: 2, step: 0.02},
+		contrast: {label: tr('cam_contrast'), type: 'range', value: d.contrast, min: 0.5, max: 1.6, step: 0.02},
+		temperature: {label: tr('cam_temperature'), type: 'range', value: d.temperature, min: -1, max: 1, step: 0.02},
+		focus_info: {type: 'info', text: tr('cam_focus')},
+		focus: {label: tr('cam_focus'), type: 'select', options, value: d.focus || ''},
+		focus_blur: {label: tr('cam_focus_blur'), type: 'range', value: d.focus_blur, min: 0, max: 1, step: 0.05},
+	} : {
+		color: {label: tr('color'), type: 'color', value: d.color},
+		strength: {label: tr('light_strength'), type: 'range', value: d.strength, min: 0, max: 20, step: 0.1},
+		radius: {label: tr('light_radius'), type: 'range', value: d.radius, min: 4, max: 400, step: 1},
+		shadows: {label: tr('light_shadows'), type: 'checkbox', value: !!d.shadows},
+	};
+	const apply = values => {
+		const data = Object.assign({}, camera ? cameraOf(group) : lightOf(group));
+		for (const key in data) if (values[key] !== undefined) data[key] = values[key];
+		if (key_color(values)) data.color = key_color(values);
+		if (camera) {
+			group.render_camera = data;
+			if (!!values.look !== (activeCameraGroup() === group)) setLookThrough(values.look ? group : null);
+		} else {
+			group.render_light = data;
+		}
+		Project.saved = false;
+		syncEditorHelpers();
+	};
+	const key_color = values => values.color && (typeof values.color == 'string' ? values.color : values.color.toHexString ? values.color.toHexString() : null);
+	const dialog = open_settings = new Dialog({
+		id: 'render_object_settings',
+		title: (camera ? tr('camera_title') : tr('light_title')) + ' — ' + group.name,
+		width: 440,
+		darken: false,
+		form,
+		onFormChange(values) { apply(values); },
+		onConfirm(values) {
+			open_settings = null;
+			apply(values);
+			Undo.finishEdit(camera ? 'Edit camera' : 'Edit light', {outliner: true, groups: [group]});
+			if (panel && panel.inside_vue) panel.inside_vue.loadSel();
+		},
+		onCancel() {
+			open_settings = null;
+			Undo.cancelEdit(false);
+			if (camera && was_looking !== (activeCameraGroup() === group)) setLookThrough(was_looking ? group : null);
+			syncEditorHelpers();
+		},
+	});
+	dialog.show();
+}
+
+// right click menu entries of groups
+let menu_actions = [];
+function addGroupMenuActions() {
+	const selected = () => Project && Group.first_selected;
+	const make = (id, name, icon, condition, click) => new Action(id, {name, icon, category: 'edit', condition, click});
+	menu_actions = [
+		make('render_camera_fx', tr('act_camera_fx'), 'tune', () => { const g = selected(); return !!g && isCamera(g); }, () => openSettings(Group.first_selected, 'camera')),
+		make('render_light_settings', tr('act_light_settings'), 'lightbulb', () => { const g = selected(); return !!g && isLight(g); }, () => openSettings(Group.first_selected, 'light')),
+		make('render_make_camera', tr('act_make_camera'), 'videocam', () => { const g = selected(); return !!g && !isCamera(g) && !isLight(g); }, () => makeGroup(Group.first_selected, 'camera')),
+		make('render_make_light', tr('act_make_light'), 'lightbulb', () => { const g = selected(); return !!g && !isCamera(g) && !isLight(g); }, () => makeGroup(Group.first_selected, 'light')),
+	];
+	try {
+		menu_actions.forEach((a, i) => Group.prototype.menu.addAction(a, i));
+	} catch (err) {
+		console.warn('[Render view] could not add entries to the group menu', err);
+	}
+}
+function removeGroupMenuActions() {
+	menu_actions.forEach(a => {
+		try { Group.prototype.menu.removeAction(a); } catch (err) { /* menu already gone */ }
+		a.delete();
+	});
+	menu_actions = [];
+}
+function makeGroup(group, kind) {
+	if (!group) return;
+	Undo.initEdit({outliner: true, groups: [group]});
+	if (kind == 'camera') group.render_camera = Object.assign({}, DEFAULT_CAMERA);
+	else group.render_light = Object.assign({}, DEFAULT_LIGHT);
+	Undo.finishEdit(kind == 'camera' ? 'Make camera' : 'Make light', {outliner: true, groups: [group]});
+	Project.saved = false;
+	syncEditorHelpers();
+	if (panel && panel.inside_vue) panel.inside_vue.loadSel();
+}
+
 // --- putting the spawn actions into the "+" (Add) menu ---------------------------
 
 const ADD_ANCHORS = ['add_mesh', 'add_cube', 'add_spline', 'add_billboard', 'add_armature', 'add_locator', 'add_null_object', 'add_bounding_box', 'add_group', 'add_texture_mesh'];
@@ -6138,7 +6245,7 @@ const STYLE = `
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
-if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf});
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf});
 
 Plugin.register('render', {
 	title: 'Render view',
@@ -6186,6 +6293,7 @@ Plugin.register('render', {
 			condition: () => !!Project, click() { spawnGroup('camera'); },
 		});
 		injectAddActions([add_light_action, add_camera_action]);
+		addGroupMenuActions();
 		if (!injected.length) {
 			// no Add menu found: they are still in the Edit menu and in the action search (Ctrl+K)
 			try { MenuBar.addAction(add_light_action, 'edit'); MenuBar.addAction(add_camera_action, 'edit'); } catch (err) { console.warn('[Render view]', err); }
@@ -6222,6 +6330,8 @@ Plugin.register('render', {
 		if (poll) clearInterval(poll);
 		clearEditorHelpers();
 		removeAddActions();
+		removeGroupMenuActions();
+		if (open_settings) open_settings.cancel();
 		for (const [action, path] of [[add_light_action, 'edit.add_render_light'], [add_camera_action, 'edit.add_render_camera']]) {
 			if (!action) continue;
 			try { MenuBar.removeAction(path); } catch (err) { /* it was never in the Edit menu */ }
