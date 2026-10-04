@@ -4519,6 +4519,19 @@ const TEXTS = {
 		select_material: 'Select a material on the left.',
 		msg_assigned: 'Material assigned', msg_select: 'Select cubes or meshes first',
 		maps_hint: 'Maps can be any texture of the project (paint your normal or roughness map in Blockbench) or an image file.',
+		skybox: 'Skybox', sky_mode: 'Sky', sky_off: 'Off (plain color)', sky_day: 'Day', sky_sunset: 'Sunset', sky_night: 'Night', sky_overcast: 'Overcast',
+		sky_custom: 'Custom colors', sky_image_mode: 'Image (360° panorama)', sky_top: 'Top color', sky_horizon: 'Horizon color', sky_ground: 'Ground color',
+		sky_sun: 'Sun / moon disc', sky_clouds: 'Clouds', sky_image: 'Panorama image', sky_rotation: 'Rotation', sky_load: 'Load image…', sky_none: 'no image',
+		sky_hint: 'The skybox is the background and also lights and reflects in the materials. Use an equirectangular (2:1) panorama for an image.',
+		lights: 'Lights', add_light: '+ Light', light_title: 'Light', light_strength: 'Strength', light_radius: 'Radius (px)', light_shadows: 'Shadows',
+		light_hint: 'A light is an empty group. Move it with the Move tool. It shines in the Render view.', light_selected: 'Selected light',
+		cameras: 'Cameras', add_camera: '+ Camera', camera_title: 'Camera', camera_selected: 'Selected camera',
+		cam_look: 'Look through this camera', cam_looking: 'Looking through it (click to leave)', cam_fov: 'Field of view',
+		cam_lens: 'Lens', cam_distortion: 'Corner distortion', cam_distortion_tip: 'Negative = pincushion, positive = barrel (fisheye)', cam_chroma: 'Chromatic aberration',
+		cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
+		cam_focus: 'Focus', cam_focus_pick: 'Focus on selected', cam_focus_clear: 'Clear', cam_focus_blur: 'Background blur', cam_focus_none: 'nothing',
+		cam_hint: 'A camera is an empty group looking along its -Z axis. Turn it with Rotate, move it with Move; the effects apply in the Render view while you look through it.',
+		msg_select_one: 'Select an object first',
 	},
 	ru: {
 		render_view: 'Рендер-вид', render_view_desc: 'Настоящие материалы, свет, тени и пост-эффекты во вьюпорте',
@@ -4538,6 +4551,19 @@ const TEXTS = {
 		select_material: 'Выберите материал слева.',
 		msg_assigned: 'Материал назначен', msg_select: 'Сначала выделите кубы или меши',
 		maps_hint: 'Картой может быть любая текстура проекта (нарисуйте карту нормалей или шероховатости прямо в Blockbench) или файл-картинка.',
+		skybox: 'Скайбокс', sky_mode: 'Небо', sky_off: 'Выкл (просто цвет)', sky_day: 'День', sky_sunset: 'Закат', sky_night: 'Ночь', sky_overcast: 'Пасмурно',
+		sky_custom: 'Свои цвета', sky_image_mode: 'Картинка (панорама 360°)', sky_top: 'Цвет сверху', sky_horizon: 'Цвет горизонта', sky_ground: 'Цвет земли',
+		sky_sun: 'Диск солнца / луны', sky_clouds: 'Облака', sky_image: 'Панорама', sky_rotation: 'Поворот', sky_load: 'Загрузить картинку…', sky_none: 'нет картинки',
+		sky_hint: 'Скайбокс — это фон, а ещё он освещает и отражается в материалах. Для картинки нужна панорама 2:1 (equirectangular).',
+		lights: 'Свет', add_light: '+ Свет', light_title: 'Свет', light_strength: 'Сила', light_radius: 'Радиус (px)', light_shadows: 'Тени',
+		light_hint: 'Свет — это пустая группа. Двигайте её инструментом «Перемещение». Светит в Рендер-виде.', light_selected: 'Выбранный свет',
+		cameras: 'Камеры', add_camera: '+ Камера', camera_title: 'Камера', camera_selected: 'Выбранная камера',
+		cam_look: 'Смотреть через эту камеру', cam_looking: 'Смотрим через неё (нажмите, чтобы выйти)', cam_fov: 'Угол обзора',
+		cam_lens: 'Объектив', cam_distortion: 'Искажение углов', cam_distortion_tip: 'Минус = подушка, плюс = бочка (рыбий глаз)', cam_chroma: 'Хроматическая аберрация',
+		cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
+		cam_focus: 'Фокус', cam_focus_pick: 'Фокус на выделенном', cam_focus_clear: 'Сбросить', cam_focus_blur: 'Размытие фона', cam_focus_none: 'ничего',
+		cam_hint: 'Камера — пустая группа, смотрящая вдоль своей оси -Z. Поворачивайте «Вращением», двигайте «Перемещением»; эффекты работают в Рендер-виде, пока вы смотрите через неё.',
+		msg_select_one: 'Сначала выделите объект',
 	},
 };
 const tr = key => {
@@ -4554,7 +4580,8 @@ const DEFAULT_SETTINGS = {
 	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true,
 	exposure: 1, ao: true, ao_strength: 0.8, ao_radius: 4, ssr: false, ssr_strength: 0.6,
 	bloom: true, bloom_strength: 0.3, bloom_threshold: 3, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, vignette: 0.25,
-};
+	sky_mode: 'off', sky_top: '#2f6fd6', sky_horizon: '#bcd8ff', sky_ground: '#6b5a48', sky_sun: true, sky_clouds: 0.4, sky_image: '', sky_image_name: '', sky_rotation: 0,
+	};
 const DEFAULT_MATERIAL = {
 	name: 'Material', color: '#ffffff', map: null, roughness: 0.8, roughness_map: null, metalness: 0, metalness_map: null,
 	normal_map: null, normal_strength: 1, emission: '#ffffff', emission_strength: 0, emission_map: null,
@@ -4748,6 +4775,160 @@ function skyTexture(sky, ground) {
 	return t;
 }
 
+// ---------------------------------------------------------------------------
+// Skybox: a 360° panorama drawn from a few settings (or loaded as an image). It is the background, the sky light and the reflections.
+// ---------------------------------------------------------------------------
+
+const SKY_PRESETS = {
+	day: {top: '#2f6fd6', horizon: '#bcd8ff', ground: '#6b5a48', stars: false, tint: '#ffffff'},
+	sunset: {top: '#27407a', horizon: '#ff9a55', ground: '#3a2a2a', stars: false, tint: '#ffb98a'},
+	night: {top: '#03060f', horizon: '#1b2845', ground: '#07080d', stars: true, tint: '#8fa6d8'},
+	overcast: {top: '#8e98a6', horizon: '#c9ced6', ground: '#59595c', stars: false, tint: '#e2e5ea'},
+};
+
+// smooth repeating noise for the clouds (value noise on a circle, so the panorama has no seam)
+function cloudNoise(angle, v, seed) {
+	const hash = (x, y, z) => {
+		let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 2147483629) ^ seed;
+		h = Math.imul(h ^ (h >>> 13), 1274126177);
+		return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+	};
+	let sum = 0, amp = 0.5, total = 0;
+	for (let o = 0; o < 5; o++) {
+		const f = Math.pow(2, o) * 2.2;
+		const x = Math.cos(angle) * f, z = Math.sin(angle) * f, y = v * f * 1.6;
+		const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+		const fx = x - xi, fy = y - yi, fz = z - zi;
+		const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy), sz = fz * fz * (3 - 2 * fz);
+		let n = 0;
+		for (let dz = 0; dz < 2; dz++) for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+			n += hash(xi + dx, yi + dy, zi + dz) * (dx ? sx : 1 - sx) * (dy ? sy : 1 - sy) * (dz ? sz : 1 - sz);
+		}
+		sum += n * amp; total += amp; amp *= 0.5;
+	}
+	return sum / total;
+}
+
+function mixHex(a, b, t) {
+	return '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+}
+
+// where the sun is in the panorama (same layout three.js uses for equirectangular pictures)
+function sunSpot(s, W, H) {
+	const az = s.sun_azimuth * Math.PI / 180, el = Math.max(2, s.sun_elevation) * Math.PI / 180;
+	const x = Math.cos(el) * Math.sin(az), y = Math.sin(el), z = Math.cos(el) * Math.cos(az);
+	return {x: (Math.atan2(z, x) / (Math.PI * 2) + 0.5) * W, y: (1 - (Math.asin(y) / Math.PI + 0.5)) * H};
+}
+
+function drawSkyCanvas(s) {
+	const W = 1024, H = 512, canvas = document.createElement('canvas');
+	canvas.width = W; canvas.height = H;
+	const ctx = canvas.getContext('2d');
+	const p = SKY_PRESETS[s.sky_mode] || {top: s.sky_top, horizon: s.sky_horizon, ground: s.sky_ground, stars: false, tint: '#ffffff'};
+	const g = ctx.createLinearGradient(0, 0, 0, H);
+	g.addColorStop(0, p.top);
+	g.addColorStop(0.28, mixHex(p.top, p.horizon, 0.45));
+	g.addColorStop(0.46, p.horizon);
+	g.addColorStop(0.5, p.horizon);
+	g.addColorStop(0.53, mixHex(p.horizon, p.ground, 0.8));
+	g.addColorStop(0.62, p.ground);
+	g.addColorStop(1, mixHex(p.ground, '#000000', 0.35));
+	ctx.fillStyle = g;
+	ctx.fillRect(0, 0, W, H);
+
+	if (p.stars) {
+		let seed = 12345;
+		const rnd = () => { seed = Math.imul(seed ^ (seed >>> 15), 2246822507) + 1013904223 | 0; return (seed >>> 0) / 4294967296; };
+		for (let i = 0; i < 900; i++) {
+			const y = Math.pow(rnd(), 1.4) * H * 0.47, a = 0.25 + rnd() * 0.75, r = 0.5 + rnd() * 1.1;
+			ctx.fillStyle = `rgba(255,255,255,${a})`;
+			ctx.beginPath(); ctx.arc(rnd() * W, y, r, 0, Math.PI * 2); ctx.fill();
+		}
+	}
+
+	// clouds: only above the horizon, thinning out toward it
+	const amount = Math.max(0, Math.min(1, s.sky_clouds));
+	if (amount > 0.01) {
+		const cw = 256, ch = 128, cc = document.createElement('canvas');
+		cc.width = cw; cc.height = ch;
+		const cctx = cc.getContext('2d'), img = cctx.createImageData(cw, ch);
+		const tint = new THREE.Color(p.tint), base = new THREE.Color(1, 1, 1).lerp(tint, 0.55);
+		const night = p.stars ? 0.22 : 1;
+		for (let y = 0; y < ch * 0.5; y++) {
+			const v = y / ch;
+			for (let x = 0; x < cw; x++) {
+				const n = cloudNoise(x / cw * Math.PI * 2, v, 7);
+				const cover = (n - (0.78 - amount * 0.42)) / 0.16;
+				const fade = Math.min(1, (0.5 - v) / 0.12) * Math.min(1, v / 0.04 + 0.35);
+				const a = Math.max(0, Math.min(1, cover)) * fade * (p.stars ? 0.35 : 0.85);
+				const i = (y * cw + x) * 4;
+				img.data[i] = base.r * 255 * night; img.data[i + 1] = base.g * 255 * night; img.data[i + 2] = base.b * 255 * night; img.data[i + 3] = a * 255;
+			}
+		}
+		cctx.putImageData(img, 0, 0);
+		ctx.imageSmoothingEnabled = true;
+		ctx.drawImage(cc, 0, 0, W, H);
+	}
+
+	if (s.sky_sun) {
+		const spot = sunSpot(s, W, H), moon = s.sky_mode == 'night';
+		const color = moon ? '#dfe8ff' : s.sun_color;
+		const glow = c => { const a = new THREE.Color(c); return `${Math.round(a.r * 255)},${Math.round(a.g * 255)},${Math.round(a.b * 255)}`; };
+		for (const dx of [-W, 0, W]) {
+			const x = spot.x + dx;
+			if (x < -200 || x > W + 200) continue;
+			const halo = ctx.createRadialGradient(x, spot.y, 0, x, spot.y, moon ? 70 : 190);
+			halo.addColorStop(0, `rgba(${glow(color)},${moon ? 0.45 : 0.75})`);
+			halo.addColorStop(1, `rgba(${glow(color)},0)`);
+			ctx.fillStyle = halo;
+			ctx.fillRect(x - 200, spot.y - 200, 400, 400);
+			ctx.fillStyle = moon ? '#f4f7ff' : '#ffffff';
+			ctx.beginPath(); ctx.arc(x, spot.y, moon ? 9 : 11, 0, Math.PI * 2); ctx.fill();
+		}
+	}
+	return canvas;
+}
+
+// loaded panorama images, by content
+const sky_images = new Map();   // key -> {texture, canvas} or 'loading'
+let sky_version = 0;
+function skyImageCanvas(s) {
+	if (!s.sky_image) return null;
+	const key = s.sky_image.length + ':' + s.sky_image.slice(-48);
+	let entry = sky_images.get(key);
+	if (!entry) {
+		sky_images.set(key, 'loading');
+		const img = new Image();
+		img.onload = () => { sky_images.set(key, img); sky_version++; };
+		img.onerror = () => { sky_images.set(key, 'error'); };
+		img.src = s.sky_image;
+		return null;
+	}
+	if (entry == 'loading' || entry == 'error') return null;
+	const W = Math.min(2048, entry.width), H = Math.round(W / 2);
+	const canvas = document.createElement('canvas');
+	canvas.width = W; canvas.height = H;
+	const ctx = canvas.getContext('2d');
+	const shift = ((s.sky_rotation % 360) / 360) * W;
+	for (const dx of [-W, 0, W]) ctx.drawImage(entry, shift + dx, 0, W, H);
+	return canvas;
+}
+
+const skyKey = s => s.sky_mode == 'image'
+	? ['image', s.sky_image.length, s.sky_image.slice(-32), s.sky_rotation, sky_version].join('|')
+	: [s.sky_mode, s.sky_top, s.sky_horizon, s.sky_ground, s.sky_sun, s.sky_clouds, s.sun_azimuth, s.sun_elevation, s.sun_color].join('|');
+
+// the panorama as a texture, or null when the skybox is off (or its image is still loading)
+function skyEquirect(s) {
+	if (s.sky_mode == 'off') return null;
+	const canvas = s.sky_mode == 'image' ? skyImageCanvas(s) : drawSkyCanvas(s);
+	if (!canvas) return null;
+	const t = new THREE.CanvasTexture(canvas);
+	t.mapping = THREE.EquirectangularReflectionMapping;
+	t.encoding = THREE.sRGBEncoding;
+	return t;
+}
+
 function modelBox() {
 	const box = new THREE.Box3();
 	for (const el of [...Cube.all, ...Mesh.all]) if (el.mesh && el.mesh.visible !== false) box.expandByObject(el.mesh);
@@ -4777,7 +4958,17 @@ function buildRig(renderer) {
 	const env = pmrem.fromEquirectangular(sky).texture;
 	sky.dispose();
 	pmrem.dispose();
-	return {group, sun, hemi, floor, env, renderer, key: ''};
+	return {group, sun, hemi, floor, env, renderer, key: '', bg: null, saved_bg: scene.background, lights: new Map()};
+}
+
+function disposeRig() {
+	if (!rig) return;
+	scene.remove(rig.group);
+	scene.background = rig.saved_bg;
+	if (rig.env) rig.env.dispose();
+	if (rig.bg) rig.bg.dispose();
+	rig.lights.forEach(l => l.dispose && l.dispose());
+	rig = null;
 }
 
 function updateRig() {
@@ -4813,18 +5004,28 @@ function updateRig() {
 			: new THREE.ShadowMaterial({opacity: 0.35});
 	}
 	floor.material.userData.render_plugin = true;
-	// a new sky only when its colors change
-	const key = s.sky_color + s.ground_color;
+	// a new sky only when its settings change
+	const key = s.sky_mode == 'off' ? 'flat|' + s.sky_color + s.ground_color : 'sky|' + skyKey(s);
 	if (key != rig.key) {
-		rig.key = key;
-		const pmrem = new THREE.PMREMGenerator(rig.renderer);
-		const sky = skyTexture(s.sky_color, s.ground_color);
-		if (rig.env) rig.env.dispose();
-		rig.env = pmrem.fromEquirectangular(sky).texture;
-		sky.dispose();
-		pmrem.dispose();
+	rig.key = key;
+	const panorama = skyEquirect(s);   // null when off, or while a panorama image is still loading
+	if (!panorama && s.sky_mode != 'off') rig.key = '';   // try again next frame
+	const pmrem = new THREE.PMREMGenerator(rig.renderer);
+	const sky = panorama || skyTexture(s.sky_color, s.ground_color);
+	if (rig.env) rig.env.dispose();
+	rig.env = pmrem.fromEquirectangular(sky).texture;
+	if (rig.bg) { rig.bg.dispose(); rig.bg = null; }
+	if (panorama) {
+		// a sharp copy for the background (the sky light above is the blurry one)
+		rig.bg = new THREE.WebGLCubeRenderTarget(1024).fromEquirectangularTexture(rig.renderer, panorama);
+		rig.bg.texture.minFilter = THREE.LinearMipmapLinearFilter;
+	}
+	sky.dispose();
+	pmrem.dispose();
 	}
 	scene.environment = rig.env;
+	scene.background = rig.bg ? rig.bg.texture : rig.saved_bg;
+	syncLights();
 	if (rig.sky_strength !== s.sky_strength) {
 		rig.sky_strength = s.sky_strength;
 		material_version++;   // materials pick up the new sky strength
@@ -4890,10 +5091,13 @@ class ChainedEffect extends THREE.Pass {
 			}
 		});
 		hidden.forEach(o => { o.visible = false; });
+		const background = scene.background;
+		scene.background = null;   // the sky would end up in the occlusion / reflection layers
 		try {
-			this.inner.render(renderer, this.target, readBuffer);
+		this.inner.render(renderer, this.target, readBuffer);
 		} finally {
-			hidden.forEach(o => { o.visible = true; });
+		scene.background = background;
+		hidden.forEach(o => { o.visible = true; });
 		}
 		const auto = renderer.autoClear;
 		renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
@@ -4910,18 +5114,37 @@ class ChainedEffect extends THREE.Pass {
 	}
 }
 
-// last step: exposure, filmic tone mapping (ACES), vignette and conversion to screen colors
+// last step: lens (distortion, chromatic aberration), exposure, filmic tone mapping (ACES), color look, vignette, grain
+// and conversion to screen colors
 const FinalShader = {
-	uniforms: {tDiffuse: {value: null}, exposure: {value: 1}, vignette: {value: 0.25}},
+	uniforms: {tDiffuse: {value: null}, exposure: {value: 1}, vignette: {value: 0.25}, distortion: {value: 0}, chroma: {value: 0}, grain: {value: 0},
+		saturation: {value: 1}, contrast: {value: 1}, temperature: {value: 0}, aspect: {value: 1}, time: {value: 0}},
 	vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-	fragmentShader: `uniform sampler2D tDiffuse; uniform float exposure; uniform float vignette; varying vec2 vUv;
+	fragmentShader: `uniform sampler2D tDiffuse; uniform float exposure; uniform float vignette; uniform float distortion; uniform float chroma; uniform float grain;
+		uniform float saturation; uniform float contrast; uniform float temperature; uniform float aspect; uniform float time; varying vec2 vUv;
 		vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+		float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 		void main() {
-			vec4 c = texture2D(tDiffuse, vUv);
-			vec3 col = aces(c.rgb * exposure);
+			// lens distortion: positive = barrel (corners squeezed in, zoomed so the corners still hit the picture), negative = pincushion
+			vec2 c = vUv - 0.5;
+			c.x *= aspect;
+			float corner = 0.25 * (aspect * aspect + 1.0);
+			float zoom = distortion > 0.0 ? 1.0 / (1.0 + distortion * corner) : 1.0;
+			c *= (1.0 + distortion * dot(c, c)) * zoom;
+			vec2 uv = vec2(c.x / aspect, c.y) + 0.5;
+			// chromatic aberration: the colors are pushed apart more and more toward the edges
+			vec2 off = (uv - 0.5) * chroma * 0.04;
+			vec4 g = texture2D(tDiffuse, uv);
+			vec3 col = vec3(texture2D(tDiffuse, uv + off).r, g.g, texture2D(tDiffuse, uv - off).b);
+			col *= vec3(1.0 + temperature * 0.18, 1.0 + temperature * 0.02, 1.0 - temperature * 0.18);
+			col = aces(col * exposure);
+			float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+			col = mix(vec3(l), col, saturation);
+			col = (col - 0.5) * contrast + 0.5;
 			float d = distance(vUv, vec2(0.5));
 			col *= 1.0 - vignette * smoothstep(0.35, 0.85, d);
-			gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), c.a);
+			col += (hash(gl_FragCoord.xy + time * 61.0) - 0.5) * grain * 0.22;
+			gl_FragColor = vec4(pow(max(col, 0.0), vec3(1.0 / 2.2)), g.a);
 		}`,
 };
 
@@ -4968,8 +5191,14 @@ function buildPipeline(preview) {
 		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength, 0.5, s.bloom_threshold);
 		composer.addPass(p.bloom);
 	}
-	if (s.dof) {
-		p.dof = new THREE.BokehPass(scene, camera, {focus: s.dof_focus, aperture: 0.00002, maxblur: 0.01, width: w, height: h});
+	if (s.dof || wantsFocus(activeCameraData())) {
+	p.dof = new THREE.BokehPass(scene, camera, {focus: s.dof_focus, aperture: 0.00002, maxblur: 0.01, width: w, height: h});
+		const bokeh_render = p.dof.render.bind(p.dof);
+		p.dof.render = (...args) => {   // the sky must not end up in the depth picture
+			const background = scene.background;
+			scene.background = null;
+			try { bokeh_render(...args); } finally { scene.background = background; }
+		};
 		composer.addPass(p.dof);
 	}
 	p.final = new THREE.ShaderPass(FinalShader);
@@ -4990,7 +5219,7 @@ function disposePipeline(p) {
 
 function structureKey(preview) {
 	const s = settingsOf();
-	return [preview.camera.uuid, s.ao, s.ssr, s.bloom, s.dof, s.fxaa].join('|');
+	return [preview.camera.uuid, s.ao, s.ssr, s.bloom, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
 }
 
 function pipelineFor(preview) {
@@ -5020,26 +5249,39 @@ function pipelineFor(preview) {
 		p.ssr.inner.thickness = 1.5;
 	}
 	if (p.bloom) { p.bloom.strength = s.bloom_strength; p.bloom.threshold = s.bloom_threshold; }
+	const cam = activeCameraData();   // the camera we look through adds its own look
 	if (p.dof) {
-		p.dof.uniforms.focus.value = s.dof_focus;
-		p.dof.uniforms.aperture.value = 0.00002 * (0.2 + s.dof_blur * 4);
-		p.dof.uniforms.maxblur.value = 0.004 + s.dof_blur * 0.02;
+		const focus = wantsFocus(cam) ? focusDepth(preview.camera, cam.focus) : null;
+		const blur = focus !== null ? cam.focus_blur : s.dof_blur;
+		p.dof.uniforms.focus.value = focus !== null ? focus : s.dof_focus;
+		p.dof.uniforms.aperture.value = 0.00002 * (0.2 + blur * 4);
+		p.dof.uniforms.maxblur.value = 0.004 + blur * 0.02;
 	}
-	p.final.uniforms.exposure.value = s.exposure;
-	p.final.uniforms.vignette.value = s.vignette;
+	const fu = p.final.uniforms;
+	fu.exposure.value = s.exposure;
+	fu.vignette.value = cam ? cam.vignette : s.vignette;
+	fu.distortion.value = cam ? cam.distortion : 0;
+	fu.chroma.value = cam ? cam.chroma : 0;
+	fu.grain.value = cam ? cam.grain : 0;
+	fu.saturation.value = cam ? cam.saturation : 1;
+	fu.contrast.value = cam ? cam.contrast : 1;
+	fu.temperature.value = cam ? cam.temperature : 0;
+	fu.aspect.value = p.w / p.h;
+	fu.time.value = (performance.now() / 1000) % 1000;
 	if (p.fxaa) p.fxaa.uniforms.resolution.value.set(1 / p.w, 1 / p.h);
 	return p;
 }
 
 const original_render = Preview.prototype.render;
 function renderWithEffects() {
-	if (!enabled || !Project) return original_render.call(this);
+syncActiveCamera(this);
+if (!enabled || !Project) return original_render.call(this);
 	try {
 		this.controls.update();
 		applyMaterials();
 		if (!rig || rig.renderer !== this.renderer) {
-			if (rig) scene.remove(rig.group);
-			rig = buildRig(this.renderer);
+		disposeRig();
+		rig = buildRig(this.renderer);
 			scene.add(rig.group);
 		}
 		updateRig();
@@ -5077,7 +5319,7 @@ function setEnabled(value) {
 	if (toggle && toggle.value != enabled) toggle.set(enabled);
 	if (!enabled) {
 		restoreMaterials();
-		if (rig) { scene.remove(rig.group); if (rig.env) rig.env.dispose(); rig = null; }
+		disposeRig();
 		scene.environment = null;
 		const grid = scene.getObjectByName('grid_group');
 		if (grid) grid.visible = true;
@@ -5091,6 +5333,298 @@ function setEnabled(value) {
 function invalidate() {
 	material_version++;
 	thumbnails_dirty = true;
+}
+
+// ---------------------------------------------------------------------------
+// Lights and cameras: empty groups that carry extra data. They are drawn as small icons in the editor
+// (a light also shows its radius when selected, a camera shows what it sees). Spawn them from the Add menus.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false};
+const DEFAULT_CAMERA = {fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
+const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {});
+const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
+const isLight = node => node instanceof Group && !!node.render_light;
+const isCamera = node => node instanceof Group && !!node.render_camera;
+const lightGroups = () => Group.all.filter(isLight);
+const cameraGroups = () => Group.all.filter(isCamera);
+const findNode = uuid => uuid && [...Cube.all, ...Mesh.all, ...Group.all].find(n => n.uuid == uuid);
+
+function activeCameraGroup() {
+	const id = Project && Project.render_active_camera;
+	return id ? cameraGroups().find(g => g.uuid == id) || null : null;
+}
+const activeCameraData = () => { const g = activeCameraGroup(); return g ? cameraOf(g) : null; };
+
+function nodeCenter(node) {
+	if (node instanceof Group || !node.getWorldCenter) {
+		node.mesh.updateMatrixWorld(true);
+		return node.mesh.getWorldPosition(new THREE.Vector3());
+	}
+	return node.getWorldCenter();
+}
+
+// distance from the camera to an object along the view direction (what the depth of field focuses on)
+function focusDepth(camera, uuid) {
+	const node = findNode(uuid);
+	if (!node || !node.mesh) return null;
+	const dir = camera.getWorldDirection(new THREE.Vector3());
+	return Math.max(1, nodeCenter(node).sub(camera.getWorldPosition(new THREE.Vector3())).dot(dir));
+}
+const wantsFocus = cam => !!(cam && cam.focus && findNode(cam.focus));
+
+// --- spawning -------------------------------------------------------------
+
+function spawnGroup(kind) {
+	if (!Project) return;
+	const preview = Preview.selected;
+	Undo.initEdit({outliner: true, groups: [], selection: true});
+	let origin = new THREE.Vector3(0, 16, 0), rotation = [0, 0, 0];
+	if (preview && preview.controls) origin = Project.model_3d.worldToLocal(preview.controls.target.clone());
+	if (kind == 'camera' && preview) {
+		// a new camera starts exactly where you are looking from
+		origin = Project.model_3d.worldToLocal(preview.camera.position.clone());
+		const e = new THREE.Euler().setFromQuaternion(preview.camera.quaternion, Format.euler_order || 'ZYX');
+		rotation = [e.x, e.y, e.z].map(r => Math.round(r * 180 / Math.PI * 100) / 100);
+	}
+	const group = new Group({name: tr(kind == 'light' ? 'light_title' : 'camera_title'), origin: origin.toArray().map(n => Math.round(n * 100) / 100), rotation, color: kind == 'light' ? 2 : 4}).init();
+	if (kind == 'light') group.render_light = Object.assign({}, DEFAULT_LIGHT);
+	else group.render_camera = Object.assign({}, DEFAULT_CAMERA);
+	group.addTo();
+	group.select();
+	Undo.finishEdit(kind == 'light' ? 'Add light' : 'Add camera', {outliner: true, groups: [group], selection: true});
+	Project.saved = false;
+	syncEditorHelpers();
+	if (panel && panel.inside_vue) panel.inside_vue.loadSel();
+}
+
+// --- looking through a camera ----------------------------------------------
+
+let look_saved = null;
+function setLookThrough(group) {
+	const preview = Preview.selected;
+	if (group && !look_saved && preview) {
+		look_saved = {position: preview.camera.position.clone(), target: preview.controls.target.clone(), fov: preview.camera.fov, ortho: !!preview.isOrtho};
+	}
+	if (!group && look_saved && preview) {
+		if (look_saved.ortho && preview.setProjectionMode) preview.setProjectionMode(true);
+		preview.camera.position.copy(look_saved.position);
+		preview.controls.target.copy(look_saved.target);
+		if (preview.camera.isPerspectiveCamera) { preview.camera.fov = look_saved.fov; preview.camera.updateProjectionMatrix(); }
+		look_saved = null;
+	}
+	Project.render_active_camera = group ? group.uuid : '';
+	Project.saved = false;
+}
+
+// keeps the viewport glued to the camera we look through (move or turn the camera and the view follows)
+function syncActiveCamera(preview) {
+	if (!Project || preview !== Preview.selected) return;
+	const group = activeCameraGroup();
+	if (!group || !group.mesh) return;
+	const d = cameraOf(group);
+	if (preview.isOrtho && preview.setProjectionMode) preview.setProjectionMode(false);
+	group.mesh.updateMatrixWorld(true);
+	const pos = group.mesh.getWorldPosition(new THREE.Vector3());
+	const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(group.mesh.getWorldQuaternion(new THREE.Quaternion()));
+	preview.camera.position.copy(pos);
+	preview.controls.target.copy(pos).addScaledVector(forward, 40);
+	if (preview.camera.isPerspectiveCamera && preview.camera.fov != d.fov) {
+		preview.camera.fov = d.fov;
+		preview.camera.updateProjectionMatrix();
+	}
+}
+
+// --- editor icons ------------------------------------------------------------
+
+const helper_icons = new Map();
+function helperIcon(kind) {
+	if (helper_icons.has(kind)) return helper_icons.get(kind);
+	const size = 128, canvas = document.createElement('canvas');
+	canvas.width = canvas.height = size;
+	const c = canvas.getContext('2d');
+	c.fillStyle = 'rgba(20,20,24,0.82)'; c.beginPath(); c.arc(64, 64, 60, 0, Math.PI * 2); c.fill();
+	c.lineCap = 'round'; c.lineJoin = 'round';
+	if (kind == 'light') {
+		c.strokeStyle = c.fillStyle = '#ffd24a';
+		c.lineWidth = 6;
+		c.beginPath(); c.arc(64, 54, 22, 0, Math.PI * 2); c.fill();
+		c.fillRect(54, 78, 20, 10); c.fillRect(56, 92, 16, 6);
+		for (let i = 0; i < 8; i++) {
+			const a = i * Math.PI / 4 + Math.PI / 8, r1 = 31, r2 = 41;
+			c.beginPath(); c.moveTo(64 + Math.cos(a) * r1, 54 + Math.sin(a) * r1); c.lineTo(64 + Math.cos(a) * r2, 54 + Math.sin(a) * r2); c.stroke();
+		}
+		c.strokeStyle = '#ffd24a'; c.beginPath(); c.arc(64, 64, 58, 0, Math.PI * 2); c.stroke();
+	} else {
+		c.strokeStyle = c.fillStyle = '#6aa8ff';
+		c.lineWidth = 6;
+		c.beginPath(); c.roundRect ? c.roundRect(26, 44, 54, 40, 7) : c.rect(26, 44, 54, 40); c.fill();
+		c.beginPath(); c.moveTo(84, 58); c.lineTo(104, 46); c.lineTo(104, 82); c.lineTo(84, 70); c.closePath(); c.fill();
+		c.fillStyle = '#14141a'; c.beginPath(); c.arc(53, 64, 11, 0, Math.PI * 2); c.fill();
+		c.strokeStyle = '#6aa8ff'; c.beginPath(); c.arc(64, 64, 58, 0, Math.PI * 2); c.stroke();
+	}
+	const texture = new THREE.CanvasTexture(canvas);
+	helper_icons.set(kind, texture);
+	return texture;
+}
+
+let editor_helpers = new Map();   // group uuid -> {kind, object, sprite, wire, frustum, fov}
+function removeEditorHelper(uuid) {
+	const h = editor_helpers.get(uuid);
+	if (!h) return;
+	if (h.object.parent) h.object.parent.remove(h.object);
+	h.object.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+	editor_helpers.delete(uuid);
+}
+function clearEditorHelpers() {
+	[...editor_helpers.keys()].forEach(removeEditorHelper);
+}
+
+function frustumGeometry(fov) {
+	const L = 28, hh = Math.tan(fov * Math.PI / 360) * L, hw = hh * 16 / 9;
+	const c = [[-hw, hh], [hw, hh], [hw, -hh], [-hw, -hh]];
+	const pts = [];
+	for (const [x, y] of c) pts.push(0, 0, 0, x, y, -L);
+	for (let i = 0; i < 4; i++) { const a = c[i], b = c[(i + 1) % 4]; pts.push(a[0], a[1], -L, b[0], b[1], -L); }
+	pts.push(-hw * 0.4, hh * 1.08, -L, 0, hh * 1.35, -L, 0, hh * 1.35, -L, hw * 0.4, hh * 1.08, -L);   // "up" marker
+	const g = new THREE.BufferGeometry();
+	g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+	return g;
+}
+
+function syncEditorHelpers() {
+	if (!Project) return clearEditorHelpers();
+	const groups = [...lightGroups(), ...cameraGroups()].filter(g => g.mesh);
+	for (const uuid of [...editor_helpers.keys()]) {
+		const g = groups.find(x => x.uuid == uuid);
+		if (!g || editor_helpers.get(uuid).kind != (isLight(g) ? 'light' : 'camera')) removeEditorHelper(uuid);
+	}
+	const preview = typeof Preview != 'undefined' && Preview.selected, cam = preview && preview.camera;
+	const active = activeCameraGroup();
+	for (const g of groups) {
+		const kind = isLight(g) ? 'light' : 'camera';
+		let h = editor_helpers.get(g.uuid);
+		if (!h) {
+			const object = new THREE.Object3D();
+			const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: helperIcon(kind), sizeAttenuation: false, depthTest: false, transparent: true}));
+			sprite.renderOrder = 1000;
+			object.add(sprite);
+			h = {kind, object, sprite, wire: null, frustum: null, fov: 0};
+			if (kind == 'light') {
+				h.wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 20, 12)), new THREE.LineBasicMaterial({transparent: true, opacity: 0.35, depthWrite: false}));
+				object.add(h.wire);
+			} else {
+				h.frustum = new THREE.LineSegments(frustumGeometry(50), new THREE.LineBasicMaterial({color: 0x6aa8ff, transparent: true, opacity: 0.9, depthTest: false}));
+				h.frustum.renderOrder = 999;
+				object.add(h.frustum);
+			}
+			scene.add(object);
+			editor_helpers.set(g.uuid, h);
+		}
+		g.mesh.updateMatrixWorld(true);
+		h.object.position.copy(g.mesh.getWorldPosition(new THREE.Vector3()));
+		const ortho = cam && cam.isOrthographicCamera;
+		h.sprite.scale.setScalar(ortho ? (cam.top - cam.bottom) / (cam.zoom || 1) * 0.045 : 0.05);
+		if (kind == 'light') {
+			const d = lightOf(g);
+			h.wire.visible = !!g.selected;
+			h.wire.scale.setScalar(Math.max(0.01, d.radius));
+			h.wire.material.color.set(d.color);
+		} else {
+			const d = cameraOf(g);
+			h.frustum.quaternion.copy(g.mesh.getWorldQuaternion(new THREE.Quaternion()));
+			if (h.fov != d.fov) { h.frustum.geometry.dispose(); h.frustum.geometry = frustumGeometry(d.fov); h.fov = d.fov; }
+			const here = active && active.uuid == g.uuid;
+			h.frustum.visible = !here;
+			h.sprite.visible = !here;
+			h.frustum.material.color.setHex(g.selected ? 0xffffff : 0x6aa8ff);
+		}
+	}
+}
+
+// --- real lights in the render view -------------------------------------------
+
+function syncLights() {
+	const list = lightGroups().filter(g => g.mesh && g.visibility !== false);
+	const seen = new Set();
+	let shadows = 0;
+	for (const g of list) {
+		const d = lightOf(g);
+		let light = rig.lights.get(g.uuid);
+		if (!light) {
+			light = new THREE.PointLight(0xffffff, 1, 100, 2);
+			rig.group.add(light);
+			rig.lights.set(g.uuid, light);
+		}
+		g.mesh.updateMatrixWorld(true);
+		light.position.copy(g.mesh.getWorldPosition(new THREE.Vector3()));
+		light.color.set(d.color);
+		light.intensity = d.strength;
+		light.distance = Math.max(1, d.radius);
+		const cast = !!d.shadows && shadows < 3;
+		if (cast) shadows++;
+		if (light.castShadow != cast) {
+			light.castShadow = cast;
+			light.shadow.mapSize.set(1024, 1024);
+			light.shadow.bias = -0.001;
+			light.shadow.normalBias = 0.05;
+			light.shadow.camera.near = 0.5;
+		}
+		seen.add(g.uuid);
+	}
+	for (const [uuid, light] of rig.lights) {
+		if (seen.has(uuid)) continue;
+		rig.group.remove(light);
+		if (light.dispose) light.dispose();
+		rig.lights.delete(uuid);
+	}
+}
+
+// --- putting the spawn actions next to the Add buttons --------------------------
+
+const ADD_ANCHORS = ['add_cube', 'add_mesh', 'add_group', 'add_locator', 'add_null_object'];
+let injected = [];
+function injectAddActions(actions) {
+	try {
+		const found = [];
+		const walk = structure => {
+			if (!Array.isArray(structure)) return;
+			structure.forEach((item, index) => {
+				const id = typeof item == 'string' ? item : item && item.id;
+				if (ADD_ANCHORS.includes(id)) found.push({structure, index});
+				if (item && typeof item == 'object' && Array.isArray(item.children)) walk(item.children);
+			});
+		};
+		if (typeof MenuBar != 'undefined' && MenuBar.menus) Object.values(MenuBar.menus).forEach(menu => walk(menu && menu.structure));
+		const seen = new Set();
+		for (const {structure} of found) {
+			if (seen.has(structure)) continue;
+			seen.add(structure);
+			const at = structure.findIndex(item => ADD_ANCHORS.includes(typeof item == 'string' ? item : item && item.id));
+			let position = at + 1;
+			while (position < structure.length && ADD_ANCHORS.includes(typeof structure[position] == 'string' ? structure[position] : structure[position] && structure[position].id)) position++;
+			structure.splice(position, 0, ...actions);
+			injected.push({structure, actions});
+		}
+		// the buttons row of the outliner
+		const toolbar = typeof Toolbars != 'undefined' && Toolbars.outliner;
+		if (toolbar && toolbar.children) {
+			const index = toolbar.children.findIndex(item => ADD_ANCHORS.includes(typeof item == 'string' ? item : item && item.id));
+			actions.forEach((a, i) => toolbar.add(a, index >= 0 ? index + 1 + i : undefined));
+			injected.push({toolbar, actions});
+		}
+	} catch (err) {
+		console.warn('[Render view] could not add the Light / Camera buttons next to the Add buttons', err);
+	}
+}
+function removeAddActions() {
+	for (const entry of injected) {
+		try {
+			if (entry.structure) entry.actions.forEach(a => { const i = entry.structure.indexOf(a); if (i >= 0) entry.structure.splice(i, 1); });
+			if (entry.toolbar) entry.actions.forEach(a => entry.toolbar.remove(a));
+		} catch (err) { /* menu already gone */ }
+	}
+	injected = [];
 }
 
 // ---------------------------------------------------------------------------
@@ -5354,14 +5888,15 @@ function openMaterials() {
 // ---------------------------------------------------------------------------
 
 let panel = null, toggle = null, materials_action = null, properties = [], style_node = null;
+let editing_group = null, add_light_action = null, add_camera_action = null, poll = null;
 
 function panelComponent() {
 	return {
-		data() { return Object.assign({project: ''}, DEFAULT_SETTINGS); },
+		data() { return Object.assign({project: '', light: null, light_uuid: '', cam: null, cam_uuid: '', looking: false, focus_name: ''}, DEFAULT_SETTINGS); },
 		mounted() { this.load(); },
 		methods: {
 			t(key) { return tr(key); },
-			load() { Object.assign(this, settingsOf()); this.project = Project ? Project.uuid : ''; },
+			load() { Object.assign(this, settingsOf()); this.project = Project ? Project.uuid : ''; this.loadSel(); },
 			save() {
 				if (!Project) return;
 				const s = {};
@@ -5373,6 +5908,80 @@ function panelComponent() {
 				Project.saved = false;
 			},
 			materials() { openMaterials(); },
+			selectedGroups() { return (Group.multi_selected && Group.multi_selected.length) ? Group.multi_selected.slice() : (Group.first_selected ? [Group.first_selected] : []); },
+			loadSel() {
+				if (!Project) { this.light = null; this.cam = null; return; }
+				const groups = this.selectedGroups();
+				const lg = groups.find(isLight), cg = groups.find(isCamera);
+				this.light = lg ? lightOf(lg) : null; this.light_uuid = lg ? lg.uuid : '';
+				this.cam = cg ? cameraOf(cg) : null; this.cam_uuid = cg ? cg.uuid : '';
+				const active = activeCameraGroup();
+				this.looking = !!(cg && active && active.uuid == cg.uuid);
+				const f = this.cam && this.cam.focus ? findNode(this.cam.focus) : null;
+				this.focus_name = f ? f.name : '';
+			},
+			// a drag on a slider is one undo step: opened on the first change, closed on release
+			endEdit(name) {
+				if (!editing_group) return;
+				Undo.finishEdit(name, {outliner: true, groups: [editing_group]});
+				editing_group = null;
+			},
+			liveEdit(uuid, key, value) {
+				const g = Group.all.find(x => x.uuid == uuid);
+				if (!g) return;
+				if (!editing_group) { Undo.initEdit({outliner: true, groups: [g]}); editing_group = g; }
+				g[key] = Object.assign({}, value);
+				Project.saved = false;
+			},
+			liveLight() { this.liveEdit(this.light_uuid, 'render_light', this.light); },
+			liveCamera() { this.liveEdit(this.cam_uuid, 'render_camera', this.cam); },
+			spawn(kind) { spawnGroup(kind); },
+			lookThrough() {
+				const g = Group.all.find(x => x.uuid == this.cam_uuid);
+				if (!g) return;
+				setLookThrough(this.looking ? null : g);
+				this.loadSel();
+			},
+			focusSelected() {
+				const node = Outliner.selected[0] || (Group.first_selected && !isCamera(Group.first_selected) && !isLight(Group.first_selected) ? Group.first_selected : null);
+				if (!node) { Blockbench.showQuickMessage(tr('msg_select_one'), 2000); return; }
+				this.cam.focus = node.uuid;
+				this.liveCamera();
+				this.endEdit('Edit camera');
+				this.loadSel();
+			},
+			clearFocus() {
+				this.cam.focus = '';
+				this.liveCamera();
+				this.endEdit('Edit camera');
+				this.loadSel();
+			},
+			loadSky() {
+				const input = document.createElement('input');
+				input.type = 'file';
+				input.accept = 'image/*';
+				input.onchange = () => {
+					const file = input.files[0];
+					if (!file) return;
+					const reader = new FileReader();
+					reader.onload = () => {
+						const img = new Image();
+						img.onload = () => {
+							// keep the project small: at most 2048 px wide
+							const w = Math.min(2048, img.width), h = Math.round(img.height * w / img.width);
+							const c = document.createElement('canvas');
+							c.width = w; c.height = h;
+							c.getContext('2d').drawImage(img, 0, 0, w, h);
+							this.sky_image = c.toDataURL('image/jpeg', 0.92);
+							this.sky_image_name = file.name;
+							this.save();
+						};
+						img.src = reader.result;
+					};
+					reader.readAsDataURL(file);
+				};
+				input.click();
+			},
 		},
 		template: `
 			<div class="render_panel" style="padding: 4px 8px 10px;">
