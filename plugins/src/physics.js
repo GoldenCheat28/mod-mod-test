@@ -1244,7 +1244,7 @@ function liquidSurface(sim, owner) {
 	const look = Math.max(0, Math.min(1, sim.emitters[owner].s.look ?? 0.5));
 	const R = r * (1.1 + 1.3 * look), R2 = R * R, T = 0.5;
 	const cs = Math.min(r * 0.7, R * 0.45);
-	const FLAT = 0.6, flat_k = 1 / (FLAT * FLAT) - 1;
+	const FLAT = 0.6;
 	const blocks = new Map();
 	let last_key = null, last_block = null;
 	const blockFor = (i, j, k, create) => {
@@ -1263,12 +1263,17 @@ function liquidSurface(sim, owner) {
 	const get = (i, j, k) => { const b = blockFor(i, j, k, false); return b ? b[local(i, j, k)] : 0; };
 
 	const x = sim.x;
+	// A drop on a surface is drawn flattened against it (a film, a splat) - but only a drop on its own or in a thin film.
+	// One that is part of a body of liquid (a pool, the liquid in a glass) is drawn round like the rest, or the liquid
+	// along the walls and the bottom looked like a separate skin with a gap between it and the rest.
+	const crowd = touchCrowd(sim, owner, r);
 	for (let p = 0; p < sim.n; p++) {
 		if (sim.owner[p] != owner) continue;
 		let px = x[p * 3], py = x[p * 3 + 1], pz = x[p * 3 + 2];
-		const touching = sim.touch[p];
+		const touching = sim.touch[p] && crowd[p] < 1;
+		const flat = FLAT + (1 - FLAT) * (touching ? crowd[p] : 1), flat_k = 1 / (flat * flat) - 1;
 		const cnx = sim.contact[p * 3], cny = sim.contact[p * 3 + 1], cnz = sim.contact[p * 3 + 2];
-		if (touching) { px -= cnx * r * (1 - FLAT); py -= cny * r * (1 - FLAT); pz -= cnz * r * (1 - FLAT); }
+		if (touching) { px -= cnx * r * (1 - flat); py -= cny * r * (1 - flat); pz -= cnz * r * (1 - flat); }
 		const i0 = Math.ceil((px - R) / cs), i1 = Math.floor((px + R) / cs);
 		const j0 = Math.ceil((py - R) / cs), j1 = Math.floor((py + R) / cs);
 		const k0 = Math.ceil((pz - R) / cs), k1 = Math.floor((pz + R) / cs);
@@ -1344,6 +1349,39 @@ function liquidSurface(sim, owner) {
 	geometry.setIndex(indices);
 	geometry.computeVertexNormals();
 	return geometry;
+}
+
+// how much each drop on a surface has liquid over it (0 = alone or in a thin film on the surface, 1 = under more
+// liquid: the bottom or the side of a pool, of the liquid in a glass)
+function touchCrowd(sim, owner, r) {
+	const n = sim.n, x = sim.x, out = new Float32Array(n), cell = 3 * r, reach2 = cell * cell;
+	const grid = new Map(), key = (i, j, k) => i * 73856093 ^ j * 19349663 ^ k * 83492791;
+	for (let p = 0; p < n; p++) {
+		if (sim.owner[p] != owner) continue;
+		const k = key(Math.floor(x[p * 3] / cell), Math.floor(x[p * 3 + 1] / cell), Math.floor(x[p * 3 + 2] / cell));
+		let list = grid.get(k);
+		if (!list) grid.set(k, list = []);
+		list.push(p);
+	}
+	for (let p = 0; p < n; p++) {
+		if (sim.owner[p] != owner || !sim.touch[p]) continue;
+		const nx = sim.contact[p * 3], ny = sim.contact[p * 3 + 1], nz = sim.contact[p * 3 + 2];
+		const ci = Math.floor(x[p * 3] / cell), cj = Math.floor(x[p * 3 + 1] / cell), ck = Math.floor(x[p * 3 + 2] / cell);
+		let over = 0;
+		for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+			const list = grid.get(key(ci + a, cj + b, ck + c));
+			if (!list) continue;
+			for (const q of list) {
+				if (q == p) continue;
+				const dx = x[q * 3] - x[p * 3], dy = x[q * 3 + 1] - x[p * 3 + 1], dz = x[q * 3 + 2] - x[p * 3 + 2];
+				const d2 = dx * dx + dy * dy + dz * dz;
+				// a drop further out from the surface than this one, close by: there is liquid over it
+				if (d2 < reach2 && dx * nx + dy * ny + dz * nz > 0.9 * r) over++;
+			}
+		}
+		out[p] = Math.min(1, over / 2);
+	}
+	return out;
 }
 
 // move every vertex half way to the average of its neighbours: rounder drops, no blocky steps
@@ -2406,7 +2444,7 @@ const onPoll = () => {
 	if (Modes.physics && !sim) updateArrows();
 };
 
-if (typeof __PHYSICS_EXPORT !== 'undefined') __PHYSICS_EXPORT({pickFieldHelper, onFieldIconPress, syncFieldHelpers, piecePose, createRuntime, stepRuntime, forceNodes, LiquidSim, DEFAULT_LIQUID, setJolt: j => { Jolt = j; }, createWorld, describeBody, liquidColliders, bodyWorld, DEFAULT_WORLD, DEFAULT_BODY, FIXED_DT, LIQUID_DT, SCALE});
+if (typeof __PHYSICS_EXPORT !== 'undefined') __PHYSICS_EXPORT({liquidSurface, pickFieldHelper, onFieldIconPress, syncFieldHelpers, piecePose, createRuntime, stepRuntime, forceNodes, LiquidSim, DEFAULT_LIQUID, setJolt: j => { Jolt = j; }, createWorld, describeBody, liquidColliders, bodyWorld, DEFAULT_WORLD, DEFAULT_BODY, FIXED_DT, LIQUID_DT, SCALE});
 if (typeof Plugin === 'undefined' || typeof Blockbench === 'undefined') return;
 
 Plugin.register('physics', {
@@ -2415,7 +2453,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.2',
+	version: '0.8.3',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
