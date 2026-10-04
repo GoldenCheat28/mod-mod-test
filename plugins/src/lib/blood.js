@@ -770,7 +770,9 @@ class BloodSim {
 
 	// col: null (the level) or {entry} (a moving thing: the stain goes with it)
 	_world_stamp(col, p, n, along, w, l, kind, variant, thick = 1.0, alpha = 1.0) {
-		if (!col && this.isGround(p, n)) {
+		// the level goes into the world maps (blood_canvas.gd): the floor and the two wall maps; what they cannot hold
+		// (slanted faces, outside the maps) and moving things get a decal
+		if (!col && bloodMapFor(n) >= 0) {
 			this._splat_grid.add(cellKey(p));
 			if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, null);
 			return;

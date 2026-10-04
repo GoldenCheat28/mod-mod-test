@@ -170,7 +170,14 @@ function bloodShape(kind, variant) {
 		case 'wound': btWound(h, size, rng, n); break;
 	}
 	const flat = kind == 'pool';
-	const albedo = new Uint8Array(size * size * 4), mask = new Uint8Array(size * size * 4);
+	const albedo = new Uint8Array(size * size * 4), mask = new Uint8Array(size * size * 4), normal = new Uint8Array(size * size * 4);
+	// the normal map of the film (blood_tex.gd _bake), its slope kept as the game's at our finer pixels
+	const ns = (flat ? 2.2 : 3.0) * size / (['drop', 'wound', 'streak', 'brush', 'print'].includes(kind) ? 96 : 192);
+	const H = (x, y) => Math.min(h[clamp(y, 0, size - 1) * size + clamp(x, 0, size - 1)], 1);
+	for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+		const nx = (H(x - 1, y) - H(x + 1, y)) * ns, ny = (H(x, y + 1) - H(x, y - 1)) * ns, l = Math.hypot(nx, ny, 1);
+		normal.set([(nx / l * 0.5 + 0.5) * 255, (ny / l * 0.5 + 0.5) * 255, (1 / l * 0.5 + 0.5) * 255, 255].map(Math.round), (y * size + x) * 4);
+	}
 	for (let i = 0; i < size * size; i++) {
 		const v = h[i];
 		const a = gsmooth(0.02, 0.1, v);
@@ -185,7 +192,7 @@ function bloodShape(kind, variant) {
 		const th = flat ? gsmooth(0.02, 0.3, v) : clamp(v / 1.2, 0, 1);
 		mask.set([th * 255, 0, 0, gsmooth(0.01, 0.09, v) * 255].map(Math.round), i * 4);
 	}
-	return (bt_cache[key] = {albedo, mask, size, key});
+	return (bt_cache[key] = {albedo, mask, normal, size, key});
 }
 
 // the mist's puff: a soft noisy round blot

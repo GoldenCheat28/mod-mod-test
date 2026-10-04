@@ -2482,7 +2482,14 @@ function bloodShape(kind, variant) {
 		case 'wound': btWound(h, size, rng, n); break;
 	}
 	const flat = kind == 'pool';
-	const albedo = new Uint8Array(size * size * 4), mask = new Uint8Array(size * size * 4);
+	const albedo = new Uint8Array(size * size * 4), mask = new Uint8Array(size * size * 4), normal = new Uint8Array(size * size * 4);
+	// the normal map of the film (blood_tex.gd _bake), its slope kept as the game's at our finer pixels
+	const ns = (flat ? 2.2 : 3.0) * size / (['drop', 'wound', 'streak', 'brush', 'print'].includes(kind) ? 96 : 192);
+	const H = (x, y) => Math.min(h[clamp(y, 0, size - 1) * size + clamp(x, 0, size - 1)], 1);
+	for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+		const nx = (H(x - 1, y) - H(x + 1, y)) * ns, ny = (H(x, y + 1) - H(x, y - 1)) * ns, l = Math.hypot(nx, ny, 1);
+		normal.set([(nx / l * 0.5 + 0.5) * 255, (ny / l * 0.5 + 0.5) * 255, (1 / l * 0.5 + 0.5) * 255, 255].map(Math.round), (y * size + x) * 4);
+	}
 	for (let i = 0; i < size * size; i++) {
 		const v = h[i];
 		const a = gsmooth(0.02, 0.1, v);
@@ -2497,7 +2504,7 @@ function bloodShape(kind, variant) {
 		const th = flat ? gsmooth(0.02, 0.3, v) : clamp(v / 1.2, 0, 1);
 		mask.set([th * 255, 0, 0, gsmooth(0.01, 0.09, v) * 255].map(Math.round), i * 4);
 	}
-	return (bt_cache[key] = {albedo, mask, size, key});
+	return (bt_cache[key] = {albedo, mask, normal, size, key});
 }
 
 // the mist's puff: a soft noisy round blot
@@ -3341,7 +3348,9 @@ class BloodSim {
 
 	// col: null (the level) or {entry} (a moving thing: the stain goes with it)
 	_world_stamp(col, p, n, along, w, l, kind, variant, thick = 1.0, alpha = 1.0) {
-		if (!col && this.isGround(p, n)) {
+		// the level goes into the world maps (blood_canvas.gd): the floor and the two wall maps; what they cannot hold
+		// (slanted faces, outside the maps) and moving things get a decal
+		if (!col && bloodMapFor(n) >= 0) {
 			this._splat_grid.add(cellKey(p));
 			if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, null);
 			return;
@@ -3565,21 +3574,339 @@ class BodyBlood {
 	}
 }
 
+// three.js r129 examples/js/geometries/DecalGeometry.js (MIT), for blood stains projected on moving things
+if (!THREE.DecalGeometry) {
+// --- three.js r129 examples/js/geometries/DecalGeometry.js ---
+( function () {
+
+	/**
+ * You can use this geometry to create a decal mesh, that serves different kinds of purposes.
+ * e.g. adding unique details to models, performing dynamic visual environmental changes or covering seams.
+ *
+ * Constructor parameter:
+ *
+ * mesh — Any mesh object
+ * position — Position of the decal projector
+ * orientation — Orientation of the decal projector
+ * size — Size of the decal projector
+ *
+ * reference: http://blog.wolfire.com/2009/06/how-to-project-decals/
+ *
+ */
+
+	class DecalGeometry extends THREE.BufferGeometry {
+
+		constructor( mesh, position, orientation, size ) {
+
+			super(); // buffers
+
+			const vertices = [];
+			const normals = [];
+			const uvs = []; // helpers
+
+			const plane = new THREE.Vector3(); // this matrix represents the transformation of the decal projector
+
+			const projectorMatrix = new THREE.Matrix4();
+			projectorMatrix.makeRotationFromEuler( orientation );
+			projectorMatrix.setPosition( position );
+			const projectorMatrixInverse = new THREE.Matrix4();
+			projectorMatrixInverse.copy( projectorMatrix ).invert(); // generate buffers
+
+			generate(); // build geometry
+
+			this.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
+			this.setAttribute( 'normal', new THREE.Float32BufferAttribute( normals, 3 ) );
+			this.setAttribute( 'uv', new THREE.Float32BufferAttribute( uvs, 2 ) );
+
+			function generate() {
+
+				let decalVertices = [];
+				const vertex = new THREE.Vector3();
+				const normal = new THREE.Vector3(); // handle different geometry types
+
+				if ( mesh.geometry.isGeometry === true ) {
+
+					console.error( 'THREE.DecalGeometry no longer supports THREE.Geometry. Use THREE.BufferGeometry instead.' );
+					return;
+
+				}
+
+				const geometry = mesh.geometry;
+				const positionAttribute = geometry.attributes.position;
+				const normalAttribute = geometry.attributes.normal; // first, create an array of 'DecalVertex' objects
+				// three consecutive 'DecalVertex' objects represent a single face
+				//
+				// this data structure will be later used to perform the clipping
+
+				if ( geometry.index !== null ) {
+
+					// indexed THREE.BufferGeometry
+					const index = geometry.index;
+
+					for ( let i = 0; i < index.count; i ++ ) {
+
+						vertex.fromBufferAttribute( positionAttribute, index.getX( i ) );
+						normal.fromBufferAttribute( normalAttribute, index.getX( i ) );
+						pushDecalVertex( decalVertices, vertex, normal );
+
+					}
+
+				} else {
+
+					// non-indexed THREE.BufferGeometry
+					for ( let i = 0; i < positionAttribute.count; i ++ ) {
+
+						vertex.fromBufferAttribute( positionAttribute, i );
+						normal.fromBufferAttribute( normalAttribute, i );
+						pushDecalVertex( decalVertices, vertex, normal );
+
+					}
+
+				} // second, clip the geometry so that it doesn't extend out from the projector
+
+
+				decalVertices = clipGeometry( decalVertices, plane.set( 1, 0, 0 ) );
+				decalVertices = clipGeometry( decalVertices, plane.set( - 1, 0, 0 ) );
+				decalVertices = clipGeometry( decalVertices, plane.set( 0, 1, 0 ) );
+				decalVertices = clipGeometry( decalVertices, plane.set( 0, - 1, 0 ) );
+				decalVertices = clipGeometry( decalVertices, plane.set( 0, 0, 1 ) );
+				decalVertices = clipGeometry( decalVertices, plane.set( 0, 0, - 1 ) ); // third, generate final vertices, normals and uvs
+
+				for ( let i = 0; i < decalVertices.length; i ++ ) {
+
+					const decalVertex = decalVertices[ i ]; // create texture coordinates (we are still in projector space)
+
+					uvs.push( 0.5 + decalVertex.position.x / size.x, 0.5 + decalVertex.position.y / size.y ); // transform the vertex back to world space
+
+					decalVertex.position.applyMatrix4( projectorMatrix ); // now create vertex and normal buffer data
+
+					vertices.push( decalVertex.position.x, decalVertex.position.y, decalVertex.position.z );
+					normals.push( decalVertex.normal.x, decalVertex.normal.y, decalVertex.normal.z );
+
+				}
+
+			}
+
+			function pushDecalVertex( decalVertices, vertex, normal ) {
+
+				// transform the vertex to world space, then to projector space
+				vertex.applyMatrix4( mesh.matrixWorld );
+				vertex.applyMatrix4( projectorMatrixInverse );
+				normal.transformDirection( mesh.matrixWorld );
+				decalVertices.push( new DecalVertex( vertex.clone(), normal.clone() ) );
+
+			}
+
+			function clipGeometry( inVertices, plane ) {
+
+				const outVertices = [];
+				const s = 0.5 * Math.abs( size.dot( plane ) ); // a single iteration clips one face,
+				// which consists of three consecutive 'DecalVertex' objects
+
+				for ( let i = 0; i < inVertices.length; i += 3 ) {
+
+					let total = 0;
+					let nV1;
+					let nV2;
+					let nV3;
+					let nV4;
+					const d1 = inVertices[ i + 0 ].position.dot( plane ) - s;
+					const d2 = inVertices[ i + 1 ].position.dot( plane ) - s;
+					const d3 = inVertices[ i + 2 ].position.dot( plane ) - s;
+					const v1Out = d1 > 0;
+					const v2Out = d2 > 0;
+					const v3Out = d3 > 0; // calculate, how many vertices of the face lie outside of the clipping plane
+
+					total = ( v1Out ? 1 : 0 ) + ( v2Out ? 1 : 0 ) + ( v3Out ? 1 : 0 );
+
+					switch ( total ) {
+
+						case 0:
+						{
+
+							// the entire face lies inside of the plane, no clipping needed
+							outVertices.push( inVertices[ i ] );
+							outVertices.push( inVertices[ i + 1 ] );
+							outVertices.push( inVertices[ i + 2 ] );
+							break;
+
+						}
+
+						case 1:
+						{
+
+							// one vertex lies outside of the plane, perform clipping
+							if ( v1Out ) {
+
+								nV1 = inVertices[ i + 1 ];
+								nV2 = inVertices[ i + 2 ];
+								nV3 = clip( inVertices[ i ], nV1, plane, s );
+								nV4 = clip( inVertices[ i ], nV2, plane, s );
+
+							}
+
+							if ( v2Out ) {
+
+								nV1 = inVertices[ i ];
+								nV2 = inVertices[ i + 2 ];
+								nV3 = clip( inVertices[ i + 1 ], nV1, plane, s );
+								nV4 = clip( inVertices[ i + 1 ], nV2, plane, s );
+								outVertices.push( nV3 );
+								outVertices.push( nV2.clone() );
+								outVertices.push( nV1.clone() );
+								outVertices.push( nV2.clone() );
+								outVertices.push( nV3.clone() );
+								outVertices.push( nV4 );
+								break;
+
+							}
+
+							if ( v3Out ) {
+
+								nV1 = inVertices[ i ];
+								nV2 = inVertices[ i + 1 ];
+								nV3 = clip( inVertices[ i + 2 ], nV1, plane, s );
+								nV4 = clip( inVertices[ i + 2 ], nV2, plane, s );
+
+							}
+
+							outVertices.push( nV1.clone() );
+							outVertices.push( nV2.clone() );
+							outVertices.push( nV3 );
+							outVertices.push( nV4 );
+							outVertices.push( nV3.clone() );
+							outVertices.push( nV2.clone() );
+							break;
+
+						}
+
+						case 2:
+						{
+
+							// two vertices lies outside of the plane, perform clipping
+							if ( ! v1Out ) {
+
+								nV1 = inVertices[ i ].clone();
+								nV2 = clip( nV1, inVertices[ i + 1 ], plane, s );
+								nV3 = clip( nV1, inVertices[ i + 2 ], plane, s );
+								outVertices.push( nV1 );
+								outVertices.push( nV2 );
+								outVertices.push( nV3 );
+
+							}
+
+							if ( ! v2Out ) {
+
+								nV1 = inVertices[ i + 1 ].clone();
+								nV2 = clip( nV1, inVertices[ i + 2 ], plane, s );
+								nV3 = clip( nV1, inVertices[ i ], plane, s );
+								outVertices.push( nV1 );
+								outVertices.push( nV2 );
+								outVertices.push( nV3 );
+
+							}
+
+							if ( ! v3Out ) {
+
+								nV1 = inVertices[ i + 2 ].clone();
+								nV2 = clip( nV1, inVertices[ i ], plane, s );
+								nV3 = clip( nV1, inVertices[ i + 1 ], plane, s );
+								outVertices.push( nV1 );
+								outVertices.push( nV2 );
+								outVertices.push( nV3 );
+
+							}
+
+							break;
+
+						}
+
+						case 3:
+						{
+
+							// the entire face lies outside of the plane, so let's discard the corresponding vertices
+							break;
+
+						}
+
+					}
+
+				}
+
+				return outVertices;
+
+			}
+
+			function clip( v0, v1, p, s ) {
+
+				const d0 = v0.position.dot( p ) - s;
+				const d1 = v1.position.dot( p ) - s;
+				const s0 = d0 / ( d0 - d1 );
+				const v = new DecalVertex( new THREE.Vector3( v0.position.x + s0 * ( v1.position.x - v0.position.x ), v0.position.y + s0 * ( v1.position.y - v0.position.y ), v0.position.z + s0 * ( v1.position.z - v0.position.z ) ), new THREE.Vector3( v0.normal.x + s0 * ( v1.normal.x - v0.normal.x ), v0.normal.y + s0 * ( v1.normal.y - v0.normal.y ), v0.normal.z + s0 * ( v1.normal.z - v0.normal.z ) ) ); // need to clip more values (texture coordinates)? do it this way:
+				// intersectpoint.value = a.value + s * ( b.value - a.value );
+
+				return v;
+
+			}
+
+		}
+
+	} // helper
+
+
+	class DecalVertex {
+
+		constructor( position, normal ) {
+
+			this.position = position;
+			this.normal = normal;
+
+		}
+
+		clone() {
+
+			return new this.constructor( this.position.clone(), this.normal.clone() );
+
+		}
+
+	}
+
+	THREE.DecalGeometry = DecalGeometry;
+	THREE.DecalVertex = DecalVertex;
+
+} )();
+}
+
 // ---------------------------------------------------------------------------
-// What the blood looks like in the viewport (blood.gd's drawing, blood_canvas.gd, blood.gdshaderinc, blood_splash.gd,
-// body_blood.gdshaderinc). Everything lives in one group in the scene, scaled from metres to Blockbench pixels.
-//  - The ground: blood is painted into a floor map (a render target that is never cleared: thickness, time, coverage
-//    per texel, blended like the game's), and a sheet over the ground shows it as the level shader does.
-//  - Anything else (a chair, a moving thing): decals - flat stains lying on the surface.
-//  - Drops: flat beads turned to the eye and stretched along their flight. The splash at a hit: an 8-frame sprite.
-//    The mist: a puff of fine spray.
-//  - On the person: his blood volume (body_blood.gd) shown over his clothes and skin.
+// What the blood looks like in the viewport, drawn the way the game draws it (blood_canvas.gd, blood.gdshaderinc,
+// blood.gd's drop shader and decals, body_blood.gdshaderinc). Units of the simulation: metres; the scene: pixels.
+//  - The level: blood is painted into three world maps (render targets that are never cleared): the floor (seen from
+//    above), wall_x (faces turned to +-X) and wall_z (faces turned to +-Z). A texel holds film thickness, the depth of
+//    the face it landed on, the time it was wetted and coverage. Every surface of the model reads the maps in its own
+//    lit material (blood_apply): dark wet blood with a sharp sheen, clots, a raised rim, drying to matt brown.
+//  - Moving things and faces the maps cannot hold (slanted): decals projected onto the object, with a normal map,
+//    wet and glossy, drying darker and matt. They go where the object goes.
+//  - Drops: flat lit beads turned to the eye about their line of flight and stretched along it.
+//  - The splash at a hit: an 8-frame sprite. The mist: a puff of fine spray.
+//  - On the person: his blood volume (body_blood.gd) stains his clothes and skin and lies on them, lit.
 // ---------------------------------------------------------------------------
 
 const BV_AREA = 36.0, BV_RES = 2048, BV_PPM = BV_RES / BV_AREA;
+const BV_WALL_RES = 640, BV_WALL_H = BV_WALL_RES / BV_PPM;
 const BV_TIME_SPAN = 16384.0;
+const BV_DEPTH_MIN = -40.0, BV_DEPTH_RANGE = 80.0;
 const BV_DRY_COLOR = [0.42, 0.3, 0.27];
 const BV_MAX_DECALS = 800;
+const BV_FLOOR = 0, BV_WALL_X = 1, BV_WALL_Z = 2;
+
+// which world map a surface with normal n goes to, or -1 (slanted / overhanging: a decal)
+function bloodMapFor(n) {
+	if (n.y > 0.55) return BV_FLOOR;
+	const ax = Math.abs(n.x), az = Math.abs(n.z);
+	if (ax > az && ax > 0.6) return BV_WALL_X;
+	if (az > 0.6) return BV_WALL_Z;
+	return -1;
+}
 
 const BV_COMMON = `
 float bh(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -3587,36 +3914,122 @@ float bnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 
 	return mix(mix(bh(i), bh(i + vec2(1.0, 0.0)), f.x), mix(bh(i + vec2(0.0, 1.0)), bh(i + vec2(1.0, 1.0)), f.x), f.y); }
 `;
 
+// blood.gdshaderinc: blood_sample + blood_apply, for a surface at wpos (metres) with world normal wnrm.
+// In: the view-space position and geometric normal. Out: coverage, albedo, roughness, the view-space normal.
+const BV_SURFACE = `
+uniform sampler2D bv_floor; uniform sampler2D bv_wall_x; uniform sampler2D bv_wall_z;
+uniform vec2 bv_min; uniform float bv_size; uniform vec2 bv_wall; uniform float bv_time;
+uniform float bv_gamma;
+${BV_COMMON}
+// Blockbench draws in display space (no sRGB output): the game's linear colours are put into it
+vec3 bv_col(vec3 c) { return bv_gamma > 0.5 ? pow(max(c, vec3(0.0)), vec3(0.4545)) : c; }
+vec3 blood_sample(vec3 p, vec3 n) {
+	vec2 uv; float depth; float tol; vec4 s; vec3 an = abs(n);
+	if (n.y > 0.55) { uv = (p.xz - bv_min) / bv_size; s = texture2D(bv_floor, uv); depth = p.y; tol = 0.08; }
+	else if (an.x > an.z && an.x > 0.6) { uv = vec2((p.z - bv_min.y) / bv_size, (p.y - bv_wall.x) / bv_wall.y); s = texture2D(bv_wall_x, uv); depth = p.x; tol = 0.06; }
+	else if (an.z > 0.6) { uv = vec2((p.x - bv_min.x) / bv_size, (p.y - bv_wall.x) / bv_wall.y); s = texture2D(bv_wall_z, uv); depth = p.z; tol = 0.06; }
+	else return vec3(0.0);
+	if (s.a < 0.04 || uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec3(0.0);
+	vec3 v = clamp(s.rgb / s.a, vec3(0.0), vec3(1.0));
+	float d = v.g * ${BV_DEPTH_RANGE.toFixed(1)} + ${BV_DEPTH_MIN.toFixed(1)};
+	if (abs(d - depth) > tol) return vec3(0.0);
+	float age = mod(bv_time - v.b * ${BV_TIME_SPAN.toFixed(1)} + ${BV_TIME_SPAN.toFixed(1)}, ${BV_TIME_SPAN.toFixed(1)});
+	return vec3(s.a, v.r, clamp(age / 150.0, 0.0, 1.0));
+}
+float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec3 albedo, inout float roughness, inout vec3 n_view) {
+	vec3 b = blood_sample(wpos, wnrm);
+	vec3 t1 = abs(wnrm.y) > 0.55 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+	vec3 t2 = normalize(cross(wnrm, t1));
+	t1 = cross(t2, wnrm);
+	float o = 0.011;
+	float c4 = blood_sample(wpos + (t1 + t2) * o, wnrm).x + blood_sample(wpos + (t1 - t2) * o, wnrm).x
+		+ blood_sample(wpos - (t1 + t2) * o, wnrm).x + blood_sample(wpos - (t1 - t2) * o, wnrm).x;
+	b.x = b.x * 0.4 + c4 * 0.15;
+	float n_ok = 0.0; vec2 yz = vec2(0.0);
+	for (int k = 0; k < 4; k++) {
+		vec2 sg = vec2(k < 2 ? 1.0 : -1.0, (k == 0 || k == 2) ? 1.0 : -1.0);
+		vec3 q = blood_sample(wpos + (t1 * sg.x + t2 * sg.y) * o * 1.6, wnrm);
+		if (q.x > 0.0) { yz += q.yz; n_ok += 1.0; }
+	}
+	if (b.x <= 0.0) return 0.0;
+	if (n_ok > 0.0) b.yz = b.y > 0.0 ? (b.yz + yz) / (1.0 + n_ok) : yz / n_ok;
+	vec2 ep = wnrm.y > 0.55 ? wpos.xz : (abs(wnrm.x) > abs(wnrm.z) ? wpos.zy : wpos.xy);
+	float detail = bnoise(ep * 300.0);
+	float thick = clamp(b.y, 0.0, 1.0);
+	float film = smoothstep(0.03, 0.09, thick);
+	float ragged = bnoise(ep * 70.0) * 0.6 + bnoise(ep * 190.0) * 0.4;
+	float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
+	float soft = smoothstep(0.08, 0.8, b.x + (detail - 0.5) * 0.3) * (0.3 + 0.35 * detail);
+	float cov = mix(soft, crisp, film);
+	if (cov <= 0.0) return 0.0;
+	float deep = smoothstep(0.08, 0.45, thick);
+	float clot = bnoise(ep * 9.0) * 0.6 + bnoise(ep * 31.0) * 0.4;
+	float grain = bnoise(ep * 140.0);
+	float edge = 1.0 - smoothstep(0.25, 0.85, thick);
+	float dry = pow(clamp(b.z * (0.75 + 0.5 * clot) + edge * b.z * 0.8, 0.0, 1.0), 0.7);
+	vec3 wet_col = mix(vec3(0.075, 0.004, 0.003), vec3(0.02, 0.0009, 0.0007), deep);
+	wet_col *= mix(1.0, 0.5 + 1.0 * clot, deep);
+	vec3 dry_col = mix(vec3(0.055, 0.017, 0.012), vec3(0.026, 0.009, 0.007), deep);
+	dry_col *= 0.8 + 0.45 * clot;
+	float crust = smoothstep(0.1, 0.5, b.z) * edge * smoothstep(0.02, 0.2, thick);
+	dry_col = mix(dry_col, vec3(0.018, 0.006, 0.005), crust * 0.7);
+	albedo = bv_col(mix(wet_col, dry_col, dry));
+	float gloss = film * smoothstep(0.35, 0.8, cov);
+	float sheen = smoothstep(0.35, 0.75, bnoise(ep * 5.0 + 3.1) * 0.7 + clot * 0.3);
+	roughness = mix(mix(0.5, mix(0.05, 0.12, sheen), gloss), 0.88, smoothstep(0.35, 0.55, dry));
+	// a liquid lies flat; its rim is raised (a bump from the film height, kept tame)
+	vec3 nv = geom_view_n;
+	float h = crisp * film * (0.0022 + deep * dry * ((clot - 0.5) * 0.0012 + (grain - 0.5) * 0.0006));
+	vec3 dpdx = dFdx(vertex), dpdy = dFdy(vertex);
+	vec3 r1 = cross(dpdy, nv), r2 = cross(nv, dpdx);
+	float det = dot(dpdx, r1);
+	vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+	vec3 bumped = abs(det) * nv - grad;
+	float bl = length(bumped);
+	if (abs(det) > 1e-12 && bl > 1e-12) { bumped /= bl; n_view = normalize(mix(nv, bumped, dot(bumped, nv) > 0.9 ? 1.0 : 0.35)); }
+	else n_view = nv;
+	return cov;
+}
+`;
+
 class BloodView {
 	constructor(sim, rt) {
 		this.sim = sim;
 		this.rt = rt;
-		this.group = new THREE.Group();
+		this.group = new THREE.Group();   // things placed in metres
 		this.group.name = 'ragdoll_blood';
 		this.group.scale.setScalar(SCALE);
+		this.surface_group = new THREE.Group();   // things placed in the scene's pixels (on the model's own surfaces)
+		this.surface_group.name = 'ragdoll_blood_surfaces';
 		this.root = typeof scene != 'undefined' ? scene : null;
-		if (this.root) this.root.add(this.group);
+		if (this.root) { this.root.add(this.group); this.root.add(this.surface_group); }
 		this.textures = {};
-		this.queue = [];
 		this.decals = [];
 		this.decal_next = 0;
 		this.pool_decals = new Map();
 		this.splashes = [];
 		this.mists = [];
 		this.overlays = [];
+		this.surfaces = new Map();   // element mesh -> its blood overlay
+		this.surface_check = 0;
 		this.time = 0;
-		// the floor map round the people
+		// the world maps round the people
 		const people = sim.people;
 		const c = people.length ? people[0].pos(people[0].pelvis) : gv();
 		this.area_min = gv(c.x - BV_AREA / 2, 0, c.z - BV_AREA / 2);
 		this.ground = sim.ground;
+		this.wall_y0 = (this.ground || 0) - 0.5;
 		this.renderer = this.findRenderer();
-		this.makeFloor();
+		this.makeLook();
+		this.makeMaps();
 		this.makeDrops();
 		this.makeSplash();
 		this.makeMist();
 		this.makeBodies();
 	}
+
+	// does the picture come out without sRGB conversion (Blockbench, the Render view)? then colours go in display space
+	gamma() { return !(this.renderer && THREE.sRGBEncoding && this.renderer.outputEncoding === THREE.sRGBEncoding); }
 
 	findRenderer() {
 		try { if (typeof Preview != 'undefined') { const p = Preview.selected || (Preview.all || []).find(x => x.renderer); if (p && p.renderer) return p.renderer; } } catch (err) { /* none */ }
@@ -3627,146 +4040,239 @@ class BloodView {
 		const key = kind + variant + which;
 		if (this.textures[key]) return this.textures[key];
 		const sh = bloodShape(kind, variant);
-		const t = new THREE.DataTexture(which == 'mask' ? sh.mask : sh.albedo, sh.size, sh.size, THREE.RGBAFormat);
+		const t = new THREE.DataTexture(sh[which], sh.size, sh.size, THREE.RGBAFormat);
 		t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+		if (which == 'albedo' && !this.gamma() && THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
 		t.needsUpdate = true;
 		return (this.textures[key] = t);
 	}
 
-	// ---- the ground ----
-	makeFloor() {
-		if (!this.renderer || !THREE.WebGLRenderTarget) return;
-		const type = THREE.HalfFloatType || THREE.FloatType;
-		this.target = new THREE.WebGLRenderTarget(BV_RES, BV_RES, {type, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter});
-		this.paint_scene = new THREE.Scene();
-		this.paint_cam = new THREE.OrthographicCamera(0, BV_RES, BV_RES, 0, -10, 10);
-		this.dab_geo = new THREE.PlaneGeometry(1, 1);
-		this.dab_meshes = [];
-		this.cleared = false;
-		// the sheet over the ground that shows it (blood.gdshaderinc: blood_apply)
-		const mat = new THREE.ShaderMaterial({
-			uniforms: {map: {value: this.target.texture}, area: {value: new THREE.Vector3(this.area_min.x, this.area_min.z, BV_AREA)}, time: {value: 0}, texel: {value: 1 / BV_RES}},
-			vertexShader: `varying vec3 vw; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vw = w.xyz / ${SCALE.toFixed(1)}; gl_Position = projectionMatrix * viewMatrix * w; }`,
-			fragmentShader: `
-				uniform sampler2D map; uniform vec3 area; uniform float time; uniform float texel; varying vec3 vw;
-				${BV_COMMON}
-				vec3 bsample(vec2 p) {
-					vec2 uv = (p - area.xy) / area.z;
-					if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec3(0.0);
-					vec4 s = texture2D(map, uv);
-					if (s.a < 0.04) return vec3(0.0);
-					vec3 v = clamp(s.rgb / s.a, vec3(0.0), vec3(1.0));
-					float age = mod(time - v.b * ${BV_TIME_SPAN.toFixed(1)} + ${BV_TIME_SPAN.toFixed(1)}, ${BV_TIME_SPAN.toFixed(1)});
-					return vec3(s.a, v.r, clamp(age / 150.0, 0.0, 1.0));
-				}
-				void main() {
-					vec2 p = vw.xz;
-					vec3 b = bsample(p);
-					float o = 0.011;
-					float c4 = bsample(p + vec2(o, o)).x + bsample(p + vec2(o, -o)).x + bsample(p - vec2(o, o)).x + bsample(p - vec2(o, -o)).x;
-					b.x = b.x * 0.4 + c4 * 0.15;
-					float n_ok = 0.0; vec2 yz = vec2(0.0);
-					for (int k = 0; k < 4; k++) {
-						vec2 sg = vec2(k < 2 ? 1.0 : -1.0, (k == 0 || k == 2) ? 1.0 : -1.0);
-						vec3 q = bsample(p + sg * o * 1.6);
-						if (q.x > 0.0) { yz += q.yz; n_ok += 1.0; }
-					}
-					if (b.x <= 0.0) discard;
-					if (n_ok > 0.0) b.yz = b.y > 0.0 ? (b.yz + yz) / (1.0 + n_ok) : yz / n_ok;
-					float detail = bnoise(p * 300.0);
-					float thick = clamp(b.y, 0.0, 1.0);
-					float film = smoothstep(0.03, 0.09, thick);
-					float ragged = bnoise(p * 70.0) * 0.6 + bnoise(p * 190.0) * 0.4;
-					float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
-					float soft = smoothstep(0.08, 0.8, b.x + (detail - 0.5) * 0.3) * (0.3 + 0.35 * detail);
-					float cov = mix(soft, crisp, film);
-					if (cov <= 0.0) discard;
-					float deep = smoothstep(0.08, 0.45, thick);
-					float clot = bnoise(p * 9.0) * 0.6 + bnoise(p * 31.0) * 0.4;
-					float edge = 1.0 - smoothstep(0.25, 0.85, thick);
-					float dry = pow(clamp(b.z * (0.75 + 0.5 * clot) + edge * b.z * 0.8, 0.0, 1.0), 0.7);
-					vec3 wet_col = mix(vec3(0.075, 0.004, 0.003), vec3(0.02, 0.0009, 0.0007), deep);
-					wet_col *= mix(1.0, 0.5 + 1.0 * clot, deep);
-					vec3 dry_col = mix(vec3(0.055, 0.017, 0.012), vec3(0.026, 0.009, 0.007), deep);
-					dry_col *= 0.8 + 0.45 * clot;
-					float crust = smoothstep(0.1, 0.5, b.z) * edge * smoothstep(0.02, 0.2, thick);
-					dry_col = mix(dry_col, vec3(0.018, 0.006, 0.005), crust * 0.7);
-					vec3 col = mix(wet_col, dry_col, dry);
-					// lit like the ground round it, and a wet sheen on a real layer of it
-					float gloss = film * smoothstep(0.35, 0.8, cov) * (1.0 - smoothstep(0.35, 0.55, dry));
-					float sheen = smoothstep(0.35, 0.75, bnoise(p * 5.0 + 3.1) * 0.7 + clot * 0.3);
-					col = col * 2.2 + vec3(0.05, 0.035, 0.035) * gloss * sheen;
-					gl_FragColor = linearToOutputTexel(vec4(col, cov));
-				}`,
-			transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
-		});
-		const geo = new THREE.PlaneGeometry(BV_AREA, BV_AREA);
-		geo.rotateX(-Math.PI / 2);
-		this.floor = new THREE.Mesh(geo, mat);
-		this.floor.position.set(this.area_min.x + BV_AREA / 2, this.ground + 0.002, this.area_min.z + BV_AREA / 2);
-		this.floor.renderOrder = 2;
-		this.floor.frustumCulled = false;
-		this.group.add(this.floor);
+	// ---- light: Blockbench's own lights; reflections from the Render view's sky, or a soft sky of our own ----
+	makeLook() {
+		this.env = null;
+		if (!this.renderer || !THREE.PMREMGenerator || typeof document == 'undefined') return;
+		try {
+			const canvas = document.createElement('canvas');
+			canvas.width = 256; canvas.height = 128;
+			const ctx = canvas.getContext('2d');
+			const g = ctx.createLinearGradient(0, 0, 0, 128);
+			g.addColorStop(0, '#9fb4d0'); g.addColorStop(0.48, '#e8ecf0'); g.addColorStop(0.52, '#7a746e'); g.addColorStop(1, '#3a3632');
+			ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 128);
+			ctx.fillStyle = 'rgba(255,255,250,0.9)'; ctx.beginPath(); ctx.arc(80, 30, 9, 0, Math.PI * 2); ctx.fill();
+			const t = new THREE.CanvasTexture(canvas);
+			t.mapping = THREE.EquirectangularReflectionMapping;
+			if (!this.gamma() && THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+			const pm = new THREE.PMREMGenerator(this.renderer);
+			this.env = pm.fromEquirectangular(t).texture;
+			pm.dispose(); t.dispose();
+		} catch (err) { this.env = null; }
+	}
+	// the materials take the Render view's sky when there is one, ours otherwise
+	litMaterials() { return [this.surface_mat, this.drops && this.drops.material, ...this.decals.map(d => d.mesh.material), ...this.bodyLit()].filter(Boolean); }
+	bodyLit() { const out = []; for (const o of this.overlays) for (const ov of o.overlays) if (ov.meshes) out.push(ov.meshes[1].material); return out; }
+	updateLook() {
+		const want = this.root && this.root.environment ? null : this.env;
+		for (const m of this.litMaterials()) if (m.envMap !== want) { m.envMap = want; m.needsUpdate = true; }
 	}
 
-	// a dab of blood on the ground (blood_canvas.gd dab) or, for a pool that is not on the ground, its decal
+	// ---- the world maps (blood_canvas.gd) and the surfaces that read them ----
+	makeMaps() {
+		this.maps = [];
+		const type = THREE.HalfFloatType || THREE.FloatType;
+		const sizes = [[BV_RES, BV_RES], [BV_RES, BV_WALL_RES], [BV_RES, BV_WALL_RES]];
+		if (this.renderer && THREE.WebGLRenderTarget) {
+			this.dab_geo = new THREE.PlaneGeometry(1, 1);
+			for (const [w, h] of sizes) {
+				const target = new THREE.WebGLRenderTarget(w, h, {type, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter});
+				this.maps.push({target, w, h, scene: new THREE.Scene(), cam: new THREE.OrthographicCamera(0, w, h, 0, -10, 10), queue: [], meshes: [], cleared: false});
+			}
+		}
+		const blank = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
+		blank.needsUpdate = true;
+		this.blank = blank;
+		this.u = {
+			bv_floor: {value: this.maps[0] ? this.maps[0].target.texture : blank}, bv_wall_x: {value: this.maps[1] ? this.maps[1].target.texture : blank}, bv_wall_z: {value: this.maps[2] ? this.maps[2].target.texture : blank},
+			bv_min: {value: new THREE.Vector2(this.area_min.x, this.area_min.z)}, bv_size: {value: BV_AREA}, bv_wall: {value: new THREE.Vector2(this.wall_y0, BV_WALL_H)}, bv_time: {value: 0},
+			bv_gamma: {value: this.gamma() ? 1 : 0},
+		};
+		this.surface_mat = this.surfaceMaterial();
+		// the ground of the Physics tab (it may have no element of its own): a sheet that reads the floor map
+		const geo = new THREE.PlaneGeometry(BV_AREA * SCALE, BV_AREA * SCALE);
+		geo.rotateX(-Math.PI / 2);
+		this.floor = new THREE.Mesh(geo, this.surface_mat);
+		this.floor.position.set((this.area_min.x + BV_AREA / 2) * SCALE, (this.ground || 0) * SCALE + 0.01, (this.area_min.z + BV_AREA / 2) * SCALE);
+		this.floor.renderOrder = 2;
+		this.floor.frustumCulled = false;
+		this.floor.receiveShadow = true;
+		this.surface_group.add(this.floor);
+	}
+
+	// a lit material that is only the blood lying on a surface (blood_apply), laid over the surface itself
+	surfaceMaterial() {
+		const m = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.5, metalness: 0, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, envMapIntensity: 0.35});
+		m.extensions = {derivatives: true};
+		const u = this.u;
+		m.onBeforeCompile = shader => {
+			Object.assign(shader.uniforms, u);
+			shader.vertexShader = shader.vertexShader
+				.replace('#include <common>', '#include <common>\nvarying vec3 vBW; varying vec3 vBN;')
+				.replace('#include <project_vertex>', `#include <project_vertex>
+					vec4 bv_w = modelMatrix * vec4(transformed, 1.0);
+					vBW = bv_w.xyz / ${SCALE.toFixed(1)};
+					vBN = normalize(mat3(modelMatrix) * objectNormal);`);
+			shader.fragmentShader = shader.fragmentShader
+				.replace('#include <common>', '#include <common>\nvarying vec3 vBW; varying vec3 vBN;\n' + BV_SURFACE)
+				.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+					{
+						vec3 b_albedo = vec3(0.0); float b_rough = 0.5; vec3 b_n = normal;
+						float b_cov = blood_apply(vBW, normalize(vBN), -vViewPosition, normal, b_albedo, b_rough, b_n);
+						if (b_cov <= 0.002) discard;
+						diffuseColor = vec4(b_albedo, b_cov);
+						roughnessFactor = b_rough;
+						normal = b_n;
+					}`);
+		};
+		m.customProgramCacheKey = () => 'ragdoll_blood_surface';
+		return m;
+	}
+
+	// the elements of the model that do not move: they get the blood of the maps on their faces
+	worldMeshes() {
+		const out = [];
+		if (typeof Cube == 'undefined') return out;
+		const people = new Set();
+		for (const bot of this.sim.people || []) for (const part of bot.parts || []) if (part.group) people.add(part.group);
+		const moving = node => { for (let n = node; n && n !== 'root'; n = n.parent) { if (people.has(n)) return true; if (n.physics && n.physics.type == 'dynamic') return true; } return false; };
+		for (const el of [...(Cube.all || []), ...((typeof Mesh != 'undefined' && Mesh.all) || [])]) {
+			if (!el.mesh || !el.mesh.geometry || el.visibility === false || moving(el)) continue;
+			out.push(el.mesh);
+		}
+		return out;
+	}
+
+	syncSurfaces(dt) {
+		this.surface_check -= dt;
+		if (this.surface_check <= 0) {
+			this.surface_check = 0.5;
+			const now = new Set(this.worldMeshes());
+			for (const [mesh, ov] of this.surfaces) if (!now.has(mesh)) { this.surface_group.remove(ov); this.surfaces.delete(mesh); }
+			for (const mesh of now) {
+				if (this.surfaces.has(mesh)) continue;
+				const ov = new THREE.Mesh(mesh.geometry, this.surface_mat);
+				ov.matrixAutoUpdate = false;
+				ov.renderOrder = 2;
+				ov.receiveShadow = true;
+				ov.frustumCulled = false;
+				this.surface_group.add(ov);
+				this.surfaces.set(mesh, ov);
+			}
+		}
+		for (const [mesh, ov] of this.surfaces) {
+			if (ov.geometry !== mesh.geometry) ov.geometry = mesh.geometry;   // Blockbench rebuilt it
+			ov.matrix.copy(mesh.matrixWorld);
+			ov.matrixWorldNeedsUpdate = true;
+			ov.visible = mesh.visible !== false;
+		}
+	}
+
+	covers(p) { return p.x > this.area_min.x && p.z > this.area_min.z && p.x < this.area_min.x + BV_AREA && p.z < this.area_min.z + BV_AREA; }
+
+	// a dab of blood on the level (blood_canvas.gd dab). What the maps cannot hold becomes a decal. Returns true when painted.
 	dab(p, n, along, w, l, kind, variant, thick, alpha, pool) {
-		const u = (p.x - this.area_min.x) * BV_PPM, v = (p.z - this.area_min.z) * BV_PPM;
-		const on_map = this.target && u >= 0 && v >= 0 && u <= BV_RES && v <= BV_RES;
-		// a pool that is not on the map (on a chair, far off): its one decal, made bigger as it spreads
-		if (pool && (!pool.on_ground || !on_map)) { this.poolDecal(pool, p, n, along, w, l, kind, variant); return; }
-		if (!this.target) return;
-		if (!on_map) { this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time); return; }
-		const dir = [along.x, along.z];
+		const m = bloodMapFor(n);
+		let uv, dir, depth, v0;
+		if (m == BV_FLOOR) { uv = [p.x - this.area_min.x, p.z - this.area_min.z]; dir = [along.x, along.z]; depth = p.y; }
+		else if (m == BV_WALL_X) { uv = [p.z - this.area_min.z, p.y - this.wall_y0]; dir = [along.z, along.y]; depth = p.x; }
+		else if (m == BV_WALL_Z) { uv = [p.x - this.area_min.x, p.y - this.wall_y0]; dir = [along.x, along.y]; depth = p.z; }
+		const map = m >= 0 ? this.maps[m] : null;
+		const on_map = map && this.covers(p) && uv[1] >= 0 && uv[1] * BV_PPM <= map.h;
+		if (!on_map) {
+			if (pool) this.poolDecal(pool, p, n, along, w, l, kind, variant);
+			else this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time);
+			return false;
+		}
 		const angle = Math.hypot(dir[0], dir[1]) > 1e-4 ? Math.atan2(-dir[0], dir[1]) : brand() * Math.PI * 2;
-		this.queue.push({u, v, w: w * BV_PPM, l: l * BV_PPM, angle, tex: this.tex(kind, variant, 'mask'), data: [clamp(thick, 0, 1), 0.5, (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha]});
+		map.queue.push({u: uv[0] * BV_PPM, v: uv[1] * BV_PPM, w: w * BV_PPM, l: l * BV_PPM, angle, tex: this.tex(kind, variant, 'mask'),
+			data: [clamp(thick, 0, 1), clamp((depth - BV_DEPTH_MIN) / BV_DEPTH_RANGE, 0, 1), (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha]});
+		return true;
 	}
 
 	flushDabs() {
-		if (!this.target || !this.renderer) { this.queue.length = 0; return; }
+		if (!this.renderer) return;
 		const r = this.renderer;
-		const prev = r.getRenderTarget(), auto = r.autoClear;
-		if (!this.cleared) { r.setRenderTarget(this.target); r.setClearColor(0x000000, 0); r.clear(true, false, false); this.cleared = true; }
-		while (this.queue.length) {
-			const batch = this.queue.splice(0, 256);
-			while (this.dab_meshes.length < batch.length) {
-				const m = new THREE.Mesh(this.dab_geo, new THREE.ShaderMaterial({
-					uniforms: {map: {value: null}, data: {value: new THREE.Vector4()}},
-					vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-					fragmentShader: 'uniform sampler2D map; uniform vec4 data; varying vec2 vUv; void main() { vec4 m = texture2D(map, vUv); gl_FragColor = vec4(data.r * m.r, data.g, data.b, m.a * data.a); }',
-					transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending,
-					blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
-				}));
-				m.frustumCulled = false;
-				this.dab_meshes.push(m);
-				this.paint_scene.add(m);
+		for (const map of this.maps) {
+			if (!map.queue.length && map.cleared) continue;
+			const prev = r.getRenderTarget(), auto = r.autoClear;
+			try {
+				if (!map.cleared) { r.setRenderTarget(map.target); r.setClearColor(0x000000, 0); r.clear(true, false, false); map.cleared = true; }
+				while (map.queue.length) {
+					const batch = map.queue.splice(0, 256);
+					while (map.meshes.length < batch.length) {
+						const mesh = new THREE.Mesh(this.dab_geo, new THREE.ShaderMaterial({
+							uniforms: {map: {value: null}, data: {value: new THREE.Vector4()}},
+							vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+							fragmentShader: 'uniform sampler2D map; uniform vec4 data; varying vec2 vUv; void main() { vec4 m = texture2D(map, vUv); gl_FragColor = vec4(data.r * m.r, data.g, data.b, m.a * data.a); }',
+							transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending,
+							blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+						}));
+						mesh.frustumCulled = false;
+						map.meshes.push(mesh);
+						map.scene.add(mesh);
+					}
+					map.meshes.forEach((mesh, i) => {
+						const d = batch[i];
+						mesh.visible = !!d;
+						if (!d) return;
+						mesh.position.set(d.u, d.v, 0);
+						mesh.rotation.set(0, 0, d.angle);
+						mesh.scale.set(d.w, d.l, 1);
+						mesh.renderOrder = i;
+						mesh.material.uniforms.map.value = d.tex;
+						mesh.material.uniforms.data.value.set(...d.data);
+					});
+					r.setRenderTarget(map.target);
+					r.autoClear = false;
+					r.render(map.scene, map.cam);
+				}
+			} finally {
+				r.autoClear = auto;
+				r.setRenderTarget(prev);
 			}
-			this.dab_meshes.forEach((m, i) => {
-				const d = batch[i];
-				m.visible = !!d;
-				if (!d) return;
-				m.position.set(d.u, d.v, 0);
-				m.rotation.set(0, 0, d.angle);
-				m.scale.set(d.w, d.l, 1);
-				m.renderOrder = i;
-				m.material.uniforms.map.value = d.tex;
-				m.material.uniforms.data.value.set(...d.data);
-			});
-			r.setRenderTarget(this.target);
-			r.autoClear = false;
-			r.render(this.paint_scene, this.paint_cam);
 		}
-		r.autoClear = auto;
-		r.setRenderTarget(prev);
 	}
 
-	// ---- decals: flat stains lying on what they landed on (a moving thing carries them) ----
+	// ---- decals: projected onto what they landed on (a moving thing carries them), lit, with a normal map ----
+	// the element mesh under p (metres) along -n, or null
+	surfaceAt(p, n) {
+		if (typeof Cube == 'undefined' || !THREE.Raycaster) return null;
+		if (!this.ray_list || this.ray_age-- <= 0) {
+			const people = new Set();
+			for (const bot of this.sim.people || []) for (const part of bot.parts || []) if (part.group) people.add(part.group);
+			const ofPerson = node => { for (let x = node; x && x !== 'root'; x = x.parent) if (people.has(x)) return true; return false; };
+			this.ray_list = [...(Cube.all || []), ...((typeof Mesh != 'undefined' && Mesh.all) || [])].filter(el => el.mesh && el.mesh.geometry && !ofPerson(el)).map(el => el.mesh);
+			this.ray_age = 30;
+		}
+		const ray = this.raycaster || (this.raycaster = new THREE.Raycaster());
+		const o = p.clone().addScaledVector(n, 0.12).multiplyScalar(SCALE);
+		ray.set(o, n.clone().negate().normalize());
+		ray.far = 0.3 * SCALE;
+		const hits = ray.intersectObjects(this.ray_list, false);
+		return hits.length ? hits[0] : null;
+	}
+
+	decalMaterial() {
+		const m = new THREE.MeshStandardMaterial({transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.07, metalness: 0, envMapIntensity: 0.4});
+		m.envMap = this.root && this.root.environment ? null : this.env;
+		return m;
+	}
+
 	decal(entry, p, n, along, w, l, kind, variant, alpha, birth) {
 		let d;
 		if (this.decals.length < BV_MAX_DECALS) {
-			d = {mesh: new THREE.Mesh(this.decalGeo(), new THREE.MeshBasicMaterial({transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4}))};
+			d = {mesh: new THREE.Mesh(this.decalGeo(), this.decalMaterial())};
 			d.mesh.renderOrder = 3;
-			this.group.add(d.mesh);
+			d.mesh.matrixAutoUpdate = false;
+			this.surface_group.add(d.mesh);
 			this.decals.push(d);
 		} else {
 			// the least important of the next few: small and old goes first
@@ -3779,22 +4285,58 @@ class BloodView {
 			this.decal_next = (this.decal_next + 24) % BV_MAX_DECALS;
 			d = this.decals[pick];
 		}
-		const q = decalBasis(n, along);
-		d.mesh.material.map = this.tex(kind, variant, 'albedo');
-		d.mesh.material.needsUpdate = true;
-		d.mesh.material.opacity = alpha;
-		d.mesh.material.color.set(0xffffff);
-		d.birth = birth; d.prio = w * l; d.entry = entry || null;
-		d.mesh.quaternion.copy(q);
-		d.mesh.position.copy(p).addScaledVector(n, 0.002);
-		d.mesh.scale.set(w, 1, l);
-		if (entry) {
-			// kept in the moving thing's own frame
-			const bp = entry.body.GetPosition(), br = entry.body.GetRotation();
-			const bm = new THREE.Matrix4().compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1));
-			d.local = bm.invert().multiply(new THREE.Matrix4().compose(d.mesh.position, d.mesh.quaternion, d.mesh.scale));
-		} else d.local = null;
+		const mat = d.mesh.material;
+		mat.map = this.tex(kind, variant, 'albedo');
+		mat.normalMap = this.tex(kind, variant, 'normal');
+		mat.roughness = 0.07;
+		mat.opacity = alpha;
+		mat.color.set(0xffffff);
+		mat.needsUpdate = true;
+		d.birth = birth; d.prio = w * l; d.dry = false;
+		if (d.mesh.geometry !== this.decal_geo) d.mesh.geometry.dispose();
+		const hit = this.surfaceAt(p, n);
+		if (hit && THREE.DecalGeometry) {
+			// projected onto the object it landed on (Godot's Decal): x across, y along, z out of the surface
+			const nn = n.clone().normalize();
+			let y = along.clone().addScaledVector(nn, -nn.dot(along));
+			if (y.length() < 1e-4) y = anyTangent(nn);
+			y.normalize();
+			const x = y.clone().cross(nn);
+			const rot = new THREE.Euler().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, nn));
+			const depth = clamp(Math.max(w, l) * 0.6, 0.05, 0.2);
+			const target = hit.object;
+			target.updateMatrixWorld(true);
+			const geo = facingOnly(new THREE.DecalGeometry(target, hit.point, rot, gv(w * SCALE, l * SCALE, depth * SCALE)), nn, 0.35);
+			geo.applyMatrix4(target.matrixWorld.clone().invert());   // kept in the object's own space: it goes where the object goes
+			d.mesh.geometry = geo;
+			d.target = target;
+			d.flat = null;
+		} else {
+			// nothing of the model there (the ground of the Physics tab off the maps, a body without elements): a flat stain
+			d.mesh.geometry = this.decalGeo();
+			d.target = null;
+			const q = decalBasis(n, along);
+			d.flat = new THREE.Matrix4().compose(p.clone().addScaledVector(n, 0.002).multiplyScalar(SCALE), q, gv(w * SCALE, 1, l * SCALE));
+			if (entry) {
+				// kept in the moving thing's own frame
+				const bp = entry.body.GetPosition(), br = entry.body.GetRotation();
+				const bm = new THREE.Matrix4().compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()).multiplyScalar(SCALE), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1));
+				d.local = bm.invert().multiply(d.flat);
+			} else d.local = null;
+		}
+		d.entry = entry || null;
+		this.placeDecal(d);
 		return d;
+	}
+
+	placeDecal(d) {
+		const M = d.mesh.matrix;
+		if (d.target) M.copy(d.target.matrixWorld);
+		else if (d.entry && d.local) {
+			const bp = d.entry.body.GetPosition(), br = d.entry.body.GetRotation();
+			M.compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()).multiplyScalar(SCALE), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1)).multiply(d.local);
+		} else if (d.flat) M.copy(d.flat);
+		d.mesh.matrixWorldNeedsUpdate = true;
 	}
 
 	decalGeo() {
@@ -3802,22 +4344,30 @@ class BloodView {
 		return this.decal_geo;
 	}
 
-	poolStarted(pool) { if (!pool.on_ground) this.pool_decals.delete(pool); }
+	poolStarted(pool) { this.pool_decals.delete(pool); }
 
 	poolDecal(pool, p, n, along, w, l, kind, variant) {
-		// a pool on something that is not the ground: its one decal, made bigger as it spreads
+		// a pool the maps cannot hold: its one decal, made again bigger as it spreads
 		let d = this.pool_decals.get(pool);
-		if (!d || this.decals.indexOf(d) < 0 || d.pool !== pool) { d = this.decal(null, pool.pos, n, along, w, l, kind, variant, 1, this.sim._time); d.pool = pool; this.pool_decals.set(pool, d); }
-		if (p.distanceTo(pool.pos) < 1e-6) { d.mesh.scale.set(w, 1, l); d.birth = this.sim._time; d.prio = w * l * 10; }
+		const grown = p.distanceTo(pool.pos) < 1e-6;
+		if (!d || this.decals.indexOf(d) < 0 || d.pool !== pool || (grown && (w > d.w * 1.15 || l > d.l * 1.15))) {
+			d = this.decal(null, pool.pos, n, along, w, l, kind, variant, 1, this.sim._time);
+			d.pool = pool; d.w = w; d.l = l;
+			this.pool_decals.set(pool, d);
+		}
+		if (grown) { d.birth = this.sim._time; d.prio = w * l * 10; }
 	}
 
-	// ---- drops: flat beads turned to the eye about their line of flight, stretched along it ----
+	// ---- drops: flat beads turned to the eye about their line of flight, stretched along it (blood.gd DROP_SHADER) ----
 	makeDrops() {
 		const geo = new THREE.PlaneGeometry(1, 1);
-		const mat = new THREE.ShaderMaterial({
-			vertexShader: `
-				varying vec2 vUv;
-				void main() {
+		const mat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.12, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 1});
+		const gamma = this.u.bv_gamma;
+		mat.onBeforeCompile = shader => {
+			shader.uniforms.bv_gamma = gamma;
+			shader.vertexShader = shader.vertexShader
+				.replace('#include <common>', '#include <common>\nvarying vec2 vBUv;')
+				.replace('#include <project_vertex>', `
 					mat4 M = modelMatrix * instanceMatrix;
 					vec3 centre = M[3].xyz; vec3 axis_v = M[1].xyz; float len = length(axis_v); float r = length(M[0].xyz);
 					vec3 axis = axis_v / max(len, 1e-5);
@@ -3825,22 +4375,23 @@ class BloodView {
 					vec3 side = cross(axis, to_eye);
 					side = length(side) > 1e-3 ? normalize(side) : normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
 					vec3 w = centre + side * position.x * 2.0 * r + axis * position.y * 2.0 * max(len, r);
-					vUv = uv;
-					gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
-				}`,
-			fragmentShader: `
-				varying vec2 vUv;
-				void main() {
-					vec2 d = vUv * 2.0 - 1.0; float q = dot(d, d);
-					if (q > 1.0) discard;
-					// a round wet bead: dark, glossy, the light glinting off it
-					vec3 albedo = vec3(0.14, 0.006, 0.005) * (1.0 - 0.4 * q);
-					vec3 nrm = normalize(vec3(d.x, -d.y, sqrt(max(1.0 - q, 0.0)) + 0.3));
-					float spec = pow(max(dot(nrm, normalize(vec3(-0.4, 0.6, 0.7))), 0.0), 40.0) * 0.6;
-					gl_FragColor = linearToOutputTexel(vec4(albedo * 2.2 + vec3(spec), 1.0));
-				}`,
-			side: THREE.DoubleSide,
-		});
+					vBUv = uv;
+					vec4 mvPosition = viewMatrix * vec4(w, 1.0);
+					gl_Position = projectionMatrix * mvPosition;`);
+			shader.fragmentShader = shader.fragmentShader
+				.replace('#include <common>', '#include <common>\nvarying vec2 vBUv; uniform float bv_gamma;')
+				.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+					{
+						vec2 d = vBUv * 2.0 - 1.0; float q = dot(d, d);
+						if (q > 1.0) discard;
+						// lit like anything else: a round wet bead, the normal bulging towards the eye, glossy
+						diffuseColor.rgb = vec3(0.14, 0.006, 0.005) * (1.0 - 0.4 * q);
+						if (bv_gamma > 0.5) diffuseColor.rgb = pow(diffuseColor.rgb, vec3(0.4545));
+						normal = normalize(vec3(d.x, -d.y, sqrt(max(1.0 - q, 0.0)) + 0.3));
+					}`);
+		};
+		mat.customProgramCacheKey = () => 'ragdoll_blood_drop';
+		mat.envMap = this.env;
 		this.drops = new THREE.InstancedMesh(geo, mat, B_MAX_DROPS);
 		this.drops.count = 0;
 		this.drops.frustumCulled = false;
@@ -3972,7 +4523,7 @@ class BloodView {
 		}
 	}
 
-	// ---- on the people: their blood volume over their clothes and skin ----
+	// ---- on the people: their blood volume over their clothes and skin (body_blood.gdshaderinc) ----
 	makeBodies() {
 		if (!THREE.DataTexture3D) return;
 		for (const bot of this.sim.people) {
@@ -3987,45 +4538,78 @@ class BloodView {
 		}
 	}
 
+	// body_blood(): albedo = mix(albedo * stain, bc, a2) - drawn as two layers over what is there: the stain multiplied
+	// into it (pass 0), then the blood itself, lit, on top (pass 1)
 	bodyMaterial(bot, rest, pass) {
 		const bb = bot.body_blood;
-		const u = {vol: {value: null}, vol_min: {value: bb.box_min.clone()}, vol_size: {value: gv(bb.dims[0], bb.dims[1], bb.dims[2]).multiplyScalar(bb.cell)}, time: {value: 0}, rest: {value: rest}};
-		return new THREE.ShaderMaterial({
-			uniforms: u,
-			vertexShader: 'uniform mat4 rest; varying vec3 rp; void main() { rp = (rest * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-			fragmentShader: `
-				precision highp sampler3D;
-				uniform sampler3D vol; uniform vec3 vol_min; uniform vec3 vol_size; uniform float time; varying vec3 rp;
-				float h3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
-				float n3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-					return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
-						mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
-				void main() {
-					vec3 uvw = (rp - vol_min) / vol_size;
-					if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) discard;
-					vec2 s = texture(vol, uvw).rg;
-					float nz = n3(rp * 60.0) * 0.6 + n3(rp * 170.0) * 0.4;
-					float amt = s.r + (nz - 0.5) * 0.12 * (1.0 - s.r);
-					if (amt < 0.03) discard;
-					float age = mod(time - s.g * 255.0, 256.0);
-					float dry = clamp(age / 140.0, 0.0, 1.0);
-					float film = smoothstep(0.03, 0.3, amt);
-					float solid = smoothstep(0.3, 0.7, amt);
-					vec3 wet_col = mix(vec3(0.2, 0.012, 0.01), vec3(0.09, 0.004, 0.003), solid);
-					vec3 dry_col = mix(vec3(0.12, 0.035, 0.025), vec3(0.05, 0.015, 0.01), solid);
-					vec3 bc = mix(wet_col, dry_col, pow(dry, 0.7));
-					bc *= 0.7 + 0.6 * nz * (0.5 + 0.5 * solid);
-					float a2 = solid * 0.95 + film * 0.25;
-					vec3 tint = mix(vec3(1.0), vec3(0.55, 0.12, 0.1), film);
-					${pass == 0
-						// first: what is under it, stained and covered (multiplied)
-						? 'gl_FragColor = vec4(tint * (1.0 - a2), 1.0);'
-						// then the blood itself on top (added)
-						: 'gl_FragColor = vec4(linearToOutputTexel(vec4(bc * 2.0, 1.0)).rgb * a2, 1.0);'}
-				}`,
-			transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-			blending: pass == 0 ? THREE.MultiplyBlending : THREE.AdditiveBlending, premultipliedAlpha: pass == 0,
-		});
+		const u = {vol: {value: null}, vol_min: {value: bb.box_min.clone()}, vol_size: {value: gv(bb.dims[0], bb.dims[1], bb.dims[2]).multiplyScalar(bb.cell)}, time: {value: 0}, rest: {value: rest}, bv_gamma: this.u.bv_gamma};
+		const head = `
+			precision highp sampler3D;
+			uniform float bv_gamma;
+			uniform sampler3D vol; uniform vec3 vol_min; uniform vec3 vol_size; uniform float time; varying vec3 rp;
+			float h3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+			float n3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+				return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+					mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
+			// x: how much covers it (a2), yzw: the blood's colour; out: tint (the stain), rough
+			vec4 body_blood(out vec3 tint, out float rough) {
+				tint = vec3(1.0); rough = 0.9;
+				vec3 uvw = (rp - vol_min) / vol_size;
+				if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) return vec4(0.0);
+				vec2 s = texture(vol, uvw).rg;
+				float nz = n3(rp * 60.0) * 0.6 + n3(rp * 170.0) * 0.4;
+				float amt = s.r + (nz - 0.5) * 0.12 * (1.0 - s.r);
+				if (amt < 0.03) return vec4(0.0);
+				float age = mod(time - s.g * 255.0, 256.0);
+				float dry = clamp(age / 140.0, 0.0, 1.0);
+				float film = smoothstep(0.03, 0.3, amt);
+				float solid = smoothstep(0.3, 0.7, amt);
+				vec3 wet_col = mix(vec3(0.2, 0.012, 0.01), vec3(0.09, 0.004, 0.003), solid);
+				vec3 dry_col = mix(vec3(0.12, 0.035, 0.025), vec3(0.05, 0.015, 0.01), solid);
+				vec3 bc = mix(wet_col, dry_col, pow(dry, 0.7));
+				bc *= 0.7 + 0.6 * nz * (0.5 + 0.5 * solid);
+				tint = mix(vec3(1.0), vec3(0.55, 0.12, 0.1), film);
+				if (bv_gamma > 0.5) { tint = pow(tint, vec3(0.4545)); bc = pow(bc, vec3(0.4545)); }
+				rough = mix(0.12, 0.75, dry);
+				return vec4(solid * 0.95 + film * 0.25, bc);
+			}`;
+		if (pass == 0) {
+			return new THREE.ShaderMaterial({
+				uniforms: u,
+				vertexShader: 'uniform mat4 rest; varying vec3 rp; void main() { rp = (rest * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+				fragmentShader: head + `
+					void main() {
+						vec3 tint; float rough; vec4 b = body_blood(tint, rough);
+						if (b.x <= 0.0) discard;
+						gl_FragColor = vec4(tint * (1.0 - b.x), 1.0);
+					}`,
+				transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+				blending: THREE.MultiplyBlending, premultipliedAlpha: true,
+			});
+		}
+		const m = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.5, metalness: 0, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+			blending: THREE.AdditiveBlending, envMapIntensity: 0.35});
+		m.envMap = this.root && this.root.environment ? null : this.env;
+		m.onBeforeCompile = shader => {
+			Object.assign(shader.uniforms, u);
+			shader.vertexShader = shader.vertexShader
+				.replace('#include <common>', '#include <common>\nuniform mat4 rest; varying vec3 rp;')
+				.replace('#include <project_vertex>', '#include <project_vertex>\nrp = (rest * vec4(transformed, 1.0)).xyz;');
+			shader.fragmentShader = shader.fragmentShader
+				.replace('#include <common>', '#include <common>\n' + head)
+				.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+					{
+						vec3 tint; float rough; vec4 b = body_blood(tint, rough);
+						if (b.x <= 0.0) discard;
+						diffuseColor = vec4(b.yzw, b.x);
+						roughnessFactor = rough;
+					}`)
+				// added on top of the stained cloth: its share of the light, weighted by how much of it there is
+				.replace('#include <output_fragment>', 'gl_FragColor = vec4(outgoingLight * diffuseColor.a, 1.0);');
+		};
+		m.customProgramCacheKey = () => 'ragdoll_body_blood';
+		m.userData.u = u;
+		return m;
 	}
 
 	updateBodies(dt) {
@@ -4063,15 +4647,19 @@ class BloodView {
 					});
 				}
 			}
-			for (const ov of o.overlays) for (const m of ov.meshes || []) { m.material.uniforms.vol.value = o.tex; m.material.uniforms.time.value = this.sim._time % 256; }
+			for (const ov of o.overlays) for (const m of ov.meshes || []) {
+				const uni = m.material.uniforms || m.material.userData.u;
+				uni.vol.value = o.tex; uni.time.value = this.sim._time % 256;
+			}
 		}
 	}
-
 	// ---- every frame ----
 	update(dt) {
 		this.time = this.sim._time;
-		if (this.floor) this.floor.material.uniforms.time.value = this.sim._time % BV_TIME_SPAN;
+		this.u.bv_time.value = this.sim._time % BV_TIME_SPAN;
 		this.flushDabs();
+		this.syncSurfaces(dt);
+		this.updateLook();
 		this.drawDrops(this.sim._since_sim);
 		for (const s of this.splashes) {
 			if (s.dur <= 0) continue;
@@ -4081,32 +4669,32 @@ class BloodView {
 			s.mesh.material.uniforms.k.value = k;
 		}
 		this.updateMist(dt);
-		// decals: carried by what they are on, and drying (colour to dark brown)
-		for (const d of this.decals) {
-			if (d.entry && d.local) {
-				const bp = d.entry.body.GetPosition(), br = d.entry.body.GetRotation();
-				const m = new THREE.Matrix4().compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1)).multiply(d.local);
-				m.decompose(d.mesh.position, d.mesh.quaternion, d.mesh.scale);
-			}
-		}
+		// decals: carried by what they are on, and drying (darker, then matt)
+		for (const d of this.decals) if (d.target || d.entry) this.placeDecal(d);
 		const budget = Math.min(40, this.decals.length);
 		for (let k = 0; k < budget; k++) {
 			this.dry_cursor = ((this.dry_cursor || 0) + 1) % this.decals.length;
 			const d = this.decals[this.dry_cursor];
 			const k_dry = clamp((this.sim._time - d.birth) / B_DRY_TIME, 0, 1);
-			d.mesh.material.color.setRGB(1, 1, 1).lerp(new THREE.Color(...BV_DRY_COLOR), Math.pow(k_dry, 0.7));
+			d.mesh.material.color.setRGB(1, 1, 1).lerp(this.dry_color || (this.dry_color = this.gamma() ? new THREE.Color(...BV_DRY_COLOR) : new THREE.Color(...BV_DRY_COLOR).convertSRGBToLinear()), Math.pow(k_dry, 0.7));
+			const dry = k_dry > 0.6;
+			if (dry != d.dry) { d.dry = dry; d.mesh.material.roughness = dry ? 0.62 : 0.07; }
 		}
 		this.updateBodies(dt);
 	}
 
 	dispose() {
-		if (this.group.parent) this.group.parent.remove(this.group);
-		this.group.traverse(o => { if (o.geometry && o.geometry !== this.decal_geo) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+		for (const g of [this.group, this.surface_group]) if (g.parent) g.parent.remove(g);
+		const geos = new Set(), mats = new Set(), theirs = new Set([...this.surfaces.values()].map(ov => ov.geometry));
+		for (const g of [this.group, this.surface_group]) g.traverse(o => { if (o.geometry && o.geometry !== this.decal_geo && !theirs.has(o.geometry)) geos.add(o.geometry); if (o.material) mats.add(o.material); });
+		geos.forEach(g => g.dispose());
+		mats.forEach(m => m.dispose());
 		if (this.decal_geo) this.decal_geo.dispose();
 		for (const o of this.overlays) { for (const ov of o.overlays) for (const m of ov.meshes || []) { if (m.parent) m.parent.remove(m); m.material.dispose(); } if (o.tex) o.tex.dispose(); }
-		if (this.target) this.target.dispose();
-		for (const m of this.dab_meshes || []) m.material.dispose();
+		for (const map of this.maps || []) { map.target.dispose(); for (const m of map.meshes) m.material.dispose(); }
 		if (this.dab_geo) this.dab_geo.dispose();
+		if (this.blank) this.blank.dispose();
+		if (this.env) this.env.dispose();
 		for (const k in this.textures) this.textures[k].dispose();
 		if (this.splash_tex) this.splash_tex.dispose();
 	}
@@ -4120,6 +4708,30 @@ function decalBasis(n, along) {
 	z.normalize();
 	const x = y.clone().cross(z);
 	return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+}
+
+// the faces of a projected decal that look towards it (Godot's normal_fade): the sides it grazes would only show its texture
+// smeared across them
+function facingOnly(geo, n, min) {
+	const pos = geo.attributes.position, nrm = geo.attributes.normal, uv = geo.attributes.uv;
+	if (!pos || !nrm) return geo;
+	const keep = {p: [], n: [], u: []}, a = new THREE.Vector3();
+	for (let i = 0; i + 2 < pos.count; i += 3) {
+		a.set(0, 0, 0);
+		for (let k = 0; k < 3; k++) a.x += nrm.getX(i + k), a.y += nrm.getY(i + k), a.z += nrm.getZ(i + k);
+		if (a.normalize().dot(n) < min) continue;
+		for (let k = 0; k < 3; k++) {
+			keep.p.push(pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k));
+			keep.n.push(nrm.getX(i + k), nrm.getY(i + k), nrm.getZ(i + k));
+			if (uv) keep.u.push(uv.getX(i + k), uv.getY(i + k));
+		}
+	}
+	const out = new THREE.BufferGeometry();
+	out.setAttribute('position', new THREE.Float32BufferAttribute(keep.p, 3));
+	out.setAttribute('normal', new THREE.Float32BufferAttribute(keep.n, 3));
+	if (uv) out.setAttribute('uv', new THREE.Float32BufferAttribute(keep.u, 2));
+	geo.dispose();
+	return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -6605,7 +7217,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.9.1',
+	version: '0.9.2',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
