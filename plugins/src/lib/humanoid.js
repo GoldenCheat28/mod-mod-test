@@ -115,6 +115,9 @@ class Humanoid {
 		this.is_humanoid = true;
 		// --- Control inputs (no mind here: standing where he was put, looking ahead) ---
 		this.move_velocity = gv();
+		this.heading = null;        // where he faces while he walks a route (null: the way he was put)
+		this.route = null;          // {points (metres, world), speed, mode, kill_at}: set by the ragdoll runtime
+		this._route_s = 0; this._route_dir = 1; this._route_done = false;
 		this.posture = POSTURES.includes(this.s.posture) || this.s.posture == 'custom' ? this.s.posture : 'stand';
 		this.clutch_part = '';
 		this.has_look_target = false;
@@ -380,6 +383,7 @@ class Humanoid {
 		this._time += dt;
 		this._update_health(dt);
 		this._update_state(dt);
+		this._follow_route(dt);
 		this._compose_pose(dt);
 		this._apply_muscles();
 		if (this.support > 0.001) this._apply_balance();
@@ -663,7 +667,71 @@ class Humanoid {
 		}
 	}
 
+	// ---- Walking a route: a smooth curve through the points; he heads for a spot a little ahead of where he is on it,
+	// turning at a person's pace. Knocked down he stops; back on his feet he goes on from where he is ----
+	_route_curve() {
+		const r = this.route;
+		if (r._curve) return r._curve;
+		const pts = r.points.map(p => gv(p[0], p[1], p[2]));
+		const closed = r.mode == 'loop' && pts.length > 2;
+		const curve = new THREE.CatmullRomCurve3(pts, closed, 'centripetal');
+		const n = Math.max(16, pts.length * 24), samples = curve.getSpacedPoints(n);
+		const lengths = [0];
+		for (let i = 1; i < samples.length; i++) lengths.push(lengths[i - 1] + Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z));
+		r._curve = {samples, lengths, total: lengths[lengths.length - 1], closed};
+		return r._curve;
+	}
+	_route_point(s) {
+		const c = this._route_curve();
+		if (c.closed) s = ((s % c.total) + c.total) % c.total; else s = clamp(s, 0, c.total);
+		let i = 1;
+		while (i < c.lengths.length - 1 && c.lengths[i] < s) i++;
+		const a = c.samples[i - 1], b = c.samples[i], f = (s - c.lengths[i - 1]) / Math.max(1e-6, c.lengths[i] - c.lengths[i - 1]);
+		return a.clone().lerp(b, clamp(f, 0, 1));
+	}
+	_follow_route(dt) {
+		const r = this.route;
+		if (!r || !r.points || r.points.length < 2) return;
+		if (r.kill_at > 0 && this.time >= r.kill_at && !this._route_killed) {
+			this._route_killed = true;
+			if (r.kill_kind == 'faint') { this.wake(); this.conscious = false; this.move_velocity = gv(); this._start_death_curve('faint'); }
+			else this._die(r.kill_kind || 'heart');
+			return;
+		}
+		if (!this.alive || !this.conscious || this.fallen || this._held_pose || this.posture != 'stand') { this.move_velocity = gv(); return; }
+		if (this.time < (r.start || 0)) { this.move_velocity = gv(); return; }
+		const c = this._route_curve(), s = this.scale_factor;
+		const here = this.pos(this.pelvis);
+		// where he is on the curve: the nearest spot not far from the last one (so a crossing curve is not cut short)
+		let best = this._route_s, best_d = Infinity;
+		for (let k = -12; k <= 30; k++) {
+			const q = this._route_s + k * 0.1 * this._route_dir;
+			if (!c.closed && (q < 0 || q > c.total)) continue;
+			const p = this._route_point(q), d = Math.hypot(p.x - here.x, p.z - here.z);
+			if (d < best_d) { best_d = d; best = q; }
+		}
+		this._route_s = best;
+		let remaining = this._route_dir > 0 ? c.total - best : best;
+		if (!c.closed && remaining < 0.15 * s) {
+			if (r.mode == 'pingpong') { this._route_dir *= -1; remaining = c.total; }
+			else { this._route_done = true; this.move_velocity = gv(); return; }
+		}
+		const ahead = this._route_point(best + this._route_dir * 0.7 * s);
+		const to = gv(ahead.x - here.x, 0, ahead.z - here.z);
+		if (to.lengthSq() < 1e-6) { this.move_velocity = gv(); return; }
+		to.normalize();
+		// turning at a walking pace (about 130 degrees a second)
+		const cur = this.facing();
+		const angle = Math.atan2(cur.x * to.z - cur.z * to.x, cur.dot(to)), turn = clamp(angle, -2.3 * dt, 2.3 * dt);
+		this.heading = cur.applyAxisAngle(gv(0, 1, 0), -turn).normalize();
+		// slowing down to stop at the end of an open route; walking off at the heading he has (no side steps)
+		const ease = c.closed || r.mode == 'pingpong' ? 1 : clamp(remaining / (0.8 * s), 0.25, 1);
+		const speed = r.speed * s * this.mobility() * ease * clamp(1 - Math.abs(angle) / 2.2, 0.35, 1);
+		this.move_velocity = to.clone().lerp(this.heading, 0.5).normalize().multiplyScalar(speed);
+	}
+
 	facing() {
+		if (this.heading) return this.heading.clone();
 		const f = gv(0, 0, -1).applyQuaternion(this.rest_rot);
 		f.y = 0;
 		return f.lengthSq() > 1e-6 ? f.normalize() : gv(0, 0, -1);

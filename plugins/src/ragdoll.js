@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -781,7 +781,7 @@ const physicsHook = {
 			try {
 				// a person of the Blood project (its 15 body parts are all there): the game's body, muscles and mind
 				const bones = bonesOf(root);
-				if (ragdollOf(root).npc && hasHumanoidParts(bones)) list.push(new Humanoid(rt, root, bones));
+				if (ragdollOf(root).npc && hasHumanoidParts(bones)) { const h = new Humanoid(rt, root, bones); h.route = routeFor(root); list.push(h); }
 				else list.push(new RagdollRuntime(rt, root));
 			} catch (err) { console.warn('[Ragdoll]', root.name, err); }
 		}
@@ -1346,6 +1346,11 @@ const TEXTS = {
 		bone: 'Selected bone', joint: 'Joint', j_ball: 'Ball (shoulder, hip, neck)', j_hinge: 'Hinge (elbow, knee)', j_fixed: 'Stiff',
 		swing: 'Swing (°)', twist: 'Twist (±°)', axis: 'Hinge axis', hmin: 'Hinge from (°)', hmax: 'Hinge to (°)', strength: 'Muscle strength', zone: 'Zone',
 		z_auto: 'Automatic', z_head: 'Head', z_torso: 'Torso', z_arms: 'Arms', z_legs: 'Legs', z_any: 'Any',
+		route: 'Route', route_add: '+ Route (walks along a curve)', route_npc_only: 'Only the person of the Blood project (NPC) can walk: tick "Alive (NPC)" for the character', route_pts: 'points', route_point_add: '+ Point',
+		route_speed: 'Speed (m/s)', route_speed_tip: '1.3 a walk, 2.5 a jog, 4 a run', route_start: 'Sets off at (s)', route_mode: 'At the end', rm_once: 'Stops', rm_loop: 'Goes round (closed loop)', rm_pingpong: 'Turns back',
+		route_hint: 'The points are empty groups: move them with the Move tool (click a green ball to pick it). Shoot him anywhere on the way; knocked down he stops, back up he walks on.',
+		kill_at: 'Dies at (s, 0 = no)', kill_at_tip: 'He dies at this moment of the simulation wherever he is', kill_kind: 'How', kk_heart: 'Collapses (heart)', kk_head: 'Drops dead (head shot)', kk_faint: 'Faints',
+		route_name: 'Route', route_point: 'Point', msg_select_char: 'Select a character first',
 		model: 'Model', model_npc: 'Blood NPC (from the Godot project)', model_mannequin: 'Plain mannequin',
 		save_model: 'Save this ragdoll as a model', save_model_tip: 'The selected character (skeleton, joints, muscles, settings and its model: cubes, meshes, textures) goes into this list and can be added again in any project. Put your own model on the skeleton and save it: only the model changes, the pose and the rest work as before.',
 		save_model_name: 'Name of the model', delete_model: 'Delete the saved model', delete_model_q: 'Delete the saved model "%"?', cancel: 'Cancel', pose_saved: 'As saved',
@@ -1391,6 +1396,11 @@ const TEXTS = {
 		bone: 'Выбранная кость', joint: 'Сустав', j_ball: 'Шаровой (плечо, бедро, шея)', j_hinge: 'Шарнир (локоть, колено)', j_fixed: 'Жёсткий',
 		swing: 'Отклонение (°)', twist: 'Кручение (±°)', axis: 'Ось шарнира', hmin: 'Шарнир от (°)', hmax: 'Шарнир до (°)', strength: 'Сила мышцы', zone: 'Зона',
 		z_auto: 'Автоматически', z_head: 'Голова', z_torso: 'Торс', z_arms: 'Руки', z_legs: 'Ноги', z_any: 'Любая',
+		route: 'Маршрут', route_add: '+ Маршрут (идёт по кривой)', route_npc_only: 'Ходить умеет только человек из Blood (NPC): включите у персонажа «Живой (NPC)»', route_pts: 'точек', route_point_add: '+ Точка',
+		route_speed: 'Скорость (м/с)', route_speed_tip: '1.3 — шаг, 2.5 — трусца, 4 — бег', route_start: 'Выходит в (с)', route_mode: 'В конце', rm_once: 'Останавливается', rm_loop: 'Идёт по кругу (замкнутый)', rm_pingpong: 'Поворачивает обратно',
+		route_hint: 'Точки — пустые группы: двигайте их «Перемещением» (клик по зелёному шару выбирает точку). Стреляйте в него в любой момент пути; сбитый — останавливается, поднявшись — идёт дальше.',
+		kill_at: 'Умирает в (с, 0 — нет)', kill_at_tip: 'В этот момент симуляции он умирает, где бы ни был', kill_kind: 'Как', kk_heart: 'Оседает (сердце)', kk_head: 'Падает замертво (в голову)', kk_faint: 'Теряет сознание',
+		route_name: 'Маршрут', route_point: 'Точка', msg_select_char: 'Сначала выделите персонажа',
 		model: 'Модель', model_npc: 'NPC из Blood (Godot-проект)', model_mannequin: 'Простой манекен',
 		save_model: 'Сохранить этот регдолл как модель', save_model_tip: 'Выбранный персонаж (скелет, суставы, мышцы, настройки и его модель: кубы, меши, текстуры) попадает в этот список, и его можно добавить снова в любом проекте. Наденьте на скелет свою модель и сохраните: меняется только модель, поза и всё остальное работают как раньше.',
 		save_model_name: 'Имя модели', delete_model: 'Удалить сохранённую модель', delete_model_q: 'Удалить сохранённую модель «%»?', cancel: 'Отмена', pose_saved: 'Как сохранён',
@@ -1500,6 +1510,115 @@ const edit = (groups, label, fn) => {
 	Project.saved = false;
 };
 
+// ---------------------------------------------------------------------------
+// Routes: a person of the Blood project walks along a curve through points (empty groups, moved with the Move tool).
+// He can be shot (or killed at a set moment) anywhere on the way; knocked down he stops, back on his feet he goes on.
+// ---------------------------------------------------------------------------
+
+const isRoute = g => g instanceof Group && !!g.ragdoll_route && typeof g.ragdoll_route == 'object' && g.ragdoll_route.kind == 'route';
+const routePoints = route => (route.children || []).filter(c => c instanceof Group);
+const routeOfRoot = root => { const id = ragdollOf(root).route; return id ? Group.all.find(g => g.uuid == id && isRoute(g)) || null : null; };
+const worldOf = g => { g.mesh.updateMatrixWorld(true); return g.mesh.getWorldPosition(new THREE.Vector3()); };
+
+// a new route in front of the character, a few metres long
+function addRoute(root) {
+	if (!root) { Blockbench.showQuickMessage(tr('msg_select_char'), 2500); return null; }
+	const pelvis = bonesOf(root).find(g => roleOf(g) == 'pelvis');
+	const base = pelvis ? new THREE.Vector3(pelvis.origin[0], 0, pelvis.origin[2]) : new THREE.Vector3();
+	const fwd = new THREE.Vector3(0, 0, ragdollOf(root).facing == 'south' ? 1 : -1);
+	const side = new THREE.Vector3(1, 0, 0);
+	Undo.initEdit({outliner: true, groups: [], selection: true});
+	const route = new Group({name: tr('route_name'), origin: base.toArray().map(v => Math.round(v * 100) / 100), color: 3}).init();
+	route.ragdoll_route = {kind: 'route'};
+	route.addTo('root');
+	const groups = [route];
+	const shape = [[0, 0], [2.5, 0.6], [5, -0.8], [7.5, 0]];
+	shape.forEach(([f, s], i) => {
+		const p = base.clone().addScaledVector(fwd, f * SCALE).addScaledVector(side, s * SCALE);
+		const g = new Group({name: tr('route_point') + ' ' + (i + 1), origin: p.toArray().map(v => Math.round(v * 100) / 100), color: 3}).init();
+		g.addTo(route);
+		groups.push(g);
+	});
+	Undo.finishEdit('Add route', {outliner: true, groups, selection: true});
+	edit([root], 'Assign route', () => { root.ragdoll = Object.assign(ragdollOf(root), {route: route.uuid}); });
+	syncRouteView(true);
+	return route;
+}
+function addRoutePoint(route) {
+	if (!route) return;
+	const pts = routePoints(route);
+	const last = pts[pts.length - 1], before = pts[pts.length - 2];
+	const p = last ? new THREE.Vector3(...last.origin) : new THREE.Vector3(...route.origin);
+	const step = last && before ? p.clone().sub(new THREE.Vector3(...before.origin)) : new THREE.Vector3(0, 0, -2 * SCALE);
+	Undo.initEdit({outliner: true, groups: [], selection: true});
+	const g = new Group({name: tr('route_point') + ' ' + (pts.length + 1), origin: p.add(step).toArray().map(v => Math.round(v * 100) / 100), color: 3}).init();
+	g.addTo(route);
+	g.select();
+	Undo.finishEdit('Add route point', {outliner: true, groups: [g], selection: true});
+	syncRouteView(true);
+}
+
+// the curve in the viewport, with a ball at every point (a click on a ball selects that point)
+let route_view = null;
+function removeRouteView() { if (route_view && route_view.group.parent) route_view.group.parent.remove(route_view.group); route_view = null; }
+function syncRouteView(rebuild) {
+	if (!Project) { removeRouteView(); return; }
+	const routes = Group.all.filter(g => isRoute(g) && g.visibility !== false && g.mesh);
+	const key = routes.map(r => r.uuid + ':' + r.ragdoll_route.mode + ':' + routePoints(r).map(p => p.uuid + (p.selected ? '*' : '') + p.origin.join(',') + (p.mesh ? worldOf(p).toArray().map(v => v.toFixed(2)).join(',') : '')).join(';')).join('|');
+	if (route_view && route_view.key == key && !rebuild) return;
+	removeRouteView();
+	if (!routes.length) return;
+	const group = new THREE.Group();
+	group.name = 'ragdoll_routes';
+	const balls = [];
+	for (const r of routes) {
+		const pts = routePoints(r).filter(p => p.mesh).map(p => ({g: p, w: worldOf(p)}));
+		if (pts.length >= 2) {
+			const users = Group.all.filter(g => g.ragdoll && ragdollOf(g).route == r.uuid);
+			const closed = users.some(u => ragdollOf(u).route_mode == 'loop') && pts.length > 2;
+			const curve = new THREE.CatmullRomCurve3(pts.map(p => p.w), closed, 'centripetal');
+			const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(Math.max(32, pts.length * 24))), new THREE.LineBasicMaterial({color: 0x57d18f, depthTest: false, transparent: true}));
+			line.renderOrder = 997;
+			group.add(line);
+		}
+		pts.forEach(p => {
+			const m = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), new THREE.MeshBasicMaterial({color: p.g.selected ? 0xffffff : 0x57d18f, depthTest: false, transparent: true}));
+			m.position.copy(p.w);
+			m.renderOrder = 998;
+			m.userData.point = p.g.uuid;
+			group.add(m);
+			balls.push(m);
+		});
+	}
+	scene.add(group);
+	route_view = {group, balls, key};
+}
+function onRoutePress(event) {
+	if (!route_view || event.button !== 0 || !Project) return;
+	const preview = previewOf(event);
+	if (!preview) return;
+	let best = null, best_d = 14;
+	for (const b of route_view.balls) {
+		const s = screenPoint(b.position, preview), d = Math.hypot(s.x - event.clientX, s.y - event.clientY);
+		if (s.z < 1 && d < best_d) { best_d = d; best = b; }
+	}
+	if (!best) return;
+	const g = Group.all.find(x => x.uuid == best.userData.point);
+	if (!g || g.selected) return;   // a selected point is left to the Move tool's handles
+	event.stopImmediatePropagation(); event.preventDefault();
+	g.select(event);
+	syncRouteView(true);
+}
+
+// what the runtime needs: the points in the world (metres) and how to walk them
+function routeFor(root) {
+	const route = routeOfRoot(root), s = ragdollOf(root);
+	if (!route) return null;
+	const points = routePoints(route).filter(p => p.mesh).map(p => worldOf(p).divideScalar(SCALE).toArray());
+	if (points.length < 2) return null;
+	return {points, speed: Math.max(0, num(s.route_speed, 1.3)), mode: s.route_mode || 'once', start: Math.max(0, num(s.route_start, 0)), kill_at: Math.max(0, num(s.kill_at, 0)), kill_kind: s.kill_kind || 'heart'};
+}
+
 function updatePanel(force) {
 	if (!panel || !panel.inside_vue) return;
 	const vue = panel.inside_vue, sel = Project ? Group.first_selected : null, root = sel ? rootOf(sel) : null;
@@ -1533,6 +1652,14 @@ function updatePanel(force) {
 		vue.held = itemsOf(act).map(n => ({uuid: n.uuid, name: n.name, drop: n.attach.drop !== false,
 			where: n.attach.hands == 'both' ? tr('hand_both') : ((bones.find(g => g.uuid == n.attach.bone) || {}).name || '?')}));
 		vue.char_blood = ragdollOf(act).blood !== false;
+		const rs = ragdollOf(act), route = routeOfRoot(act);
+		vue.char_npc = !!rs.npc && hasHumanoidParts(bonesOf(act));
+		vue.route_name = route ? route.name : '';
+		vue.route_points = route ? routePoints(route).length : 0;
+		if (force || vue.route_key != JSON.stringify([rs.route, rs.route_speed, rs.route_mode, rs.route_start, rs.kill_at, rs.kill_kind])) {
+			vue.route_key = JSON.stringify([rs.route, rs.route_speed, rs.route_mode, rs.route_start, rs.kill_at, rs.kill_kind]);
+			Object.assign(vue, {route_speed: rs.route_speed, route_mode: rs.route_mode, route_start: rs.route_start, kill_at: rs.kill_at, kill_kind: rs.kill_kind});
+		}
 		vue.char_rec_blood = ragdollOf(act).record_blood !== false;
 	}
 	if (Project) { const w = Project.physics_world || {}; vue.rec_time = w.duration || 3; vue.rec_fps = w.fps || 24; }
@@ -1549,7 +1676,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -1656,6 +1783,17 @@ function panelComponent() {
 				edit([g], 'Change shot', () => { g.ragdoll_shot = Object.assign({}, g.ragdoll_shot, {t: Math.max(0, num_(sh.t, 0.5)), impulse: Math.max(0.1, num_(sh.impulse, 4))}); });
 			},
 			hand(side) { toHand(activeRoot(), side, this.item_drop, 1); },
+			newRoute() { addRoute(activeRoot()); updatePanel(true); },
+			addPoint() { const r = activeRoot(); addRoutePoint(r && routeOfRoot(r)); updatePanel(true); },
+			dropRoute() { const r = activeRoot(); if (!r) return; edit([r], 'Remove route', () => { r.ragdoll = Object.assign(ragdollOf(r), {route: ''}); }); syncRouteView(true); updatePanel(true); },
+			saveRoute() {
+				const r = activeRoot();
+				if (!r) return;
+				edit([r], 'Change route', () => {
+					r.ragdoll = Object.assign(ragdollOf(r), {route_speed: clamp(num_(this.route_speed, 1.3), 0, 8), route_mode: this.route_mode, route_start: Math.max(0, num_(this.route_start, 0)), kill_at: Math.max(0, num_(this.kill_at, 0)), kill_kind: this.kill_kind});
+				});
+				syncRouteView(true);
+			},
 			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood}); }); },
 			// how long the bake records, and how many frames a second (the Physics tab's world settings)
 			saveRecTime() {
@@ -1706,6 +1844,30 @@ function panelComponent() {
 						<rope-num :label="t('rec_fps')" v-model="rec_fps" :min="1" :max="120" :step="1" :decimals="0" @change="saveRecTime()"></rope-num>
 					</div>
 					<button class="rd_full" :class="{rd_on: click_shot}" @click="toggleClickShot()">{{ click_shot ? t('click_shot_on') : t('click_shot') }}</button>
+					<template v-if="char_name">
+						<div class="rd_head">{{ t('route') }}</div>
+						<template v-if="!route_name">
+							<button class="rd_full" @click="newRoute()" :disabled="!char_npc" :title="char_npc ? '' : t('route_npc_only')">{{ t('route_add') }}</button>
+							<div class="rd_dim small" v-if="!char_npc">{{ t('route_npc_only') }}</div>
+						</template>
+						<template v-else>
+							<div class="rd_row"><span>{{ route_name }} · {{ route_points }} {{ t('route_pts') }}</span><span><button @click="addPoint()">{{ t('route_point_add') }}</button> <button class="rd_x" @click="dropRoute()">✕</button></span></div>
+							<div class="rd_grid">
+								<rope-num :label="t('route_speed')" v-model="route_speed" :min="0" :max="8" :step="0.1" :decimals="1" :title="t('route_speed_tip')" @change="saveRoute()"></rope-num>
+								<rope-num :label="t('route_start')" v-model="route_start" :min="0" :max="600" :step="0.1" :decimals="1" @change="saveRoute()"></rope-num>
+							</div>
+							<label class="rd_row">{{ t('route_mode') }}
+								<select v-model="route_mode" @change="saveRoute()"><option value="once">{{ t('rm_once') }}</option><option value="loop">{{ t('rm_loop') }}</option><option value="pingpong">{{ t('rm_pingpong') }}</option></select>
+							</label>
+							<div class="rd_dim small">{{ t('route_hint') }}</div>
+						</template>
+						<div class="rd_grid">
+							<rope-num :label="t('kill_at')" v-model="kill_at" :min="0" :max="600" :step="0.1" :decimals="1" :title="t('kill_at_tip')" @change="saveRoute()"></rope-num>
+						</div>
+						<label class="rd_row" v-if="kill_at > 0">{{ t('kill_kind') }}
+							<select v-model="kill_kind" @change="saveRoute()"><option value="heart">{{ t('kk_heart') }}</option><option value="headshot">{{ t('kk_head') }}</option><option value="faint">{{ t('kk_faint') }}</option></select>
+						</label>
+					</template>
 					<template v-if="char_name">
 						<div class="rd_head">{{ t('shots') }}</div>
 						<button class="rd_full" @click="addShot2()">{{ t('add_shot2') }}</button>
@@ -2708,7 +2870,7 @@ function toHand(root, side, drop, mass) {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -2724,6 +2886,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		properties.push(new Property(Group, 'object', 'ragdoll', {default: null}));
 		properties.push(new Property(Group, 'object', 'bone', {default: null}));
 		properties.push(new Property(Group, 'object', 'ragdoll_shot', {default: null}));
+		properties.push(new Property(Group, 'object', 'ragdoll_route', {default: null}));
 		for (const type of [Group, Cube, Mesh]) properties.push(new Property(type, 'object', 'attach', {default: null}));
 		style_node = Blockbench.addCSS(STYLE);
 		mode = new Mode('ragdoll', {
@@ -2763,6 +2926,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 			} catch (err) { console.warn('[Ragdoll] tool', err); }
 		}
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook).concat([physicsHook]);
+		document.addEventListener('pointerdown', onRoutePress, true);
 		document.addEventListener('pointerdown', onClick, true);
 		document.addEventListener('pointerdown', onClickShot, true);
 		document.addEventListener('pointerdown', onShotDown, true);
@@ -2771,14 +2935,15 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		document.addEventListener('pointerdown', onSkeletonDown, true);
 		document.addEventListener('pointermove', onSkeletonMove, true);
 		document.addEventListener('pointerup', onSkeletonUp, true);
-		poll = setInterval(() => { updatePanel(); syncShotLines(); if (!drag) syncSkeletonView(); }, 250);
+		poll = setInterval(() => { updatePanel(); syncShotLines(); syncRouteView(); if (!drag) syncSkeletonView(); }, 250);
 		Blockbench.on('update_selection', onSelection);
 		Blockbench.on('display_animation_frame', updateBloodPlayback);
 		Blockbench.on('select_project', onSelection);
 	},
 	onunload() {
 		if (poll) clearInterval(poll);
-		removeArrow(); removeShotLines(); pose_edit = false; click_shot = false; removeSkeletonView();
+		removeArrow(); removeShotLines(); pose_edit = false; click_shot = false; removeSkeletonView(); removeRouteView();
+		document.removeEventListener('pointerdown', onRoutePress, true);
 		document.removeEventListener('pointerdown', onClick, true);
 		document.removeEventListener('pointerdown', onClickShot, true);
 		document.removeEventListener('pointerdown', onShotDown, true);
