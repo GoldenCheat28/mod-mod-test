@@ -122,6 +122,9 @@ class BloodView {
 		this.group.scale.setScalar(SCALE);
 		this.surface_group = new THREE.Group();   // things placed in the scene's pixels (on the model's own surfaces)
 		this.surface_group.name = 'ragdoll_blood_surfaces';
+		// not in the Render view's helper passes (reflections, materials, depth): only in the picture itself
+		this.group.userData.render_no_fx = true;
+		this.surface_group.userData.render_no_fx = true;
 		this.root = typeof scene != 'undefined' ? scene : null;
 		if (this.root) { this.root.add(this.group); this.root.add(this.surface_group); }
 		this.textures = {};
@@ -150,7 +153,11 @@ class BloodView {
 	}
 
 	// does the picture come out without sRGB conversion (Blockbench, the Render view)? then colours go in display space
-	gamma() { return !(this.renderer && THREE.sRGBEncoding && this.renderer.outputEncoding === THREE.sRGBEncoding); }
+	// (the Render view works in linear light and makes the picture itself at the end: no conversion then)
+	gamma() {
+		if (globalThis.RenderView && globalThis.RenderView.rig) return false;
+		return !(this.renderer && THREE.sRGBEncoding && this.renderer.outputEncoding === THREE.sRGBEncoding);
+	}
 
 	findRenderer() {
 		try { if (typeof Preview != 'undefined') { const p = Preview.selected || (Preview.all || []).find(x => x.renderer); if (p && p.renderer) return p.renderer; } } catch (err) { /* none */ }
@@ -163,7 +170,6 @@ class BloodView {
 		const sh = bloodShape(kind, variant);
 		const t = new THREE.DataTexture(sh[which], sh.size, sh.size, THREE.RGBAFormat);
 		t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
-		if (which == 'albedo' && !this.gamma() && THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
 		t.needsUpdate = true;
 		return (this.textures[key] = t);
 	}
@@ -182,7 +188,6 @@ class BloodView {
 			ctx.fillStyle = 'rgba(255,255,250,0.9)'; ctx.beginPath(); ctx.arc(80, 30, 9, 0, Math.PI * 2); ctx.fill();
 			const t = new THREE.CanvasTexture(canvas);
 			t.mapping = THREE.EquirectangularReflectionMapping;
-			if (!this.gamma() && THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
 			const pm = new THREE.PMREMGenerator(this.renderer);
 			this.env = pm.fromEquirectangular(t).texture;
 			pm.dispose(); t.dispose();
@@ -192,6 +197,7 @@ class BloodView {
 	litMaterials() { return [this.surface_mat, this.drops && this.drops.material, ...this.decals.map(d => d.mesh.material), ...this.bodyLit()].filter(Boolean); }
 	bodyLit() { const out = []; for (const o of this.overlays) for (const ov of o.overlays) if (ov.meshes) out.push(ov.meshes[1].material); return out; }
 	updateLook() {
+		this.u.bv_gamma.value = this.gamma() ? 1 : 0;
 		const want = this.root && this.root.environment ? null : this.env;
 		for (const m of this.litMaterials()) if (m.envMap !== want) { m.envMap = want; m.needsUpdate = true; }
 	}
@@ -384,6 +390,15 @@ class BloodView {
 	decalMaterial() {
 		const m = new THREE.MeshStandardMaterial({transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.07, metalness: 0, envMapIntensity: 0.4});
 		m.envMap = this.root && this.root.environment ? null : this.env;
+		// the textures and the drying colour are display colours (Godot's sRGB albedo): into linear light for the Render view
+		const gamma = this.u.bv_gamma;
+		m.onBeforeCompile = shader => {
+			shader.uniforms.bv_gamma = gamma;
+			shader.fragmentShader = shader.fragmentShader
+				.replace('#include <common>', '#include <common>\nuniform float bv_gamma;')
+				.replace('#include <map_fragment>', '#include <map_fragment>\nif (bv_gamma < 0.5) diffuseColor.rgb = pow(max(diffuseColor.rgb, vec3(0.0)), vec3(2.2));');
+		};
+		m.customProgramCacheKey = () => 'ragdoll_blood_decal';
 		return m;
 	}
 
@@ -797,7 +812,7 @@ class BloodView {
 			this.dry_cursor = ((this.dry_cursor || 0) + 1) % this.decals.length;
 			const d = this.decals[this.dry_cursor];
 			const k_dry = clamp((this.sim._time - d.birth) / B_DRY_TIME, 0, 1);
-			d.mesh.material.color.setRGB(1, 1, 1).lerp(this.dry_color || (this.dry_color = this.gamma() ? new THREE.Color(...BV_DRY_COLOR) : new THREE.Color(...BV_DRY_COLOR).convertSRGBToLinear()), Math.pow(k_dry, 0.7));
+			d.mesh.material.color.setRGB(1, 1, 1).lerp(this.dry_color || (this.dry_color = new THREE.Color(...BV_DRY_COLOR)), Math.pow(k_dry, 0.7));
 			const dry = k_dry > 0.6;
 			if (dry != d.dry) { d.dry = dry; d.mesh.material.roughness = dry ? 0.62 : 0.07; }
 		}
