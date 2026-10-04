@@ -2836,7 +2836,7 @@
 			this.compositeMaterial.uniforms[ 'bloomStrength' ].value = strength;
 			this.compositeMaterial.uniforms[ 'bloomRadius' ].value = 0.1;
 			this.compositeMaterial.needsUpdate = true;
-			const bloomFactors = [ 1.0, 0.8, 0.6, 0.4, 0.2 ];
+			const bloomFactors = [ 1.0, 0.7, 0.45, 0.25, 0.1 ];
 			this.compositeMaterial.uniforms[ 'bloomFactors' ].value = bloomFactors;
 			this.bloomTintColors = [ new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ) ];
 			this.compositeMaterial.uniforms[ 'bloomTintColors' ].value = this.bloomTintColors; // copy material
@@ -4585,7 +4585,7 @@ const DEFAULT_SETTINGS = {
 	sun_azimuth: 40, sun_elevation: 50, sun_strength: 1.6, sun_color: '#fff3e0', shadows: true, shadow_softness: 1,
 	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true,
 	exposure: 1, ao: true, ao_strength: 0.8, ao_radius: 4, ssr: false, ssr_strength: 0.6,
-	bloom: true, bloom_strength: 0.8, bloom_threshold: 0.9, bloom_radius: 0.5, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, vignette: 0.25,
+	bloom: true, bloom_strength: 0.35, bloom_threshold: 1.2, bloom_radius: 0.6, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, vignette: 0.25,
 	sky_mode: 'off', sky_top: '#2f6fd6', sky_horizon: '#bcd8ff', sky_ground: '#6b5a48', sky_sun: true, sky_clouds: 0.4, sky_image: '', sky_image_name: '', sky_rotation: 0,
 	};
 const DEFAULT_MATERIAL = {
@@ -5194,7 +5194,7 @@ function buildPipeline(preview) {
 		composer.addPass(p.ssr);
 	}
 	if (s.bloom) {
-		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength, s.bloom_radius, s.bloom_threshold);
+		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength * 0.35, s.bloom_radius, s.bloom_threshold);
 		composer.addPass(p.bloom);
 	}
 	if (s.dof || wantsFocus(activeCameraData())) {
@@ -5254,7 +5254,7 @@ function pipelineFor(preview) {
 		p.ssr.inner.selects = selectsForSSR();
 		p.ssr.inner.thickness = 1.5;
 	}
-	if (p.bloom) { p.bloom.strength = s.bloom_strength; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
+	if (p.bloom) { p.bloom.strength = s.bloom_strength * 0.35; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
 	const cam = activeCameraData();   // the camera we look through adds its own look
 	if (p.dof) {
 		const focus = wantsFocus(cam) ? focusDepth(preview.camera, cam.focus) : null;
@@ -6320,7 +6320,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.8',
+	version: '0.2.9',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
