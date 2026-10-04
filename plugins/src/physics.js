@@ -697,6 +697,13 @@ function bindSources(liquid, world, descs) {
 	}
 }
 
+// other plugins (the rope plugin) can join the simulation: globalThis.__physicsHooks = [{start(rt), step(rt, dt), show(rt), stop()}]
+function callHooks(name, ...args) {
+	for (const h of (globalThis.__physicsHooks || [])) {
+		try { if (h[name]) h[name](...args); } catch (err) { console.warn('[Physics] hook', name, err); }
+	}
+}
+
 function createRuntime(descs, ws, quality = 1) {
 	const world = createWorld(descs, ws);
 	const sources = liquidSources();
@@ -706,11 +713,14 @@ function createRuntime(descs, ws, quality = 1) {
 		liquid.fields = fields.filter(f => f.s.liquid);
 		bindSources(liquid, world, descs);
 	}
-	return {world, liquid, fields, sources, time: 0, liquid_acc: 0};
+	const rt = {world, liquid, fields, sources, time: 0, liquid_acc: 0, Jolt, ws, colliders: skip => liquidColliders(world, skip)};
+	callHooks('start', rt);
+	return rt;
 }
 
 function stepRuntime(rt) {
 	if (rt.fields.length) pushBodies(rt);
+	callHooks('step', rt, FIXED_DT);
 	holdWaiting(rt.world);
 	rt.world.iface.Step(FIXED_DT, 1);
 	trackAxles(rt.world);
@@ -767,10 +777,10 @@ function sourceBox(el) {
 }
 
 // boxes the liquid bounces off: every part of every Ground / Physics object, at its current position
-function liquidColliders(world) {
+function liquidColliders(world, skip) {
 	const boxes = [];
 	for (const entry of world.entries) {
-		if (entry.broken) continue;
+		if (entry.broken || (skip && skip.has(entry))) continue;
 		const W = bodyWorld(entry);
 		const {pos, quat} = decompose(W);
 		for (const part of entry.desc.parts) {
@@ -1516,6 +1526,7 @@ const stepSim = stepRuntime;
 function showSim(s) {
 	hideArrows();
 	applyPoses(s.world.entries);
+	callHooks('show', s);
 	if (s.liquid) showLiquid(s.liquid, s.view);
 }
 
@@ -1566,6 +1577,7 @@ function pause() {
 }
 
 function reset() {
+	callHooks('stop');
 	if (sim) {
 		sim.playing = false;
 		destroyWorld(sim.world);
@@ -2381,7 +2393,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.6.0',
+	version: '0.7.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
