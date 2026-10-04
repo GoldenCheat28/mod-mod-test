@@ -12,7 +12,8 @@ Load a plugin with **File → Plugins → Load Plugin from File**.
 | `pipe.js` | Connect: join faces of two meshes with a pipe (right click → Connect faces…): smoothing, path, waypoints, going around obstacles |
 | `seam.js` | Fillet between intersecting meshes (right click → Seam) |
 | `importer.js` | File → Import → 3D model: OBJ (+MTL), FBX, glTF/GLB, Collada, 3DS, STL, PLY, 3MF, MD2, Half-Life (GoldSrc) and Quake MDL with textures, material colours, skeleton (bone groups, or an armature with vertex weights in Blockbench 5) and animations |
+| `cloth.js` | Cloth for meshes (capes, flags, curtains): drapes over physics bodies and ragdolls, faces can be frozen or attached to objects; runs and bakes in the Physics tab, plays back in Animate and in videos |
 
-`physics.js`, `softbody.js`, `pipe.js`, `rope.js`, `ragdoll.js` and `importer.js` are built from `src/`: edit `src/<name>.js` and run `node build.js` (the Jolt WebAssembly blob lives in `jolt.b64` and is inlined into `physics.js`).
+`physics.js`, `softbody.js`, `pipe.js`, `rope.js`, `ragdoll.js`, `importer.js` and `cloth.js` are built from `src/`: edit `src/<name>.js` and run `node build.js` (the Jolt WebAssembly blob lives in `jolt.b64` and is inlined into `physics.js`).
 
 `importer.js` contains the three.js r129 example loaders (`src/vendor/`, MIT, see `src/vendor/LICENSE-three.txt`) and fflate (MIT).
