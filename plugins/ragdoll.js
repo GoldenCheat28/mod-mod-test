@@ -993,12 +993,17 @@ class Humanoid {
 			world.bodies.SetAngularVelocity(it.entry.id, world.tmp);
 			try {
 				// in the hand: its grip is put in the fist (the hand closes on it), then it is held there
+				// (the grip is the point of it nearest the hand as it is now: the arm may have been posed or the thing turned in
+				// the hand since it was given to him - the point found then could be its far end. Already touching the hand,
+				// it stays exactly where it was put)
 				if (it.grip) {
-					const grip_w = this.itemPoint(it, it.grip), palm = this.pos(it.holder);
-					const bp = it.entry.body.GetPosition();
-					const np = new J.RVec3(bp.GetX() + palm.x - grip_w.x, bp.GetY() + palm.y - grip_w.y, bp.GetZ() + palm.z - grip_w.z);
-					world.bodies.SetPosition(it.entry.id, np, J.EActivation_Activate);
-					J.destroy(np);
+					const palm = this.pos(it.holder), grip_w = this.nearestOnItem(it, palm);
+					if (grip_w && grip_w.distanceTo(palm) > 0.03) {
+						const bp = it.entry.body.GetPosition();
+						const np = new J.RVec3(bp.GetX() + palm.x - grip_w.x, bp.GetY() + palm.y - grip_w.y, bp.GetZ() + palm.z - grip_w.z);
+						world.bodies.SetPosition(it.entry.id, np, J.EActivation_Activate);
+						J.destroy(np);
+					}
 				}
 				const st = new J.FixedConstraintSettings();
 				st.mSpace = J.EConstraintSpace_WorldSpace;
@@ -1107,6 +1112,28 @@ class Humanoid {
 	ray(from, dir_len) { return castRay(this.rt, from, dir_len, rayFilters(this.rt).people); }
 
 	// a point of a held item (in its own frame, metres) in the world
+	// the point of a held thing's shapes (its boxes) nearest to `p` (metres); null when it has none
+	nearestOnItem(it, p) {
+		const b = it.entry.body, bp = b.GetPosition(), br = b.GetRotation();
+		const bm = new THREE.Matrix4().compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1));
+		let best = null, best_d = Infinity;
+		for (const part of it.entry.desc.parts || []) {
+			let center, rot, half;
+			if (part.kind == 'box') { center = part.center; rot = part.rot; half = part.half; }
+			else if (part.points && part.points.length) {
+				const box = new THREE.Box3().setFromPoints(part.points), size = box.getSize(gv());
+				center = box.getCenter(gv()); rot = new THREE.Quaternion(); half = [size.x / 2, size.y / 2, size.z / 2];
+			} else continue;
+			// (shapes are in pixels about the body's pivot)
+			const m = bm.clone().multiply(new THREE.Matrix4().compose(center.clone().divideScalar(SCALE), rot, gv(1, 1, 1)));
+			const local = p.clone().applyMatrix4(m.clone().invert());
+			local.set(clamp(local.x, -half[0] / SCALE, half[0] / SCALE), clamp(local.y, -half[1] / SCALE, half[1] / SCALE), clamp(local.z, -half[2] / SCALE, half[2] / SCALE));
+			const w = local.applyMatrix4(m), d = w.distanceTo(p);
+			if (d < best_d) { best_d = d; best = w; }
+		}
+		return best;
+	}
+
 	itemPoint(it, local) {
 		const b = it.entry.body, p = b.GetPosition(), r = b.GetRotation();
 		return local.clone().applyQuaternion(new THREE.Quaternion(r.GetX(), r.GetY(), r.GetZ(), r.GetW())).add(gv(p.GetX(), p.GetY(), p.GetZ()));
@@ -7286,7 +7313,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.9.6',
+	version: '0.9.7',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
