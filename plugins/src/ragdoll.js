@@ -81,9 +81,9 @@ const zoneOfRole = role => ({head: 'head', neck: 'head', chest: 'torso', abdomen
 
 // the joint a part of the body normally has (swing and twist in degrees, hinges have a range)
 const JOINTS = {
-	abdomen: {joint: 'ball', swing: 25, twist: 25}, chest: {joint: 'ball', swing: 20, twist: 25}, neck: {joint: 'ball', swing: 35, twist: 40}, head: {joint: 'ball', swing: 40, twist: 45},
-	upperarm: {joint: 'ball', swing: 120, twist: 60}, forearm: {joint: 'hinge', hmin: -5, hmax: 150}, hand: {joint: 'ball', swing: 45, twist: 30},
-	thigh: {joint: 'ball', swing: 95, twist: 25}, shin: {joint: 'hinge', hmin: -150, hmax: 5}, foot: {joint: 'ball', swing: 35, twist: 15}, pelvis: {joint: 'ball', swing: 30, twist: 20},
+	abdomen: {joint: 'ball', swing: 25, twist: 25, strength: 2.2}, chest: {joint: 'ball', swing: 20, twist: 25, strength: 1.8}, neck: {joint: 'ball', swing: 35, twist: 40, strength: 1.2}, head: {joint: 'ball', swing: 40, twist: 45, strength: 1.2},
+	upperarm: {joint: 'ball', swing: 120, twist: 60, strength: 1}, forearm: {joint: 'hinge', hmin: -5, hmax: 150, strength: 1}, hand: {joint: 'ball', swing: 45, twist: 30, strength: 0.8},
+	thigh: {joint: 'ball', swing: 95, twist: 25, strength: 2.6}, shin: {joint: 'hinge', hmin: -150, hmax: 5, strength: 3}, foot: {joint: 'ball', swing: 35, twist: 15, strength: 3}, pelvis: {joint: 'ball', swing: 30, twist: 20, strength: 2},
 };
 
 // ---------------------------------------------------------------------------
@@ -283,6 +283,8 @@ class RagdollRuntime {
 		const q = (x, y, z) => quatOfThree([x * f, y, z]);
 		const byRole = (role, side) => this.bones.find(b => b.role == role && (!side || b.side == side));
 		const set = (role, side, x, y, z) => { const b = byRole(role, side); if (b) targets.set(b, q(x, y, z)); };
+		// legs and spine move from the pose they are in (a seated person bends the knee from where it is)
+		const rel = (role, side, x, y, z) => { const b = byRole(role, side); if (b) targets.set(b, q(x, y, z).multiply(b.rest_local)); };
 		// arm poses found for the character: [upper arm x, z], [forearm x, z], hand x (z is mirrored for the other arm)
 		const ARM = {
 			head: [[72, -14], [126, -4], 0], chest: [[0, -2], [150, -36], -10], belly: [[0, -20], [150, -60], 0],
@@ -290,12 +292,12 @@ class RagdollRuntime {
 		};
 		const arm = (side, name) => { const [u, fo, h] = ARM[name]; set('upperarm', side, u[0], 0, -side * u[1]); set('forearm', side, fo[0], 0, -side * fo[1]); set('hand', side, h, 0, 0); };
 		const bothArms = name => { arm(1, name); arm(-1, name); };
-		const legs = (thigh, shin, foot) => { for (const side of [1, -1]) { set('thigh', side, thigh, 0, -side * 2); set('shin', side, shin, 0, 0); set('foot', side, foot, 0, 0); } };
+		const legs = (thigh, shin, foot) => { for (const side of [1, -1]) { rel('thigh', side, thigh, 0, -side * 2); rel('shin', side, shin, 0, 0); rel('foot', side, foot, 0, 0); } };
 		const bend = (axis, angle, roles) => { if (axis) bends.push({axis, angle: angle * D2R * sc, roles}); };
 		// the spine bends away from the shot: about the horizontal axis across the direction of the hit
 		const up = new THREE.Vector3(0, 1, 0), d = new THREE.Vector3(dir.x, 0, dir.z);
 		const away = d.lengthSq() > 1e-4 ? new THREE.Vector3().crossVectors(up, d.normalize()) : null;
-		const forward = (name, angle) => { const b = byRole(name); if (b) targets.set(b, q(-angle * sc, 0, 0)); };
+		const forward = (name, angle) => { const b = byRole(name); if (b) targets.set(b, q(-angle * sc, 0, 0).multiply(b.rest_local)); };
 		const role = hit_bone.role, side = hit_bone.side;
 		if (role == 'head' || role == 'neck') {
 			bend(away, 24, {head: 1, neck: 0.8, chest: 0.4, abdomen: 0.25});
@@ -313,12 +315,12 @@ class RagdollRuntime {
 		} else if (['upperarm', 'forearm', 'hand'].includes(role)) {
 			// the arm is pulled in, the other hand goes to it, the body turns away
 			arm(side, 'pull'); arm(-side, 'chest');
-			const c = byRole('chest'); if (c) targets.set(c, q(2, -side * 18, 0));
+			const c = byRole('chest'); if (c) targets.set(c, q(2, -side * 18, 0).multiply(c.rest_local));
 			bend(away, 8, {chest: 0.6, head: 0.5, abdomen: 0.3});
 		} else if (['thigh', 'shin', 'foot'].includes(role)) {
 			// the leg is drawn up, the other leg takes the weight, the arms go out for balance, a little bent over
 			legs(5, -6, 0);
-			set('thigh', side, 32, 0, -side * 4); set('shin', side, -58, 0, 0); set('foot', side, 18, 0, 0);
+			rel('thigh', side, 32, 0, -side * 4); rel('shin', side, -58, 0, 0); rel('foot', side, 18, 0, 0);
 			bothArms('balance');
 			forward('abdomen', 10); forward('chest', 8);
 		} else return null;
@@ -364,6 +366,7 @@ class RagdollRuntime {
 		this.drive(t);
 		this.time += dt;
 	}
+
 
 	// how much the muscles work right now (0 = limp, 1 = as set by the tone)
 	limpFactor(t) {
@@ -437,9 +440,9 @@ class RagdollRuntime {
 		const rel = new THREE.Vector3(wc.GetX() - wp.GetX(), wc.GetY() - wp.GetY(), wc.GetZ() - wp.GetZ());
 		const f = 1.5 + 5 * Math.min(tension, 1.4), omega = 2 * Math.PI * f;
 		const len = Math.max(0.12, b.length / SCALE);
-		const inertia = b.load * len * len / 3;
+		const heavy = b.load, inertia = heavy * len * len / 3;
 		const torque = axis.multiplyScalar(inertia * omega * omega * angle).addScaledVector(rel, -2 * inertia * omega);
-		const limit = 22 * b.load * Math.min(tension, 1.4);
+		const limit = 22 * heavy * Math.min(tension, 1.4);
 		if (torque.length() > limit) torque.multiplyScalar(limit / torque.length());
 		world.tmp.Set(torque.x, torque.y, torque.z);
 		world.bodies.AddTorque(c.id, world.tmp, this.J.EActivation_Activate);
@@ -1335,7 +1338,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.2.1',
+	version: '0.2.2',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
