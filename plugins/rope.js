@@ -661,8 +661,64 @@ function updatePanel(force) {
 	vue.physics_on = performance.now() - hooked_at < 300;
 }
 
+
+// a number you drag with the mouse (left / right), or click and type. Shift = fine, Ctrl = coarse
+const NumberField = {
+	props: {value: {type: Number, default: 0}, min: {type: Number, default: 0}, max: {type: Number, default: 1}, step: {type: Number, default: 1}, decimals: {type: Number, default: 0}, label: {type: String, default: ''}},
+	data() { return {editing: false, text: '', drag: null}; },
+	computed: { shown() { return this.editing ? this.text : Number(this.value).toFixed(this.decimals); } },
+	methods: {
+		snap(v) { const q = Math.round(v / this.step) * this.step; return Math.max(this.min, Math.min(this.max, Number(q.toFixed(6)))); },
+		down(e) {
+			if (this.editing || (e.button !== undefined && e.button !== 0)) return;
+			this.drag = {x: e.clientX, start: this.value, moved: false};
+			try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* old browser */ }
+		},
+		move(e) {
+			const d = this.drag;
+			if (!d) return;
+			const dx = e.clientX - d.x;
+			if (!d.moved && Math.abs(dx) < 3) return;
+			d.moved = true;
+			const speed = (this.max - this.min) / 220 * (e.shiftKey ? 0.1 : e.ctrlKey ? 4 : 1);
+			const v = this.snap(d.start + dx * speed);
+			if (v !== this.value) this.$emit('input', v);
+		},
+		up(e) {
+			const d = this.drag;
+			this.drag = null;
+			if (!d) return;
+			try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+			if (d.moved) this.$emit('change', this.value);
+			else this.startEdit();
+		},
+		startEdit() {
+			this.editing = true;
+			this.text = Number(this.value).toFixed(this.decimals);
+			this.$nextTick(() => { const i = this.$refs.input; if (i) { i.focus(); i.select(); } });
+		},
+		finish(commit) {
+			if (!this.editing) return;
+			this.editing = false;
+			if (!commit) return;
+			const n = parseFloat(String(this.text).replace(',', '.'));
+			if (!isFinite(n)) return;
+			const v = Math.max(this.min, Math.min(this.max, n));
+			this.$emit('input', v);
+			this.$emit('change', v);
+		},
+	},
+	template: `
+		<div class="rope_num" :class="{editing: editing}" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" :title="label">
+			<span class="rope_num_label">{{ label }}</span>
+			<input ref="input" class="rope_num_value" type="text" :value="shown" :readonly="!editing" @input="text = $event.target.value"
+				@keydown.enter.prevent="finish(true)" @keydown.esc.prevent="finish(false)" @blur="finish(true)">
+		</div>`,
+};
+
 function panelComponent() {
 	return {
+		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, has_rope: false, state: 'stopped', rope_count: 0, physics_on: false, name: '', a_name: '', b_name: '', a_phys: 'none', b_phys: 'none', length: 0,
 				segments: 24, sides: 6, radius: 1, slack: 15, bend: 0.2, damping: 0.5, elastic: 0, gravity: 1, friction: 0.5, collide: true, attach: 'surface'};
@@ -708,19 +764,23 @@ function panelComponent() {
 
 					<details class="rope_box" open>
 						<summary>{{ t('detail') }} · {{ polys }} {{ t('polys') }}</summary>
-						<div class="rope_slider"><span>{{ t('segments') }}</span><input type="range" min="2" max="80" step="1" v-model.number="segments" @change="save()"><span class="value">{{ segments }}</span></div>
-						<div class="rope_slider"><span>{{ t('sides') }}</span><input type="range" min="3" max="16" step="1" v-model.number="sides" @change="save()"><span class="value">{{ sides }}</span></div>
-						<div class="rope_slider"><span>{{ t('thickness') }}</span><input type="range" min="0.2" max="8" step="0.1" v-model.number="radius" @change="save()"><span class="value">{{ radius }}</span></div>
+						<div class="rope_grid">
+							<rope-num :label="t('segments')" v-model="segments" :min="2" :max="80" :step="1" :decimals="0" @change="save()"></rope-num>
+							<rope-num :label="t('sides')" v-model="sides" :min="3" :max="16" :step="1" :decimals="0" @change="save()"></rope-num>
+							<rope-num :label="t('thickness')" v-model="radius" :min="0.2" :max="8" :step="0.1" :decimals="1" @change="save()"></rope-num>
+						</div>
 					</details>
 
 					<details class="rope_box" open>
 						<summary>{{ t('behavior') }}</summary>
-						<div class="rope_slider" :title="t('slack_tip')"><span>{{ t('slack') }}</span><input type="range" min="-30" max="300" step="1" v-model.number="slack" @change="save()"><span class="value">{{ slack }}</span></div>
-						<div class="rope_slider" :title="t('stiffness_tip')"><span>{{ t('stiffness') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="bend" @change="save()"><span class="value">{{ bend }}</span></div>
-						<div class="rope_slider" :title="t('elastic_tip')"><span>{{ t('elastic') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="elastic" @change="save()"><span class="value">{{ elastic }}</span></div>
-						<div class="rope_slider"><span>{{ t('damping') }}</span><input type="range" min="0" max="3" step="0.05" v-model.number="damping" @change="save()"><span class="value">{{ damping }}</span></div>
-						<div class="rope_slider"><span>{{ t('gravity') }}</span><input type="range" min="0" max="2" step="0.05" v-model.number="gravity" @change="save()"><span class="value">{{ gravity }}</span></div>
-						<div class="rope_slider"><span>{{ t('friction') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="friction" @change="save()"><span class="value">{{ friction }}</span></div>
+						<div class="rope_grid">
+							<rope-num :label="t('slack')" v-model="slack" :min="-30" :max="300" :step="1" :decimals="0" :title="t('slack_tip')" @change="save()"></rope-num>
+							<rope-num :label="t('stiffness')" v-model="bend" :min="0" :max="1" :step="0.05" :decimals="2" :title="t('stiffness_tip')" @change="save()"></rope-num>
+							<rope-num :label="t('elastic')" v-model="elastic" :min="0" :max="1" :step="0.05" :decimals="2" :title="t('elastic_tip')" @change="save()"></rope-num>
+							<rope-num :label="t('damping')" v-model="damping" :min="0" :max="3" :step="0.05" :decimals="2" @change="save()"></rope-num>
+							<rope-num :label="t('gravity')" v-model="gravity" :min="0" :max="2" :step="0.05" :decimals="2" @change="save()"></rope-num>
+							<rope-num :label="t('friction')" v-model="friction" :min="0" :max="1" :step="0.05" :decimals="2" @change="save()"></rope-num>
+						</div>
 						<label class="rope_row">{{ t('collide') }}<input type="checkbox" v-model="collide" @change="save()"></label>
 						<label class="rope_row">{{ t('attach') }}
 							<select v-model="attach" @change="save()">
@@ -748,6 +808,13 @@ const STYLE = `
 	.rope_panel .rope_box { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-back); }
 	.rope_panel .rope_box > summary { cursor: pointer; text-transform: uppercase; font-size: 0.82em; opacity: 0.8; outline: none; }
 	.rope_panel details.rope_box[open] > summary { margin-bottom: 6px; }
+	.rope_panel .rope_grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0; }
+	.rope_num { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 8px; background: var(--color-dark); border: 1px solid var(--color-border);
+		border-radius: 3px; cursor: ew-resize; user-select: none; touch-action: none; min-width: 0; }
+	.rope_num:hover { border-color: var(--color-accent); }
+	.rope_num.editing { cursor: text; border-color: var(--color-accent); }
+	.rope_num_label { opacity: 0.75; font-size: 0.88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.rope_num_value { width: 46px; text-align: right; background: transparent; border: none; color: var(--color-text); padding: 0; cursor: inherit; outline: none; font: inherit; font-weight: bold; }
 	.rope_panel .rope_slider { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 0.9em; }
 	.rope_panel .rope_slider > span:first-child { width: 40%; }
 	.rope_panel .rope_slider input[type=range] { flex: 1; min-width: 0; }
@@ -758,7 +825,7 @@ const STYLE = `
 
 const onSelection = () => updatePanel();
 
-if (typeof __ROPE_EXPORT !== 'undefined') __ROPE_EXPORT({RopeSim, makeBox, surfacePoint, ringsOf, ropeTopology, writeTopology, writeShape, settleShape, createRope, fitRope, physicsHook, DEFAULT_ROPE});
+if (typeof __ROPE_EXPORT !== 'undefined') __ROPE_EXPORT({RopeSim, makeBox, surfacePoint, ringsOf, ropeTopology, writeTopology, writeShape, settleShape, createRope, fitRope, physicsHook, DEFAULT_ROPE, NumberField, panelComponent, STYLE});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('rope', {
 	title: 'Rope',
@@ -766,7 +833,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical rope between two objects: a real mesh with the polygon count and thickness you choose. It pulls physics objects (with the Physics plugin).',
 	about: 'Open the **Ropes** tab, select two objects (cubes, meshes or groups) and press **Create rope**. A mesh tube appears between them. Change **segments** and **sides** (the polygon count), **thickness**, **slack**, **stiffness**, **stretch**, damping, gravity and friction in the panel. **Simulate** moves the rope on its own: its ends follow the objects, it hangs, swings and lies on other objects and on the ground. In the **Physics** tab the rope is also a real constraint: ropes between physics objects pull them (a tow rope) and a rope on a static object holds a falling body, in the preview and in the bake. **Keep shape** writes the current shape into the mesh.',
 	icon: 'cable',
-	version: '0.1.1',
+	version: '0.2.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
