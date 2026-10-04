@@ -70,6 +70,13 @@ class ClothSim {
 		const len = (i, j) => Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y, points[i].z - points[j].z);
 		this.links = links.map(([i, j, kind]) => ({i, j, rest: len(i, j), kind}));
 		this.contact = new Uint8Array(this.n);
+		this.cn = new Float64Array(this.n * 3);   // the normal of what each point touches
+		// the size of a cell of the cloth: things are kept that far off its threads, not only off its points (a corner of a
+		// box went in between the points), and its own folds keep that far apart
+		const edges = this.links.filter(L => L.kind == 'edge');
+		this.cell = edges.length ? edges.reduce((a, L) => a + L.rest, 0) / edges.length : 1;
+		this.near = new Set();   // pairs joined by a thread: never pushed apart by self-collision
+		for (const L of this.links) this.near.add(Math.min(L.i, L.j) * this.n + Math.max(L.i, L.j));
 	}
 	pin(i, pos) { this.w[i] = 0; const k = i * 3; this.x[k] = this.p[k] = pos.x; this.x[k + 1] = this.p[k + 1] = pos.y; this.x[k + 2] = this.p[k + 2] = pos.z; }
 
@@ -78,10 +85,11 @@ class ClothSim {
 		const {x, p, w, o, n} = this;
 		const sub = o.substeps, h = dt / sub, damp = Math.exp(-o.damping * h), g = o.gravity * h * h;
 		const stiff = {edge: clamp(o.stretch, 0, 1), shear: clamp(o.stretch, 0, 1) * 0.6, bend: clamp(o.bend, 0, 1) * 0.5};
-		const r = Math.max(0.05, o.thickness);
+		const r = Math.max(0.05, o.thickness, this.cell * 0.5);
 		this.contact.fill(0);
 		for (let s = 1; s <= sub; s++) {
 			const f = s / sub;
+			this.contact.fill(0);
 			for (const t of targets) {
 				const k = t.i * 3;
 				x[k] = p[k] = t.from.x + (t.to.x - t.from.x) * f; x[k + 1] = p[k + 1] = t.from.y + (t.to.y - t.from.y) * f; x[k + 2] = p[k + 2] = t.from.z + (t.to.z - t.from.z) * f;
@@ -95,25 +103,63 @@ class ClothSim {
 					p[k + c] = cur;
 				}
 			}
+			// the threads and the contacts are solved together, round after round: done after the threads only, the threads
+			// pulled the cloth back into what it lay on
 			for (let it = 0; it < o.iterations; it++) {
 				const links = this.links, forward = (it & 1) == 0;
 				for (let q = 0; q < links.length; q++) {
 					const L = links[forward ? q : links.length - 1 - q];
 					this.distance(L.i, L.j, L.rest, stiff[L.kind]);
 				}
+				this.collide(boxes, ground, r);
 			}
-			if (boxes && boxes.length) for (let i = 0; i < n; i++) if (w[i]) for (let m = 0; m < boxes.length; m++) this.collideBox(i, boxes[m], r);
-			if (ground !== null && ground !== undefined) for (let i = 0; i < n; i++) {
-				const k = i * 3 + 1;
-				if (w[i] && x[k] < ground + r) { x[k] = ground + r; this.contact[i] = 1; }
+			if (o.self !== false) this.selfCollide(this.cell * 0.7);
+			this.collide(boxes, ground, r);
+			// friction: where a point touches something, its sliding along that surface in this substep is held back
+			const mu = clamp(o.friction, 0, 1), cn = this.cn;
+			for (let i = 0; i < n; i++) {
+				if (!this.contact[i] || !w[i]) continue;
+				const k = i * 3;
+				const dx = x[k] - p[k], dy = x[k + 1] - p[k + 1], dz = x[k + 2] - p[k + 2];
+				const dn = dx * cn[k] + dy * cn[k + 1] + dz * cn[k + 2];
+				x[k] -= (dx - dn * cn[k]) * mu; x[k + 1] -= (dy - dn * cn[k + 1]) * mu; x[k + 2] -= (dz - dn * cn[k + 2]) * mu;
 			}
 		}
-		// friction: what touched something loses part of its sliding speed
-		const keep = 1 - Math.min(1, o.friction) * 0.6;
+	}
+	collide(boxes, ground, r) {
+		const {x, w, n} = this;
+		if (boxes && boxes.length) for (let i = 0; i < n; i++) if (w[i]) for (let m = 0; m < boxes.length; m++) this.collideBox(i, boxes[m], r);
+		if (ground !== null && ground !== undefined) for (let i = 0; i < n; i++) {
+			const k = i * 3 + 1;
+			if (w[i] && x[k] < ground + r) { x[k] = ground + r; this.contact[i] = 1; this.cn[i * 3] = 0; this.cn[i * 3 + 1] = 1; this.cn[i * 3 + 2] = 0; }
+		}
+	}
+	// its own folds do not pass through each other: points that are not neighbours are kept `d` apart (a grid of cells finds them)
+	selfCollide(d) {
+		const {x, w, n} = this, inv = 1 / d, grid = new Map(), d2 = d * d;
+		const key = (a, b, c) => ((a * 73856093) ^ (b * 19349663) ^ (c * 83492791));
 		for (let i = 0; i < n; i++) {
-			if (!this.contact[i]) continue;
-			const k = i * 3;
-			for (let c = 0; c < 3; c++) p[k + c] = x[k + c] - (x[k + c] - p[k + c]) * keep;
+			const kk = key(Math.floor(x[i * 3] * inv), Math.floor(x[i * 3 + 1] * inv), Math.floor(x[i * 3 + 2] * inv));
+			const list = grid.get(kk);
+			if (list) list.push(i); else grid.set(kk, [i]);
+		}
+		for (let i = 0; i < n; i++) {
+			const cx = Math.floor(x[i * 3] * inv), cy = Math.floor(x[i * 3 + 1] * inv), cz = Math.floor(x[i * 3 + 2] * inv);
+			for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+				const list = grid.get(key(cx + a, cy + b, cz + c));
+				if (!list) continue;
+				for (const j of list) {
+					if (j <= i || this.near.has(i * n + j)) continue;
+					const wi = w[i], wj = w[j], ws = wi + wj;
+					if (!ws) continue;
+					const dx = x[j * 3] - x[i * 3], dy = x[j * 3 + 1] - x[i * 3 + 1], dz = x[j * 3 + 2] - x[i * 3 + 2];
+					const q = dx * dx + dy * dy + dz * dz;
+					if (q >= d2 || q < EPS) continue;
+					const dist = Math.sqrt(q), push = (d - dist) / dist / ws;
+					x[i * 3] -= dx * push * wi; x[i * 3 + 1] -= dy * push * wi; x[i * 3 + 2] -= dz * push * wi;
+					x[j * 3] += dx * push * wj; x[j * 3 + 1] += dy * push * wj; x[j * 3 + 2] += dz * push * wj;
+				}
+			}
 		}
 	}
 	distance(i, j, rest, stiffness) {
@@ -149,10 +195,10 @@ class ClothSim {
 			else if (pen1 <= pen2) { n1 = l1 < 0 ? -1 : 1; push = pen1 + r; }
 			else { n2 = l2 < 0 ? -1 : 1; push = pen2 + r; }
 		}
-		x[k] += (n0 * A[0] + n1 * A[3] + n2 * A[6]) * push;
-		x[k + 1] += (n0 * A[1] + n1 * A[4] + n2 * A[7]) * push;
-		x[k + 2] += (n0 * A[2] + n1 * A[5] + n2 * A[8]) * push;
+		const wx = n0 * A[0] + n1 * A[3] + n2 * A[6], wy = n0 * A[1] + n1 * A[4] + n2 * A[7], wz = n0 * A[2] + n1 * A[5] + n2 * A[8];
+		x[k] += wx * push; x[k + 1] += wy * push; x[k + 2] += wz * push;
 		this.contact[i] = 1;
+		this.cn[k] = wx; this.cn[k + 1] = wy; this.cn[k + 2] = wz;
 	}
 	point(i, out) { return out.set(this.x[i * 3], this.x[i * 3 + 1], this.x[i * 3 + 2]); }
 }
@@ -543,7 +589,7 @@ Plugin.register('cloth', {
 	description: 'Cloth for meshes (capes, flags, curtains): hangs, drapes over physics bodies and ragdolls, faces can be frozen or attached to objects. Runs and bakes in the Physics tab.',
 	about: 'Select a mesh and open the **Cloth** panel (or right click → **Cloth…**, or **Add cloth** for a ready sheet). Pick faces in Edit mode and **Freeze** them or **Attach** them to an object. Press Play in the **Physics** tab to see it; **Bake** records it for the Animate tab and for videos from the Render view. Needs the Physics plugin.',
 	icon: 'texture',
-	version: '0.1.1',
+	version: '0.1.2',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation', 'Physics'],
