@@ -5350,8 +5350,10 @@ const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {}
 const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
 // a group named "Camera" is a camera even when it came from Blockbench itself (it has no data of ours yet)
 const looksLikeCamera = node => node instanceof Group && /camera|камер/i.test(node.name || '');
-const isCamera = node => node instanceof Group && (!!node.render_camera || looksLikeCamera(node));
-const isLight = node => node instanceof Group && !!node.render_light && !looksLikeCamera(node) && !node.render_camera;
+// Blockbench may fill an unset object property with {} instead of null: an empty object means "no data"
+const hasData = value => !!value && typeof value == 'object' && Object.keys(value).length > 0;
+const isCamera = node => node instanceof Group && (hasData(node.render_camera) || looksLikeCamera(node));
+const isLight = node => node instanceof Group && hasData(node.render_light) && !looksLikeCamera(node) && !hasData(node.render_camera);
 const lightGroups = () => Group.all.filter(isLight);
 const cameraGroups = () => Group.all.filter(isCamera);
 const findNode = uuid => uuid && [...Cube.all, ...Mesh.all, ...Group.all].find(n => n.uuid == uuid);
@@ -5500,7 +5502,7 @@ function frustumGeometry(fov) {
 
 function syncEditorHelpers() {
 	if (!Project) return clearEditorHelpers();
-	const groups = [...lightGroups(), ...cameraGroups().filter(g => g.render_camera)].filter(g => g.mesh);
+	const groups = [...lightGroups(), ...cameraGroups().filter(g => hasData(g.render_camera))].filter(g => g.mesh);
 	for (const uuid of [...editor_helpers.keys()]) {
 		const g = groups.find(x => x.uuid == uuid);
 		if (!g || editor_helpers.get(uuid).kind != (isLight(g) ? 'light' : 'camera')) removeEditorHelper(uuid);
@@ -5593,8 +5595,8 @@ function openSettings(group, kind) {
 	if (!group || !Project) return;
 	if (open_settings) open_settings.cancel();
 	const camera = kind == 'camera';
-	if (camera && !group.render_camera) group.render_camera = Object.assign({}, DEFAULT_CAMERA);
-	if (camera && group.render_light) group.render_light = null;   // a camera does not shine
+	if (camera && !hasData(group.render_camera)) group.render_camera = Object.assign({}, DEFAULT_CAMERA);
+	if (camera && hasData(group.render_light)) group.render_light = null;   // a camera does not shine
 	const d = camera ? cameraOf(group) : lightOf(group);
 	const was_looking = activeCameraGroup() === group;
 	Undo.initEdit({outliner: true, groups: [group]});
@@ -6278,7 +6280,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.2',
+	version: '0.2.3',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
