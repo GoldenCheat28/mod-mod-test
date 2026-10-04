@@ -905,6 +905,7 @@ class Humanoid {
 		const root_m = this.modelMatrix();
 		// rest pose (no rotations) of the game in this character's model space (metres), then in the world
 		const offset = new THREE.Vector3(...pv.origin).divideScalar(SCALE).sub(gv(0, 0.97 * s, 0));
+		this.rest_offset = offset;
 		this.rest_rot = new THREE.Quaternion().setFromRotationMatrix(root_m);
 		const restWorld = p => p.clone().multiplyScalar(s).add(offset).multiplyScalar(SCALE).applyMatrix4(root_m).divideScalar(SCALE);
 		this.parts = [];
@@ -1658,6 +1659,10 @@ class Humanoid {
 
 	shoot(hit) { this.pending.push(Object.assign({t: this.time}, hit)); }
 
+	// the blood on him (body_blood.gd), made when first needed
+	paint_blood(part, world_p, r, amount) { (this.body_blood || (this.body_blood = new BodyBlood(this))).paint(part, world_p, r, amount); }
+	bloom_blood(part, world_p, r, dur, amount) { (this.body_blood || (this.body_blood = new BodyBlood(this))).bloom(part, world_p, r, dur, amount); }
+
 	receive_hit(body, point, dir, impulse, weapon) {
 		this.wake();
 		// the impulse at the point it hit
@@ -2174,6 +2179,1807 @@ function humanoidSpec(o = {}) {
 	return {bones, chair, pose: posture, model: 'npc', scale: s};
 }
 
+// ---------------------------------------------------------------------------
+// Blood shapes (scripts/fx/blood_tex.gd): each shape is built as a thickness field; from it the colour + coverage
+// (decals) and the paint mask (R = film thickness, A = coverage: painted into the floor map) are baked. Cached.
+// Also the smoke puff of the mist (textures.gd) and the splash animation (blood_splash.gd).
+// ---------------------------------------------------------------------------
+
+// FastNoiseLite as Godot makes it by default: smooth simplex, frequency 0.01, fractal FBM of 5 octaves
+function makeNoise(seed) {
+	const rnd = mulberry(seed >>> 0), perm = new Uint8Array(512), p = [...Array(256).keys()];
+	for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+	for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+	const G = [[1, 1], [-1, 1], [1, -1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
+	const F2 = 0.5 * (Math.sqrt(3) - 1), G2 = (3 - Math.sqrt(3)) / 6;
+	const simplex = (x, y) => {
+		const s = (x + y) * F2, i = Math.floor(x + s), j = Math.floor(y + s), t = (i + j) * G2;
+		const x0 = x - (i - t), y0 = y - (j - t);
+		const i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
+		const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2, x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
+		const ii = i & 255, jj = j & 255;
+		let n = 0;
+		for (const [dx, dy, gi] of [[x0, y0, perm[ii + perm[jj]]], [x1, y1, perm[ii + i1 + perm[jj + j1]]], [x2, y2, perm[ii + 1 + perm[jj + 1]]]]) {
+			const tt = 0.5 - dx * dx - dy * dy;
+			if (tt > 0) { const g = G[gi & 7]; n += tt * tt * tt * tt * (g[0] * dx + g[1] * dy); }
+		}
+		return 70 * n;
+	};
+	const bound = 1 / (1 + 0.5 + 0.25 + 0.125 + 0.0625);
+	return {get(x, y) {
+		let sum = 0, amp = 1, f = 0.01;
+		for (let o = 0; o < 5; o++) { sum += simplex(x * f + o * 31.7, y * f - o * 17.3) * amp; amp *= 0.5; f *= 2; }
+		return sum * bound;
+	}};
+}
+
+// RandomNumberGenerator in the shape of Godot's
+function makeRng(seed) {
+	const r = mulberry(seed >>> 0);
+	return {randf: r, range: (a, b) => a + (b - a) * r(), int: (a, b) => a + Math.floor(r() * (b - a + 1)), randfn: (m, d) => { const u = Math.max(1e-9, r()), v = r(); return m + d * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }};
+}
+
+const BT_WET = [0.48, 0.022, 0.016], BT_THICK = [0.24, 0.006, 0.006], BT_CLOT = [0.05, 0, 0];
+const bt_cache = {};
+
+const btPx = (size, u) => Math.floor((u * 0.5 + 0.5) * (size - 1));
+// dome-shaped bump, merged with max()
+function btBump(h, size, cx, cy, r, amp) {
+	const x0 = Math.max(btPx(size, cx - r), 0), x1 = Math.min(btPx(size, cx + r) + 1, size - 1);
+	const y0 = Math.max(btPx(size, cy - r), 0), y1 = Math.min(btPx(size, cy + r) + 1, size - 1);
+	const inv = 2 / (size - 1);
+	for (let y = y0; y <= y1; y++) {
+		const py = y * inv - 1;
+		for (let x = x0; x <= x1; x++) {
+			const d = Math.hypot(x * inv - 1 - cx, py - cy) / r;
+			if (d < 1) { const v = amp * Math.sqrt(1 - d * d), i = y * size + x; if (v > h[i]) h[i] = v; }
+		}
+	}
+}
+// lobed blob: radius varies with angle, flat-ish top, soft edge
+function btBlob(h, size, n, r0, lobes, freq, amp) {
+	const inv = 2 / (size - 1);
+	for (let y = 0; y < size; y++) {
+		const py = y * inv - 1;
+		for (let x = 0; x < size; x++) {
+			const px = x * inv - 1, d = Math.sqrt(px * px + py * py);
+			if (d > r0 * (1 + lobes * 1.6)) continue;
+			const a = Math.atan2(py, px);
+			const r = r0 * (1 + lobes * n.get(Math.cos(a) * freq * 40, Math.sin(a) * freq * 40) * 2);
+			const edge = (r - d) / Math.max(r, 0.001);
+			if (edge > 0) { const v = amp * Math.pow(clamp(edge * 3.5, 0, 1), 0.55), i = y * size + x; h[i] = Math.max(h[i], v); }
+		}
+	}
+}
+function btSplat(h, size, rng, n) {
+	const r0 = rng.range(0.3, 0.42);
+	btBlob(h, size, n, r0, 0.18, 1.3, 0.85);
+	// a few short tails on the side the drop was travelling (+V)
+	for (let s = rng.int(1, 4); s > 0; s--) {
+		const a = Math.PI * 0.5 + rng.range(-0.55, 0.55), dx = Math.cos(a), dy = Math.sin(a);
+		const length = rng.range(0.08, 0.3), w = rng.range(0.04, 0.08), steps = Math.floor(length / 0.02) + 2;
+		for (let k = 0; k < steps; k++) { const t = k / steps, d = r0 * 0.75 + length * t; btBump(h, size, dx * d, dy * d, w * (1 - t * 0.6), 0.6); }
+		const e = r0 * 0.75 + length + 0.02;
+		btBump(h, size, dx * e, dy * e, w * 0.75, 0.65);
+	}
+	// loose satellite droplets, mostly thrown ahead
+	for (let s = rng.int(4, 12); s > 0; s--) {
+		const a = Math.PI * 0.5 + rng.range(-1.2, 1.2), d = rng.range(r0 + 0.08, 0.93), r = rng.range(0.008, 0.03) * (1.2 - d * 0.5);
+		btBump(h, size, Math.cos(a) * d, Math.sin(a) * d, r, 0.7);
+	}
+}
+function btDrop(h, size, rng, n) {
+	btBlob(h, size, n, 0.7, 0.09, 4.0, 0.75);
+	for (let s = rng.int(0, 4); s > 0; s--) { const a = rng.randf() * Math.PI * 2, d = rng.range(0.8, 0.92); btBump(h, size, Math.cos(a) * d, Math.sin(a) * d, rng.range(0.04, 0.07), 0.6); }
+}
+function btStreak(h, size, n) {
+	const inv = 2 / (size - 1);
+	for (let y = 0; y < size; y++) {
+		const py = y * inv - 1;
+		const centre = n.get(0, py * 60) * 0.18;
+		const half = (0.55 + n.get(50, py * 90) * 0.18) * gsmooth(1.0, 0.8, Math.abs(py));
+		for (let x = 0; x < size; x++) { const e = half - Math.abs(x * inv - 1 - centre); if (e > 0) h[y * size + x] = 0.7 * Math.pow(clamp(e * 6, 0, 1), 0.5); }
+	}
+}
+function btPrint(h, size, n, left) {
+	const inv = 2 / (size - 1);
+	for (let y = 0; y < size; y++) {
+		const py = y * inv - 1;
+		for (let x = 0; x < size; x++) {
+			const px = (x * inv - 1) * (left ? -1 : 1);
+			const fore = Math.pow((px - 0.08 + py * 0.08) / 0.62, 2) + Math.pow((py + 0.3) / 0.62, 2);
+			const heel = Math.pow(px / 0.5, 2) + Math.pow((py - 0.62) / 0.32, 2);
+			const inside = Math.min(fore, heel);
+			if (inside < 1) {
+				const tread = 0.5 + 0.5 * Math.sin(py * 38 + n.get(x * 3, y * 3) * 4);
+				const blotch = n.get(x * 2, y * 2) * 0.5 + 0.5;
+				h[y * size + x] = 0.35 * gsmooth(1, 0.8, inside) * gsmooth(0.25, 0.6, tread * 0.6 + blotch * 0.7);
+			}
+		}
+	}
+}
+function btBrush(h, size, n) {
+	const inv = 2 / (size - 1);
+	for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+		const px = x * inv - 1, py = y * inv - 1, r = Math.sqrt(px * px + py * py);
+		if (r >= 1) continue;
+		const fibre = n.get(px * 240, 7) * 0.5 + 0.5;
+		h[y * size + x] = 0.6 * gsmooth(1, 0.55, r) * gsmooth(0.25, 0.7, fibre);
+	}
+}
+function btPool(h, size, rng, n) {
+	// irregular spread: a main body plus a few merged lobes of different size
+	btBlob(h, size, n, 0.55, 0.2, 1.3, 1.0);
+	for (let s = rng.int(3, 5); s > 0; s--) { const a = rng.randf() * Math.PI * 2, d = rng.range(0.3, 0.5); btBump(h, size, Math.cos(a) * d, Math.sin(a) * d, rng.range(0.2, 0.36), 1.0); }
+}
+function btSmear(h, size, n) {
+	const inv = 2 / (size - 1);
+	for (let y = 0; y < size; y++) {
+		const py = y * inv - 1;
+		for (let x = 0; x < size; x++) {
+			const px = x * inv - 1;
+			const env = 1 - Math.pow(Math.abs(px) / 0.8, 2) - Math.pow(Math.abs(py) / 0.95, 6);
+			if (env <= 0) continue;
+			const fibre = n.get(px * 260, py * 25) * 0.5 + 0.5;
+			const run_out = gsmooth(0.95, -0.7, py + n.get(px * 120, 300) * 0.5);
+			h[y * size + x] = gsmooth(0.3, 0.8, fibre * 0.55 + env * 0.55 + run_out * 0.3) * run_out * 0.5;
+		}
+	}
+}
+function btWound(h, size, rng, n) {
+	btBlob(h, size, n, 0.55, 0.2, 2.0, 0.55);
+	for (let s = 0; s < 10; s++) { const a = rng.randf() * Math.PI * 2, d = rng.range(0.55, 0.9); btBump(h, size, Math.cos(a) * d, Math.sin(a) * d, rng.range(0.03, 0.07), 0.5); }
+	btBlob(h, size, n, 0.2, 0.25, 3.0, 1.5);   // torn entry hole: very high values bake to near-black clotted colour
+}
+
+// {albedo: RGBA bytes (colour, coverage), mask: RGBA bytes (thickness, 0, 0, coverage), size} for a shape kind and variant
+function bloodShape(kind, variant) {
+	const key = kind + '_' + variant;
+	if (bt_cache[key]) return bt_cache[key];
+	// (Godot: 96 / 192 px; here a power of two, so the textures have mip maps)
+	const size = ['drop', 'wound', 'streak', 'brush', 'print'].includes(kind) ? 128 : 256;
+	const h = new Float32Array(size * size);
+	const rng = makeRng(hashString(key)), n = makeNoise(Math.floor(rng.randf() * 4294967295));
+	switch (kind) {
+		case 'splat': btSplat(h, size, rng, n); break;
+		case 'drop': btDrop(h, size, rng, n); break;
+		case 'streak': btStreak(h, size, n); break;
+		case 'brush': btBrush(h, size, n); break;
+		case 'print': btPrint(h, size, n, variant == 1); break;
+		case 'pool': btPool(h, size, rng, n); break;
+		case 'smear': btSmear(h, size, n); break;
+		case 'wound': btWound(h, size, rng, n); break;
+	}
+	const flat = kind == 'pool';
+	const albedo = new Uint8Array(size * size * 4), mask = new Uint8Array(size * size * 4);
+	for (let i = 0; i < size * size; i++) {
+		const v = h[i];
+		const a = gsmooth(0.02, 0.1, v);
+		const t = gsmooth(0.1, 0.95, v);
+		let c = BT_WET.map((w, k) => w + (BT_THICK[k] - w) * t);
+		if (v > 1) { const u = gsmooth(1, 1.4, v); c = c.map((x, k) => x + (BT_CLOT[k] - x) * u); }
+		// slightly darker rim where the film dries first
+		const rim = gsmooth(0.02, 0.07, v) * (1 - gsmooth(0.07, 0.22, v));
+		c = c.map(x => x * (1 - rim * 0.25));
+		albedo.set([c[0] * 255, c[1] * 255, c[2] * 255, a * 255].map(Math.round), i * 4);
+		// paint mask: R = film thickness, A = coverage (a pool is one even sheet, full depth a little in from its edge)
+		const th = flat ? gsmooth(0.02, 0.3, v) : clamp(v / 1.2, 0, 1);
+		mask.set([th * 255, 0, 0, gsmooth(0.01, 0.09, v) * 255].map(Math.round), i * 4);
+	}
+	return (bt_cache[key] = {albedo, mask, size, key});
+}
+
+// the mist's puff: a soft noisy round blot
+function smokePuff() {
+	if (bt_cache.smoke) return bt_cache.smoke;
+	const size = 128, data = new Uint8Array(size * size * 4), n = makeNoise(77);
+	for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+		const d = Math.hypot(x - size * 0.5, y - size * 0.5) / (size * 0.5);
+		let fall = clamp(1 - d, 0, 1); fall = fall * fall * (3 - 2 * fall);
+		// (FastNoiseLite at frequency 0.045, 4 octaves)
+		const v = clamp(n.get(x * 4.5, y * 4.5) * 0.6 + 0.6, 0, 1);
+		data.set([255, 255, 255, Math.round(clamp(fall * v * 1.2, 0, 1) * 255)], (y * size + x) * 4);
+	}
+	return (bt_cache.smoke = {data, size});
+}
+
+// The splash at a hit (blood_splash.gd): eight frames of a burst drawn once: alpha the blood, red how thin, green a glint
+function splashAtlas() {
+	if (bt_cache.splash) return bt_cache.splash;
+	const CELL = 128, FX = 4, FY = 2, W = CELL * FX, H = CELL * FY;
+	const img = new Float32Array(W * H * 4);
+	const rng = makeRng(77);
+	const disc = (ox, oy, cx, cy, r, a, thin, glint) => {
+		const x0 = Math.max(Math.floor(cx - r - 1), 0), x1 = Math.min(Math.floor(cx + r + 1), CELL - 1);
+		const y0 = Math.max(Math.floor(cy - r - 1), 0), y1 = Math.min(Math.floor(cy + r + 1), CELL - 1);
+		for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+			const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / Math.max(r, 0.001);
+			if (d > 1) continue;
+			const v = clamp((1 - d) * 3, 0, 1) * a, i = ((oy + y) * W + ox + x) * 4;
+			if (v > img[i + 3]) {
+				const g = glint * clamp(1 - d * 2.5, 0, 1);
+				img[i] = Math.max(img[i], thin); img[i + 1] = Math.max(img[i + 1], g); img[i + 3] = v;
+			}
+		}
+	};
+	// the drops: where each flies (mostly forward, along +x, the throw) and how big it is
+	const drops = [];
+	for (let i = 0; i < 34; i++) {
+		const ang = i < 24 ? rng.randfn(0, 0.75) : rng.range(-Math.PI, Math.PI);
+		drops.push([ang, rng.range(0.45, 1.0) * (i < 24 ? 1 : 0.55), rng.range(0.6, 1.4)]);
+	}
+	const count = FX * FY;
+	for (let f = 0; f < count; f++) {
+		const t = f / (count - 1), ox = (f % FX) * CELL, oy = Math.floor(f / FX) * CELL;
+		const cx = CELL * 0.38, cy = CELL * 0.5;
+		const out = 1 - Math.pow(1 - t, 2.2);
+		// the core: a ragged blob that bursts, then breaks up and thins
+		const core_r = CELL * (0.09 + 0.12 * Math.sqrt(t)) * (1 - 0.5 * gsmooth(0.55, 1.0, t));
+		const core_a = 1 - gsmooth(0.35, 1.0, t);
+		for (let k = 0; k < 9; k++) {
+			const a = Math.PI * 2 * k / 9 + rng.randf() * 0.4, rr = core_r * rng.range(0.2, 0.55);
+			disc(ox, oy, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, core_r * rng.range(0.45, 0.75), core_a, 0.15, 0.4 * (1 - t));
+		}
+		// the drops: a streak from the core early on, a round drop at the end of it later; small ones fade first
+		for (const d of drops) {
+			const dx = Math.cos(d[0]), dy = Math.sin(d[0]);
+			const reach = CELL * 0.6 * d[1] * out, r = CELL * 0.022 * d[2] * (1 - 0.55 * t);
+			const alpha = 1 - gsmooth(0.55 + 0.35 * d[2] / 1.4, 1.0, t);
+			if (alpha <= 0 || r < 0.6) continue;
+			const tail = clamp(0.55 - t, 0, 0.55);
+			for (let s = 0; s <= 6; s++) {
+				const u = s / 6, along = reach * glerp(1 - tail, 1, u);
+				disc(ox, oy, cx + dx * along, cy + dy * along, r * glerp(0.45, 1, u), alpha * glerp(0.5, 1, u), 0.55 * t, 0);
+			}
+		}
+	}
+	const data = new Uint8Array(W * H * 4);
+	for (let i = 0; i < data.length; i++) data[i] = Math.round(clamp(img[i], 0, 1) * 255);
+	return (bt_cache.splash = {data, width: W, height: H});
+}
+
+// ---------------------------------------------------------------------------
+// Blood (scripts/fx/blood.gd), ported line by line:
+//  - Droplets: ballistic points (gravity + air drag) swept with rays, drawn as velocity-stretched beads.
+//  - Impacts leave splats sized by volume and speed and stretched by the impact angle.
+//  - Runs: blood on a slope or wall flows downhill as a thin film, hangs from ceilings, drips off edges, collects in pools.
+//  - Pools grow and spread with the volume that reaches them (area = volume / film thickness), in tongues.
+//  - Bodies: wounds ooze or spurt with the pulse, blood runs over the body parts under gravity, soaks the clothes and
+//    drips off the lowest point. Moving bodies smear what they carry or lie in; bloody feet leave prints.
+//  - Everything dries: colour goes to dark brown and the wet gloss disappears.
+// The logic is here (BloodSim); what is drawn is in BloodView. Units: metres, seconds, ml.
+// ---------------------------------------------------------------------------
+
+const B_MAX_DROPS = 560, B_MAX_RUNS = 160, B_MAX_BODY_RUNS = 70, B_MAX_POOLS = 160;
+const B_GRAVITY = 9.81;
+const B_FILM = 1.4e-3;            // pool film thickness on hard ground, m (blood is thick)
+const B_DEPOSIT_WALL = 3.0;       // ml left behind per metre by a 12 mm run on hard surfaces
+const B_DEPOSIT_CLOTH = 2.5;      // ml the clothes take up per metre of a run (the rest runs on)
+const B_EXTERNAL = 0.3;           // share of the lost blood that comes out of the wound (a torso wound bleeds mostly inside)
+const B_EXTERNAL_ARTERIAL = 0.65;
+const B_DRY_TIME = 140.0;
+const B_SPARE = 3;
+
+const brand = () => Math.random();
+const brange = (a, b) => a + (b - a) * Math.random();
+const brandi = n => Math.floor(Math.random() * n);
+const deg = d => d * Math.PI / 180;
+const rotAround = (v, axis, a) => v.clone().applyAxisAngle(axis.clone().normalize(), a);
+
+class BloodSim {
+	constructor(rt, people) {
+		this.rt = rt;
+		this.J = rt.Jolt;
+		this.people = people;           // the humanoids (bots)
+		this._drops = []; this._runs = []; this._body_runs = []; this._pools = [];
+		this._bleeders = []; this._jets = [];
+		this._soak = new Map(); this._soak_stamp = new Map(); this._dead_since = new Map(); this._feet = new Map();
+		this._wounds = new Map();        // bot -> wounds
+		this._splat_grid = new Set();
+		this._time = 0; this._tick = 0; this._smear_t = 0; this._since_sim = 0;
+		this._timers = [];
+		this.view = null;
+		this.ground = groundLevel(rt);
+		// rays: what is "world" (the level: static bodies and the ground) and "props" (moving things that are not people)
+		const J = this.J;
+		this.f_world = new J.IgnoreMultipleBodiesFilter();
+		this.f_world_props = rayFilters(rt).people;
+		this.part_of = new Map();       // body index -> {bot, part}
+		for (const bot of people) for (const part of bot.parts) this.part_of.set(part.id.GetIndexAndSequenceNumber(), {bot, part});
+		this.entry_of = new Map();
+		for (const e of rt.world.entries) {
+			this.entry_of.set(e.id.GetIndexAndSequenceNumber(), e);
+			if (e.desc.settings.type == 'dynamic') this.f_world.IgnoreBody(e.id);
+		}
+		for (const bot of people) {
+			bot.own_filter = new J.IgnoreMultipleBodiesFilter();
+			for (const p of bot.parts) bot.own_filter.IgnoreBody(p.id);
+		}
+	}
+
+	clock() { return this._time; }
+
+	// a ray from a to b: {position, normal, collider: {part, bot} | {entry} | null (the level)} or null.
+	// mode: 'all' (level, props, people), 'world' (the level), 'world_props', 'bots' (one part only: `only`)
+	ray(a, b, mode, ignore_bot, only) {
+		let filter;
+		if (mode == 'world') filter = this.f_world;
+		else if (mode == 'world_props') filter = this.f_world_props;
+		else if (mode == 'bots') {
+			filter = new this.J.IgnoreMultipleBodiesFilter();
+			for (const e of this.rt.world.entries) if (e.id.GetIndexAndSequenceNumber() != only) filter.IgnoreBody(e.id);
+		} else filter = ignore_bot ? ignore_bot.own_filter : null;
+		const hit = castRay(this.rt, a, b.clone().sub(a), filter);
+		if (mode == 'bots') this.J.destroy(filter);
+		if (!hit) return null;
+		if (mode == 'bots' && hit.id != only) return null;
+		const owner = this.part_of.get(hit.id);
+		const entry = this.entry_of.get(hit.id);
+		hit.collider = owner || (entry && entry.desc.settings.type == 'dynamic' ? {entry} : null);
+		return hit;
+	}
+
+	// --- Public API (called by the humanoid) ---
+
+	// a bullet hit a body part. kind: "head", "neck", "torso", "limb"; rate: the bleed rate (ml/s) this wound added
+	on_hit(bot, part, point, dir, weapon, kind, rate, arterial) {
+		const pellet = weapon == 'shotgun' || weapon == 'frag';
+		const sx = this.shapeXf(bot, part);
+		const entry_n = shapeProject(part.shape, sx.toLocal(point))[1].applyQuaternion(sx.q).normalize();
+		const ws = pellet ? 0.07 : 0.1;
+		// a shot at an angle drags the blood sideways across the skin/cloth
+		const slide = dir.clone().addScaledVector(entry_n, -dir.dot(entry_n));
+		const graze = clamp(slide.length(), 0, 1);
+		const slide_n = graze > 0.05 ? slide.clone().normalize() : gv();
+		this._body_stamp(bot, part, point, entry_n, dir, ws, ws * (1 + graze * 1.2), 'wound', 0);
+		// the burst where it went in: thrown back out the way it came
+		this.splash(point, entry_n.clone().addScaledVector(dir, -0.6).normalize(), pellet ? 0.3 : 0.42);
+		// then the stain spreads out from it through the clothes over the next seconds
+		const spread = clamp(0.07 + rate * 0.004, 0.07, 0.16) * (pellet ? 0.7 : 1.0);
+		bot.bloom_blood(part, point, spread, 2.2 + rate * 0.03, 0.8);
+		if (graze > 0.3) {
+			const l = (0.06 + 0.16 * graze) * (pellet ? 0.6 : 1.0);
+			this._body_stamp(bot, part, point.clone().addScaledVector(slide_n, l * 0.5), entry_n, slide_n, ws * 0.45, l, 'streak', 0);
+		}
+		// where the bullet leaves the part (through-and-through)
+		const exit = this._exit_point(bot, part, point, dir);
+		if (exit) {
+			const es = pellet ? 0.09 : 0.14;
+			const ex_n = shapeProject(part.shape, sx.toLocal(exit))[1].applyQuaternion(sx.q).normalize();
+			this._body_stamp(bot, part, exit, ex_n, dir, es, es, 'splat', brandi(B_SPARE));
+			this.splash(exit, dir, pellet ? 0.45 : 0.7, 0.38);
+			bot.bloom_blood(part, exit, es * 1.3, 3.0, 0.8);
+		}
+		let count = 14, total = 5;
+		if (kind == 'head') { count = pellet ? 22 : 70; total = pellet ? 18 : 70; }
+		else if (kind == 'neck') { count = pellet ? 16 : 36; total = pellet ? 12 : 35; }
+		else if (kind == 'torso') { count = pellet ? 12 : 30; total = pellet ? 9 : 28; }
+		else { count = pellet ? 7 : 16; total = pellet ? 4 : 12; }
+		const origin = exit || point;
+		// forward spray out of the exit wound
+		this._spray(origin.clone().addScaledVector(dir, 0.02), dir, 24, 3, 11, count, total, bot);
+		// back spatter out of the entry wound
+		const back = dir.clone().multiplyScalar(-0.6).addScaledVector(entry_n, 0.8).normalize();
+		this._spray(point.clone().addScaledVector(entry_n, 0.02), back, 45, 0.8, 3.5, Math.floor(count * 0.35), total * 0.2, bot);
+		this._mist_burst(origin, dir, kind == 'head' && !pellet ? 1.0 : 0.55);
+		// through the head: it is blown out of the far side, onto whatever is behind
+		if (kind == 'head' && !pellet) this.exit_splatter(origin.clone().addScaledVector(dir, 0.03), dir, 1.0, bot);
+		// register the wound for bleeding
+		if (!this._wounds.has(bot)) this._wounds.set(bot, []);
+		const wounds = this._wounds.get(bot);
+		const push_s = slide_n.clone().applyQuaternion(sx.q.clone().invert());
+		// a wrecked head pours: scalp, face and the vessels at the base of the skull empty out
+		let gush = 0;
+		if (kind == 'head') gush = pellet ? 220 : 480;
+		else if (kind == 'neck') gush = 120;
+		wounds.push({part, p: sx.toLocal(point), w: Math.max(rate, 2), arterial, acc: 0, pulse: brand(), push: push_s, graze, kind, gush});
+		if (graze > 0.3) {
+			// the first gush, thrown along the direction the bullet was going
+			const br = this._start_body_run(bot, part, point, (1.5 + 3.5 * graze) * (pellet ? 0.5 : 1.0));
+			if (br) { br.push = push_s.clone(); br.push_k = graze * 1.4; br.dir = push_s.clone(); }
+		}
+		if (exit) wounds.push({part, p: sx.toLocal(exit), w: Math.max(rate, 2) * 0.8, arterial: false, acc: 0, pulse: 0});
+		if (!this._bleeders.includes(bot)) this._bleeders.push(bot);
+	}
+
+	// a stump or a smashed head: a stream of blood out of `at` along `out`; flow in ml/s at full pressure
+	open_jet(bot, part, at, out, flow, head = false, gush = 0, spread = 0.02) {
+		if (this._jets.filter(j => j.part == part).length >= 3) return;
+		const q = bot.quat(part);
+		this._jets.push({bot, part, p: bot.toLocal(part, at), dir: out.clone().applyQuaternion(q.clone().invert()).normalize(), flow, head, beat: brand(), acc: 0, drain: 0, age: 0, gush, spread});
+	}
+
+	// heart still going (a shot to the head kills the brain, not the heart), its rate, how full the vessels still are
+	_pressure(jet) {
+		const bot = jet.bot;
+		let p = 1;
+		if (!bot.alive) { const since = this._time - (this._dead_since.has(bot) ? this._dead_since.get(bot) : this._time); p = Math.exp(-since / (jet.head ? 7.0 : 2.2)); }
+		return p * Math.exp(-jet.age / (jet.head ? 45 : 35));
+	}
+
+	_update_jets(dt) {
+		for (let i = 0; i < this._jets.length;) {
+			const jet = this._jets[i];
+			if (jet.age > 90) { this._jets.splice(i, 1); continue; }
+			jet.age += dt;
+			if (!jet.bot.alive && !this._dead_since.has(jet.bot)) this._dead_since.set(jet.bot, this._time);
+			const pr = this._pressure(jet);
+			const q = jet.bot.quat(jet.part);
+			const at = jet.bot.toWorld(jet.part, jet.p);
+			const out = jet.dir.clone().applyQuaternion(q).normalize();
+			const v0 = jet.bot.lin(jet.part);
+			if (pr > 0.08) {
+				// the heartbeat: a sharp surge, then the stream sags until the next
+				const rate = 1.25 + 0.4 * (1 - pr);
+				jet.beat += dt * rate;
+				const ph = jet.beat % 1, surge = Math.exp(-ph * 6);
+				const push = pr * (0.45 + 0.55 * surge);
+				const speed = glerp(0.8, 5.2, push), vol = jet.flow * push * dt;
+				const n = 2;
+				for (let k = 0; k < n; k++) {
+					const d = cone(out, deg(3 + 5 * (1 - push)));
+					const sp = speed * brange(0.92, 1.05);
+					this.spawn_drop(at.clone().addScaledVector(d, 0.01 + sp * dt * k / n), v0.clone().addScaledVector(d, sp), vol / n, jet.bot, 0.15, false, 0.014);
+				}
+			}
+			// a body opened right across: what the trunk holds pours out of the whole cut face in the first seconds
+			if (jet.gush > 0) {
+				const g = Math.min(jet.gush, dt * (60 + jet.gush * 0.45));
+				jet.gush -= g;
+				let side = out.clone().cross(gv(0, 1, 0));
+				side = side.length() > 0.05 ? side.normalize() : gv(1, 0, 0);
+				const side2 = out.clone().cross(side).normalize();
+				for (let k = 0; k < 2; k++) {
+					const off = side.clone().multiplyScalar(brange(-1, 1)).addScaledVector(side2, brange(-1, 1)).multiplyScalar(jet.spread);
+					this.spawn_drop(at.clone().add(off).addScaledVector(out, 0.02), v0.clone().addScaledVector(out, brange(0.3, 1.2)).add(gv(0, -0.3, 0)), g / 2, jet.bot, 0.2, true, 0.008);
+				}
+			}
+			// whatever the pressure, some runs out by gravity from the lowest edge of the wound
+			jet.drain += jet.flow * dt * (0.12 + 0.25 * (1 - pr)) * Math.exp(-jet.age / 60);
+			if (jet.drain >= 1.2) {
+				this._drip(at.clone().add(gv(brange(-0.02, 0.02), -0.02, brange(-0.02, 0.02))), v0, jet.drain, jet.bot);
+				jet.drain = 0;
+			}
+			if (jet.gush <= 0 && pr <= 0.08 && jet.age > 30 && jet.flow * Math.exp(-jet.age / 60) < 0.5) { this._jets.splice(i, 1); continue; }
+			i++;
+		}
+	}
+
+	// --- Droplets ---
+
+	_spray(origin, dir, cone_deg, v_min, v_max, count, total, ignore) {
+		// fewer, somewhat bigger drops carry the same blood
+		count = Math.ceil(count * 0.45);
+		if (count <= 0) return;
+		const weights = [];
+		let sum = 0;
+		for (let i = 0; i < count; i++) { const w = Math.pow(brand(), 3) + 0.02; weights.push(w); sum += w; }   // many fine droplets, a few heavy ones
+		for (let i = 0; i < count; i++) {
+			const d = cone(dir, deg(cone_deg));
+			const vol = total * weights[i] / sum;
+			const sp = brange(v_min, v_max) * glerp(0.7, 1.0, clamp(vol, 0, 1));   // heavy drops keep more of the bullet's speed
+			this.spawn_drop(origin.clone().add(jitter(0.015)), d.multiplyScalar(sp), vol, ignore, 0.12);
+		}
+	}
+
+	spawn_drop(pos, vel, vol, ignore = null, ignore_t = 0, drip = false, streak = 0.003) {
+		if (vol < 0.005) return;
+		let d;
+		if (this._drops.length >= B_MAX_DROPS) d = this._drops[brandi(this._drops.length)];
+		else { d = {}; this._drops.push(d); }
+		Object.assign(d, {pos: pos.clone(), vel: vel.clone(), vol: Math.min(vol, 12), age: 0, drip, ignore, ignore_t, streak});
+	}
+
+	// blood leaving a body: if the ground is right there (a body lying on it) it goes straight into the pool
+	_drip(pos, vel, vol, ignore) {
+		const hit = this.ray(pos.clone().add(gv(0, 0.12, 0)), pos.clone().add(gv(0, -0.1, 0)), 'world');
+		if (hit && hit.normal.y > 0.8) { this._add_pool(hit.position, hit.normal, vol); return; }
+		this.spawn_drop(pos, vel, vol, ignore, 0.1, true);
+	}
+
+	_update_drops(dt) {
+		for (let i = 0; i < this._drops.length;) {
+			const d = this._drops[i];
+			d.age += dt;
+			d.ignore_t -= dt;
+			// drag: small droplets slow down much faster (mist hangs, beads fly)
+			const radius = 0.0062 * Math.cbrt(d.vol);
+			const drag = 0.0025 / Math.max(radius, 0.0008);
+			d.vel.y -= B_GRAVITY * dt;
+			d.vel.multiplyScalar(Math.max(1 - drag * d.vel.length() * dt * 0.1, 0.5));
+			const to = d.pos.clone().addScaledVector(d.vel, dt);
+			// its first step: born inside something, it lands on that thing's surface instead
+			if (d.age <= dt * 1.5) {
+				const land = this._inside_surface(d);
+				if (land) { this._drop_land(d, land); this._drops.splice(i, 1); continue; }
+			}
+			const hit = this.ray(d.pos, to, 'all', d.ignore_t > 0 ? d.ignore : null);
+			if (hit) { this._drop_land(d, hit); this._drops.splice(i, 1); continue; }
+			d.pos = to;
+			if (d.age > 6 || d.pos.y < this.ground - 30) { this._drops.splice(i, 1); continue; }
+			i++;
+		}
+	}
+
+	// if the drop starts inside level geometry or a prop: the surface it is under (straight up out of it)
+	_inside_surface(d) {
+		const inside = castRay(this.rt, d.pos, gv(0, 0.001, 0), this.f_world_props);
+		if (!inside || inside.fraction > 0) return null;
+		let out = this.ray(d.pos.clone().add(gv(0, 0.12, 0)), d.pos.clone().add(gv(0, -0.02, 0)), 'world_props');
+		if (!out) { const e = this.entry_of.get(inside.id); out = {position: d.pos.clone(), normal: gv(0, 1, 0), collider: e && e.desc.settings.type == 'dynamic' ? {entry: e} : null}; }
+		return out;
+	}
+
+	_drop_land(d, hit) {
+		const col = hit.collider, p = hit.position, n = hit.normal;
+		const speed = d.vel.length();
+		if (col && col.part) {
+			const {bot, part} = col;
+			const w = clamp(0.014 + 0.03 * Math.sqrt(d.vol), 0.014, 0.08);
+			this._body_stamp(bot, part, p, n, d.vel, w, w, w < 0.035 ? 'drop' : 'splat', brandi(B_SPARE));
+			this._add_soak(part, d.vol * 0.5);
+			if (d.vol > 0.25) this._start_body_run(bot, part, p, d.vol * 0.5);
+			return;
+		}
+		const on_world = !col;   // (Godot: parent == self)
+		if (n.y > 0.8 && on_world) {
+			const pool = this._pool_at(p, 1.0);
+			if (pool) { this._feed_pool(pool, d.vol); return; }   // landing in an existing pool just feeds it
+			if ((d.drip && d.vol > 0.15) || d.vol > 2.5) { this._add_pool(p, n, d.vol); return; }   // drips collect where they fall
+		}
+		const vn = Math.abs(d.vel.dot(n));
+		const vt = d.vel.clone().addScaledVector(n, -d.vel.dot(n));
+		let size = 0.012 + 0.05 * Math.sqrt(d.vol);
+		size *= 1 + clamp(speed - 2, 0, 10) * 0.07;
+		const elong = 1 + clamp(vt.length() / Math.max(vn, 0.6), 0, 3) * 0.55;
+		const kind = size < 0.035 || speed < 3 ? 'drop' : 'splat';
+		this._world_stamp(col, p, n, vt.length() > 0.2 ? vt : anyTangent(n), size, size * elong, kind, brandi(B_SPARE));
+		if (!on_world) return;
+		if (n.y < -0.6) { if (d.vol > 0.3) this._start_run(p, n, d.vol * 0.6); }
+		else if (n.y <= 0.8 && d.vol > 0.2) this._start_run(p, n, d.vol * 0.75);
+	}
+
+	// --- Runs on world surfaces ---
+
+	_start_run(pos, n, vol) {
+		if (this._runs.length >= B_MAX_RUNS) return;
+		const g = gv(0, -1, 0).addScaledVector(n, -n.dot(gv(0, -1, 0)));
+		const dir = g.length() > 0.01 ? g.normalize() : anyTangent(n);
+		this._runs.push({pos: pos.clone(), n: n.clone(), dir, vol, width: clamp(0.006 + 0.006 * Math.sqrt(vol), 0.006, 0.022), age: 0, hang: -1, wobble: brange(3, 9), v: 0, s_dir: dir.clone()});
+	}
+
+	_update_runs(dt) {
+		for (let i = 0; i < this._runs.length;) {
+			if (this._step_run(this._runs[i], dt)) i++;
+			else {
+				const r = this._runs[i];
+				// the drop at the end of the run: a small bead where it stopped
+				this._world_stamp(null, r.pos, r.n, r.dir, r.width * 1.5, r.width * 1.9, 'drop', 1);
+				this._runs.splice(i, 1);
+			}
+		}
+	}
+
+	_step_run(r, dt) {
+		r.age += dt;
+		if (r.n.y < -0.6) {
+			// under a ceiling or overhang: gather into a hanging drop, then fall
+			if (r.hang < 0) r.hang = brange(0.5, 3);
+			r.hang -= dt;
+			if (r.hang <= 0) { this.spawn_drop(r.pos.clone().addScaledVector(r.n, 0.006), gv(), r.vol, null, 0, true); return false; }
+			return true;
+		}
+		let g = gv(0, -1, 0).addScaledVector(r.n, -r.n.dot(gv(0, -1, 0)));
+		const slope = g.length();
+		if (r.vol < 0.06) return false;
+		// film flow: the steeper, the faster; stick-slip makes it creep and surge
+		const surge = 0.35 + 0.65 * Math.pow(Math.sin(r.age * r.wobble) * 0.5 + 0.5, 2);
+		const target = (0.01 + 0.34 * Math.pow(slope, 1.5) * clamp(r.vol / 1.5, 0.15, 2)) * surge;
+		r.v = gmove(r.v, target, dt * (target > r.v ? 0.6 : 0.9));
+		if (slope < 0.3 && r.v < 0.012) { this._add_pool(r.pos, r.n, r.vol); return false; }
+		if (slope > 0.05) {
+			g.divideScalar(slope);
+			const wander = r.n.clone().cross(g).multiplyScalar(brange(-0.6, 0.6));
+			r.dir = r.dir.clone().add(g.clone().add(wander).multiplyScalar(dt * 5 * clamp(slope * 1.5, 0, 1))).normalize();
+		} else g = r.dir.clone();
+		r.dir = r.dir.clone().addScaledVector(r.n, -r.n.dot(r.dir));
+		r.dir = r.dir.length() > 1e-3 ? r.dir.normalize() : g;
+		const speed = r.v;
+		const step = r.dir.clone().multiplyScalar(speed * dt);
+		const lift = r.n.clone().multiplyScalar(0.004);
+		// something ahead (an inside corner): continue on that surface
+		let hit = this.ray(r.pos.clone().add(lift), r.pos.clone().add(lift).addScaledVector(step, 1.5), 'world');
+		if (hit) { r.pos = hit.position; r.n = hit.normal; return true; }
+		// follow the surface below the new position
+		const np = r.pos.clone().add(step);
+		hit = this.ray(np.clone().addScaledVector(r.n, 0.03), np.clone().addScaledVector(r.n, -0.05), 'world');
+		if (!hit) {
+			// ran over an edge: a thin, slow film clings and goes on round it; a fast or heavy one falls
+			const clings = speed < 0.25 && r.vol < 3 && brand() > speed * 2.5;
+			if (clings) {
+				const round = this.ray(np.clone().addScaledVector(r.n, -0.012).addScaledVector(r.dir, 0.01), np.clone().addScaledVector(r.n, -0.012).addScaledVector(r.dir, -0.05), 'world');
+				if (round && round.normal.dot(r.n) < 0.5) {
+					this._world_stamp(null, r.pos, r.n, r.dir, r.width, r.width * 1.4, 'drop', 0, 1.0, 0.5);
+					const nn2 = round.normal;
+					r.pos = round.position;
+					const d2 = r.dir.clone().addScaledVector(nn2, -nn2.dot(r.dir));
+					const g2 = gv(0, -1, 0).addScaledVector(nn2, -nn2.dot(gv(0, -1, 0)));
+					const m = d2.clone().multiplyScalar(0.3).add(g2);
+					r.dir = m.length() > 1e-3 ? m.normalize() : r.dir;
+					r.n = nn2;
+					r.v *= 0.5;
+					return true;
+				}
+			}
+			this.spawn_drop(np.clone().addScaledVector(r.dir, 0.004), r.dir.clone().multiplyScalar(speed).addScaledVector(g, 0.1), r.vol, null, 0, true);
+			return false;
+		}
+		r.pos = hit.position;
+		r.n = hit.normal;
+		r.vol -= step.length() * B_DEPOSIT_WALL * (r.width / 0.012);
+		// paint the film where the front has been: dabs every step make one continuous trail
+		this._world_stamp(null, r.pos.clone().addScaledVector(step, -0.5), r.n, r.dir, r.width, r.width + step.length(), 'drop', 0, 1.0, 0.45);
+		return true;
+	}
+
+	// --- Pools ---
+
+	_pool_radius(vol) { return clamp(Math.sqrt(vol * 1e-6 / (Math.PI * B_FILM)), 0.015, 0.8); }
+
+	// the pool this point is in or just beside (within its current size)
+	_pool_near(p) {
+		let best = null, best_d = Infinity;
+		for (const q of this._pools) {
+			const d = Math.hypot(q.pos.x - p.x, q.pos.z - p.z);
+			if (Math.abs(q.pos.y - p.y) < 0.1 && d < Math.max(q.shown, q.r) * 1.05 + 0.06 && d < best_d) { best = q; best_d = d; }
+		}
+		return best;
+	}
+
+	_pool_at(p, reach) {
+		for (const pool of this._pools) if (Math.abs(pool.pos.y - p.y) < 0.06 && Math.hypot(pool.pos.x - p.x, pool.pos.z - p.z) < pool.r * reach + 0.04) return pool;
+		return null;
+	}
+
+	_add_pool(p, n, vol) {
+		// joins a pool only if it lands in (or right at the edge of) it; blood dripping somewhere else starts its own pool
+		let pool = this._pool_near(p);
+		if (pool) {
+			if (pool.r >= 0.79) {
+				// full: the overflow spreads out at the edge as a new lobe
+				let out = gv(p.x - pool.pos.x, 0, p.z - pool.pos.z);
+				if (out.length() < 0.01) out = gv(brange(-1, 1), 0, brange(-1, 1));
+				const at = pool.pos.clone().addScaledVector(out.normalize(), pool.r * 0.85);
+				const hit = this.ray(at.clone().add(gv(0, 0.2, 0)), at.clone().add(gv(0, -0.3, 0)), 'world');
+				if (!hit || hit.normal.y < 0.8) return;
+				p = hit.position; n = hit.normal;
+				pool = this._pool_at(p, 0.6);
+				if (!pool || pool.r >= 0.79) { this._new_pool(p, n, vol); return; }
+			}
+			this._feed_pool(pool, vol);
+			return;
+		}
+		this._new_pool(p, n, vol);
+	}
+
+	// adds volume; once the pool reaches an edge (a step nose, a kerb) the rest spills over it
+	_feed_pool(pool, vol) {
+		pool.vol += vol;
+		pool.birth = this._time;
+		const cap_vol = Math.PI * pool.cap * pool.cap * B_FILM * 1e6;
+		if (pool.vol > cap_vol) {
+			pool.spill += pool.vol - cap_vol;
+			pool.vol = cap_vol;
+			if (pool.spill > 0.8) { this._spill(pool, pool.spill); pool.spill = 0; }
+		}
+		pool.r = this._pool_radius(pool.vol);
+	}
+
+	_spill(pool, vol) {
+		const d = rotAround(pool.edge_dir, gv(0, 1, 0), brange(-0.35, 0.35));
+		const lip = pool.pos.clone().addScaledVector(d, pool.cap);
+		// find the face below the lip (the riser) and run down it
+		const hit = this.ray(lip.clone().addScaledVector(d, 0.05).add(gv(0, -0.03, 0)), lip.clone().addScaledVector(d, -0.06).add(gv(0, -0.03, 0)), 'world');
+		if (hit && Math.abs(hit.normal.y) < 0.5) {
+			this._world_stamp(null, lip.clone().add(gv(0, -0.005, 0)), gv(0, 1, 0), d, 0.04, 0.06, 'drop', 0);
+			this._start_run(hit.position, hit.normal, vol);
+		} else this.spawn_drop(lip.clone().addScaledVector(d, 0.01), d.clone().multiplyScalar(0.15), vol, null, 0, true);
+	}
+
+	// distance to the nearest drop-off around p (up to 0.8 m) and its direction
+	_find_edge(p) {
+		let best = 0.8, best_dir = gv(0, 0, -1);
+		for (let i = 0; i < 8; i++) {
+			const d = rotAround(gv(0, 0, -1), gv(0, 1, 0), i * Math.PI * 2 / 8);
+			for (let rad = 0.04; rad < best; rad += 0.04) {
+				const h = this._surface_height(p.clone().addScaledVector(d, rad), p.y);
+				if (h > p.y + 0.035) break;   // wall or step up
+				if (h < p.y - 0.035 && this._surface_height(p.clone().addScaledVector(d, rad + 0.06), p.y) < p.y - 0.035) { best = rad; best_dir = d; break; }
+			}
+		}
+		return [best, best_dir];
+	}
+
+	_surface_height(at, y) {
+		const hit = this.ray(gv(at.x, y + 0.45, at.z), gv(at.x, y - 0.25, at.z), 'world');
+		if (!hit) return -Infinity;
+		if (hit.normal.y < 0.8) return Infinity;
+		return hit.position.y;
+	}
+
+	_new_pool(p, n, vol) {
+		let pool;
+		if (this._pools.length >= B_MAX_POOLS) {
+			// out of pools: feed the nearest one if it is close, otherwise reuse the smallest (never wipe out a big pool)
+			let nearest = null, smallest = this._pools[0];
+			for (const q of this._pools) {
+				if (!nearest || q.pos.distanceTo(p) < nearest.pos.distanceTo(p)) nearest = q;
+				if (q.vol < smallest.vol) smallest = q;
+			}
+			if (nearest.pos.distanceTo(p) < Math.max(nearest.r, 0.05)) { this._feed_pool(nearest, vol); return; }
+			pool = smallest;
+			pool.recycled = (pool.recycled || 0) + 1;
+		} else { pool = {}; this._pools.push(pool); }
+		pool.pos = p.clone(); pool.n = n.clone();
+		const edge = this._find_edge(p);
+		pool.cap = Math.max(edge[0] * 1.1, 0.02);
+		pool.edge_dir = edge[1];
+		pool.spill = 0; pool.vol = 0; pool.r = 0;
+		this._feed_pool(pool, vol);
+		pool.shown = pool.r * 0.15;
+		pool.birth = this._time;
+		pool.along = anyTangent(n);
+		pool.variant = brandi(B_SPARE);
+		pool.on_ground = this.isGround(p, n);
+		// blood does not grow as one circle: a few tongues creep out at their own pace (faster downhill)
+		const g = gv(0, -1, 0).addScaledVector(n, -n.dot(gv(0, -1, 0)));
+		pool.downhill = g.length() > 1e-4 ? g.clone().normalize().multiplyScalar(clamp((g.length() - 0.04) * 8, 0, 1)) : gv();
+		pool.lobes = [];
+		const count = 5 + brandi(4), t = pool.along, b = n.clone().cross(t);
+		for (let i = 0; i < count; i++) {
+			const a = (i + brange(-0.35, 0.35)) / count * Math.PI * 2;
+			const dir = t.clone().multiplyScalar(Math.cos(a)).addScaledVector(b, Math.sin(a)).normalize();
+			const sp = brange(0.55, 1.25) * (1 + 1.4 * Math.max(dir.dot(pool.downhill), 0));
+			pool.lobes.push([dir, 0.1, sp, brand() * Math.PI * 2]);
+		}
+		if (this.view) this.view.poolStarted(pool);
+	}
+
+	_update_pools(delta) {
+		for (const pool of this._pools) {
+			// nothing more coming into it: it stays the size it has spread to
+			if (this._time - pool.birth > 1.5 && pool.shown < pool.r) {
+				pool.r = Math.max(pool.shown, 0.015);
+				pool.vol = Math.PI * pool.r * pool.r * B_FILM * 1e6;
+			}
+			const growing = pool.shown < pool.r;
+			// spreads out over several seconds, creeping at the end (thick blood slows down as the film thins)
+			if (growing) pool.shown = Math.min(pool.r, pool.shown + (pool.r - pool.shown) * delta * 0.4 + delta * 0.002);
+			// repaint while it spreads or is being fed (keeps it wet); it dries from the last time it was painted
+			if (growing || this._time - pool.birth < 0.3) {
+				const s = pool.shown * 2.7;
+				this._dab(pool, pool.pos, pool.n, pool.along, s, s, 'pool', pool.variant, 1, 1);
+				this._splat_grid.add(cellKey(pool.pos));
+				this._grow_lobes(pool, delta);
+			}
+		}
+	}
+
+	// moves the tongues of a spreading pool outwards and paints them: soft round dabs along each tongue
+	_grow_lobes(pool, delta) {
+		const r = Math.max(pool.shown, 0.02);
+		for (const lb of pool.lobes) {
+			lb[3] += delta * 0.7;
+			const dir = rotAround(lb[0], pool.n, Math.sin(lb[3]) * delta * 0.25).normalize();   // tongues wander a little sideways
+			lb[0] = dir;
+			const down = Math.max(dir.dot(pool.downhill), 0);
+			const max_reach = 0.7 + 0.25 * lb[2] + 0.6 * down;
+			lb[1] = Math.min(lb[1] + delta * 0.3 * lb[2] * (1 - lb[1] / max_reach), max_reach);
+			const reach = lb[1] * r;
+			const size = r * (0.85 - 0.2 * lb[1] / max_reach);
+			const tip = pool.pos.clone().addScaledVector(dir, reach * 0.55);
+			this._dab(pool, tip, pool.n, dir, size, size * (1 + down * 0.35), 'pool', (pool.variant + 1) % B_SPARE, 0.8, 1);
+		}
+	}
+
+	// --- Bodies ---
+
+	// the collision shape's frame of a part (centre of the part, its rotation and the shape's)
+	shapeXf(bot, part) {
+		const p = bot.pos(part), q = bot.quat(part).multiply(part.shape.rot);
+		return {p, q, toLocal: w => w.clone().sub(p).applyQuaternion(q.clone().invert()), toWorld: l => l.clone().applyQuaternion(q).add(p)};
+	}
+
+	_exit_point(bot, part, point, dir) {
+		const hit = this.ray(point.clone().addScaledVector(dir, 0.5), point.clone().addScaledVector(dir, 0.005), 'bots', null, part.id.GetIndexAndSequenceNumber());
+		return hit ? hit.position : null;
+	}
+
+	_add_soak(part, ml) { this._soak.set(part, Math.min((this._soak.get(part) || 0) + ml, 40)); }
+
+	_start_body_run(bot, part, world_p, vol) {
+		if (this._body_runs.length >= B_MAX_BODY_RUNS) {
+			// too much going on: send it straight down instead
+			this._drip(world_p.clone().add(gv(0, -0.02, 0)), bot.lin(part), vol, bot);
+			return null;
+		}
+		const sx = this.shapeXf(bot, part);
+		const p = shapeProject(part.shape, sx.toLocal(world_p))[0];
+		const br = {bot, part, p, dir: gv(), vol, width: clamp(0.018 + 0.01 * Math.sqrt(vol), 0.018, 0.05), age: 0, push: gv(), last_paint: null, push_k: 0};
+		this._body_runs.push(br);
+		return br;
+	}
+
+	_update_body_runs(dt) {
+		for (let i = 0; i < this._body_runs.length;) {
+			if (this._step_body_run(this._body_runs[i], dt)) i++;
+			else this._body_runs.splice(i, 1);
+		}
+	}
+
+	_step_body_run(br, dt) {
+		br.age += dt;
+		if (br.age > 25) return false;
+		const xf = this.shapeXf(br.bot, br.part);
+		const [surf, n] = shapeProject(br.part.shape, br.p);
+		const n_w = n.clone().applyQuaternion(xf.q).normalize();
+		const pos_w = xf.toWorld(surf);
+		if (n_w.y < -0.55) {
+			// lowest point of this part: flow onto the part below, or drip off
+			const hit = this.ray(pos_w.clone().addScaledVector(n_w, 0.004), pos_w.clone().add(gv(0, -0.07, 0)), 'all', null);
+			if (hit && hit.collider && hit.collider.part && hit.collider.bot == br.bot && hit.collider.part != br.part) {
+				br.part = hit.collider.part;
+				const nxf = this.shapeXf(br.bot, br.part);
+				br.p = shapeProject(br.part.shape, nxf.toLocal(hit.position))[0];
+				return true;
+			}
+			this._drip(pos_w.clone().add(gv(0, -0.008, 0)), br.bot.lin(br.part), br.vol, br.bot);
+			return false;
+		}
+		const g_s = gv(0, -1, 0).applyQuaternion(xf.q.clone().invert());
+		let g_t = g_s.clone().addScaledVector(n, -n.dot(g_s));
+		let slope = g_t.length();
+		br.push_k = Math.max(br.push_k - dt * 0.6, 0);
+		const p_t = br.push.clone().addScaledVector(n, -n.dot(br.push));
+		const pushing = br.push_k > 0.05 && p_t.length() > 0.1;
+		if (slope < 0.2 && !pushing) {
+			// on top of a lying body: it just soaks in
+			br.vol -= dt * 1.5;
+			this._add_soak(br.part, dt * 1.5);
+			return br.vol > 0;
+		}
+		g_t = slope > 1e-4 ? g_t.divideScalar(slope) : gv();
+		let want = g_t.clone();
+		if (pushing) {
+			const pk = clamp(br.push_k, 0, 0.9);
+			want = g_t.clone().multiplyScalar(slope * (1 - pk)).addScaledVector(p_t.clone().normalize(), pk).normalize();
+			slope = Math.max(slope, br.push_k * 0.8);
+		}
+		const speed = 0.02 + 0.1 * slope * clamp(br.vol / 2, 0.2, 2) + br.push_k * 0.12;
+		br.dir = br.dir.clone().multiplyScalar(0.7).addScaledVector(want, 0.3).addScaledVector(n.clone().cross(want), brange(-0.08, 0.08)).normalize();
+		br.p = surf.clone().addScaledVector(br.dir, speed * dt);
+		const used = speed * dt * B_DEPOSIT_CLOTH * (br.width / 0.012);
+		br.vol -= used;
+		this._add_soak(br.part, used);
+		if (br.vol < 0.05) return false;
+		// painted into the body's own blood as it goes (a dab each centimetre), kept in part space
+		const here = br.bot.toLocal(br.part, pos_w);
+		const from = br.last_paint || here;
+		const gap = from.distanceTo(here);
+		if (!br.last_paint || gap > 0.008) {
+			const amount = clamp(0.4 + br.vol * 0.12, 0.4, 0.9);
+			const steps = clamp(Math.floor(gap / 0.008), 1, 12);
+			for (let k = 0; k < steps; k++) br.bot.paint_blood(br.part, br.bot.toWorld(br.part, from.clone().lerp(here, (k + 1) / steps)), br.width * 0.5, amount);
+			br.last_paint = here;
+		}
+		return true;
+	}
+
+	_update_bleeding(dt) {
+		for (let i = 0; i < this._bleeders.length;) {
+			const bot = this._bleeders[i];
+			const wounds = this._wounds.get(bot) || [];
+			let rate = bot.bleed_rate;
+			if (!bot.alive) {
+				if (!this._dead_since.has(bot)) this._dead_since.set(bot, this._time);
+				// the heart has stopped: what is left drains out by gravity, and only from the body and head
+				const core = wounds.some(w => ['torso', 'neck', 'head'].includes(w.kind));
+				rate = (core ? Math.max(rate, 14) : rate) * Math.exp(-(this._time - this._dead_since.get(bot)) / (core ? 20 : 6));
+			}
+			if (rate < 0.3 || !wounds.length) { this._bleeders.splice(i, 1); continue; }
+			const total_w = wounds.reduce((s, w) => s + w.w, 0);
+			for (const w of wounds) {
+				const part = w.part;
+				let ext = w.arterial ? B_EXTERNAL_ARTERIAL : B_EXTERNAL;
+				if (w.kind == 'head' || w.kind == 'neck') ext = 1.0;
+				let r = rate * w.w / total_w * ext;
+				const gush = w.gush || 0;
+				if (gush > 0) {
+					// pours out over the first several seconds, tapering off
+					const g = Math.min(gush, dt * (8 + gush * 0.35));
+					w.gush = gush - g;
+					r += g / dt;
+				}
+				const xf = this.shapeXf(bot, part);
+				const [sp, sn] = shapeProject(part.shape, w.p);
+				const pos_w = xf.toWorld(sp), n_w = sn.clone().applyQuaternion(xf.q).normalize();
+				if (w.arterial && bot.alive) {
+					// arterial: spurts with every heartbeat
+					const was = w.pulse;
+					w.pulse = was + dt * 1.7;
+					if (Math.floor(w.pulse) != Math.floor(was)) this._spray(pos_w.clone().addScaledVector(n_w, 0.01), n_w.clone().add(gv(0, 0.25, 0)).normalize(), 10, 1.2, 3.2, 6, r / 1.7 * 0.7, bot);
+					r *= 0.3;
+				}
+				if ((w.kind == 'head' || w.kind == 'neck') && (!bot.alive || (w.gush || 0) > 0)) {
+					// pours straight off the head onto the ground below it
+					w.pour = (w.pour || 0) + r * dt;
+					if (w.pour >= 1.5) {
+						const low = bot.pos(part).add(gv(brange(-0.03, 0.03), -0.1, brange(-0.03, 0.03)));
+						this._drip(low, bot.lin(part), w.pour, bot);
+						w.pour = 0;
+					}
+					continue;
+				}
+				w.acc += r * dt;
+				const threshold = clamp(r * 0.3, 0.4, 3);
+				if (w.acc >= threshold) {
+					// one stream per wound: while it is still running, keep feeding it
+					const run = w.run;
+					if (run && run.vol > 0 && this._body_runs.includes(run)) run.vol += w.acc;
+					else w.run = this._start_body_run(bot, part, pos_w, w.acc);
+					w.acc = 0;
+				}
+			}
+			i++;
+		}
+	}
+
+	// bodies that move while bloody (or lie in blood) smear it on the ground; bloody feet leave prints
+	_update_smears() {
+		for (const bot of this.people) {
+			const lying = bot.fallen || !bot.alive;
+			for (const part of bot.parts) {
+				const is_foot = part.name.startsWith('foot');
+				if (!lying && !is_foot) continue;
+				let soak = this._soak.get(part) || 0;
+				const pp = bot.pos(part);
+				const pool = this._pool_at(pp, 1.0);
+				const in_blood = !!pool || this._splat_grid.has(cellKey(pp.clone().add(gv(0, -0.08, 0))));
+				if (soak < 0.2 && !in_blood) continue;
+				const radius = part.shape.kind == 'capsule' ? part.shape.radius : 0.05;
+				const hit = this.ray(pp, pp.clone().add(gv(0, -(radius + 0.1), 0)), 'world');
+				if (!hit || hit.normal.y < 0.6) continue;
+				if (in_blood) {
+					this._add_soak(part, pool ? 3.0 : 0.8);
+					soak = this._soak.get(part);
+					const last = this._soak_stamp.has(part) ? this._soak_stamp.get(part) : -10;
+					if (lying && this._time - last > 1.2) {
+						this._soak_stamp.set(part, this._time);
+						const under = pp.clone().add(gv(0, -radius * 0.9, 0));
+						this._body_stamp(bot, part, under, gv(0, -1, 0), anyTangent(gv(0, 1, 0)), radius * 1.8, radius * 2.4, 'smear', brandi(B_SPARE));
+					}
+				}
+				if (is_foot && !lying) { this._bot_footprint(bot, part, hit.position, hit.normal, soak); continue; }
+				const v = bot.lin(part);
+				v.y = 0;
+				const sp = v.length();
+				if (sp < 0.15) continue;
+				// drag mark: one continuous brush stroke from where the part was to where it is now
+				const w = radius * 1.8, here = hit.position;
+				let prev = this._feet.get('drag' + part.name + bot.root.uuid);
+				if (!prev || prev.distanceTo(here) > 0.8) prev = here.clone().addScaledVector(v, -0.05 / sp);
+				this._feet.set('drag' + part.name + bot.root.uuid, here.clone());
+				const seg = here.clone().sub(prev), seg_len = seg.length();
+				if (seg_len < 0.005) continue;
+				// a thin film: it wipes on streaky and see-through, heavier where the clothes are soaked
+				const alpha = clamp(soak / 14, 0.06, 0.22);
+				const dabs = Math.floor(seg_len / (w * 0.5)) + 1;
+				for (let s = 0; s < dabs; s++) {
+					const q = prev.clone().lerp(here, (s + 1) / dabs);
+					this._world_stamp(null, q, hit.normal, seg.clone().divideScalar(seg_len), w, w * 1.3, 'brush', brandi(B_SPARE), clamp(soak / 600, 0.004, 0.025), alpha);
+				}
+				this._soak.set(part, soak - Math.min(0.08 * dabs, soak));
+			}
+		}
+	}
+
+	_bot_footprint(bot, foot, ground, n, soak) {
+		if (soak < 0.3 || bot.lin(foot).length() > 0.5) return;
+		const key = 'foot' + foot.name + bot.root.uuid;
+		const last = this._feet.get(key);
+		if (last && last.distanceTo(ground) < 0.3) return;
+		this._feet.set(key, ground.clone());
+		const fwd = gv(0, 0, -1).applyQuaternion(bot.quat(foot));
+		this._world_stamp(null, ground, n, fwd, 0.1, 0.27, 'print', foot.name == 'foot_l' ? 1 : 0, 0.5, clamp(soak / 4, 0.3, 1));
+		this._soak.set(foot, soak - Math.min(0.7, soak));
+	}
+
+	// --- Stamps: on the ground (painted into the floor map), on other things (decals), on people (their own blood) ---
+
+	isGround(p, n) { return n.y > 0.55 && Math.abs(p.y - this.ground) < 0.03; }
+
+	_dab(pool, p, n, along, w, l, kind, variant, thick, alpha) {
+		if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, pool && !pool.on_ground ? pool : null);
+	}
+
+	// col: null (the level) or {entry} (a moving thing: the stain goes with it)
+	_world_stamp(col, p, n, along, w, l, kind, variant, thick = 1.0, alpha = 1.0) {
+		if (!col && this.isGround(p, n)) {
+			this._splat_grid.add(cellKey(p));
+			if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, null);
+			return;
+		}
+		if (this.view) this.view.decal(col && col.entry, p, n, along, w, l, kind, variant, alpha, this._time);
+	}
+
+	_body_stamp(bot, part, p, n, along, w, l, kind, variant) {
+		const amount = ({wound: 0.9, splat: 0.75, streak: 0.6, drop: 0.5, smear: 0.45})[kind] || 0.6;
+		if (kind == 'streak' || l > w * 1.4) {
+			// long: a line of dabs along it
+			let a = along.clone().addScaledVector(n, -n.dot(along));
+			a = a.length() > 1e-3 ? a.normalize() : gv(0, -1, 0);
+			const steps = Math.max(Math.floor(l / 0.02), 2);
+			for (let k = 0; k < steps; k++) bot.paint_blood(part, p.clone().addScaledVector(a, (k / (steps - 1) - 0.5) * l), w * 0.5, amount);
+		} else bot.paint_blood(part, p, Math.max(w, l) * 0.5, amount);
+	}
+
+	// what a bullet blows out of the far side of a head: a fan of blood thrown hard enough to reach the wall behind; where
+	// it lands it lands in the shape of the burst. It arrives as it would: the far bits a moment after the near ones
+	exit_splatter(origin, dir, strength = 1, ignore = null) {
+		strength *= 3;   // (a head blown through is a lot, and hard)
+		const d = dir.clone().normalize();
+		this.splash(origin, d, clamp(0.55 * strength, 0.8, 1.6), 0.45);
+		const helper = Math.abs(d.y) < 0.95 ? gv(0, 1, 0) : gv(1, 0, 0);
+		const fwd = glook(d, helper);
+		const speed = 20;
+		this._spray(origin, d, 30, 8, 24, Math.floor(80 * strength), 65 * strength, ignore);
+		this._spray(origin, d, 55, 2, 7, Math.floor(24 * strength), 12 * strength, ignore);
+		this._mist_burst(origin, d, clamp(strength * 1.2, 0.3, 1.0));
+		// a jet that follows the bullet out: a few more waves of it over a tenth of a second
+		for (let k = 0; k < 5; k++) {
+			const wave = k + 1;
+			this.later(0.022 * wave, () => this._spray(origin.clone().addScaledVector(d, 0.02), d, 16 - wave * 1.6, 5, 17 - wave * 1.5, Math.floor(26 * strength / wave), 16 * strength / wave, ignore));
+		}
+		this.later(0.05, () => this._mist_burst(origin.clone().addScaledVector(d, 0.45), d, clamp(strength * 0.8, 0.3, 1.0)));
+		// the middle of it
+		const hit = this.ray(origin, origin.clone().addScaledVector(d, 8), 'world_props');
+		if (hit) {
+			const dist = origin.distanceTo(hit.position);
+			const spread = clamp(0.18 + dist * 0.12, 0.2, 0.6) * Math.sqrt(strength) * 0.85;
+			this.later(dist / speed, () => this._splash_at(hit, d, spread, strength));
+		}
+		// the spatter round it: many rays in a cone, each a drop where it hits
+		const n_rays = Math.floor(75 * strength);
+		for (let i = 0; i < n_rays; i++) {
+			const a = brand() * Math.PI * 2, r = Math.pow(brand(), 0.7) * deg(32);
+			const rd = gv(Math.cos(a) * Math.sin(r), Math.sin(a) * Math.sin(r), -Math.cos(r)).applyQuaternion(fwd).normalize();
+			const h = this.ray(origin, origin.clone().addScaledVector(rd, 9), 'world_props');
+			if (!h) continue;
+			const dist2 = origin.distanceTo(h.position);
+			const w = brange(0.006, 0.02) * (1.3 - r / deg(32) * 0.6) * (1 + 0.5 / Math.max(dist2, 0.5));
+			const slant = 1 + clamp(1 - Math.abs(rd.dot(h.normal)), 0, 1) * 3;
+			let along = rd.clone().addScaledVector(h.normal, -rd.dot(h.normal));
+			along = along.length() > 1e-3 ? along.normalize() : anyTangent(h.normal);
+			const kind = w < 0.013 ? 'drop' : 'splat';
+			this.later(dist2 / (speed * brange(0.7, 1.1)), () => this._world_stamp(h.collider, h.position.clone().addScaledVector(h.normal, 0.002), h.normal, along, w, w * slant, kind, brandi(B_SPARE), 1, 1));
+		}
+	}
+
+	// the heavy middle of a burst on the wall: a splash, spikes of it thrown out round it, blood starting to run down
+	_splash_at(hit, d, size, strength) {
+		const p = hit.position, n = hit.normal, col = hit.collider;
+		let t1 = d.clone().addScaledVector(n, -d.dot(n));
+		t1 = t1.length() > 1e-3 ? t1.normalize() : anyTangent(n);
+		const t2 = n.clone().cross(t1).normalize();
+		const lift = n.clone().multiplyScalar(0.002);
+		this._world_stamp(col, p.clone().add(lift), n, t1, size * 0.8, size * 0.8, 'splat', brandi(B_SPARE), 1, 1);
+		this._world_stamp(col, p.clone().add(lift).addScaledVector(t1, size * 0.15), n, t1, size * 0.5, size * 0.7, 'splat', brandi(B_SPARE), 1, 1);
+		for (let k = Math.floor(12 * strength) + 4; k > 0; k--) {
+			const a = brand() * Math.PI * 2;
+			const dirk = t1.clone().multiplyScalar(Math.cos(a)).addScaledVector(t2, Math.sin(a)).normalize();
+			const bias = 1 + Math.max(dirk.dot(t1), 0) * 1.5;
+			const l = brange(0.08, 0.22) * bias * size / 0.3;
+			this._world_stamp(col, p.clone().addScaledVector(dirk, size * 0.3 + l * 0.5).add(lift), n, dirk, brange(0.01, 0.025), l, 'streak', brandi(B_SPARE), 0.8, 1);
+			this._world_stamp(col, p.clone().addScaledVector(dirk, size * 0.3 + l).add(lift), n, dirk, 0.012, 0.018, 'drop', brandi(B_SPARE), 1, 1);
+		}
+		if (col) return;
+		// it runs down (on a wall; on the floor it just lies)
+		if (Math.abs(n.y) < 0.7) for (let k = 5 + brandi(5); k > 0; k--) this._start_run(p.clone().addScaledVector(t2, brange(-size, size) * 0.4).add(gv(0, -size * brange(0, 0.3), 0)), n, brange(1.5, 4.5) * strength);
+		else if (n.y > 0.7) this._add_pool(p, n, 25 * strength);
+	}
+
+	splash(at, dir, size, dur = 0.32) { if (this.view) this.view.splash(at, dir, size, dur); }
+	_mist_burst(pos, dir, strength) { if (this.view) this.view.mist(pos, dir, strength); }
+	later(t, fn) { this._timers.push({t: this._time + t, fn}); }
+
+	// --- Main loop: everything at 60 Hz, split across the physics steps (as in the game) ---
+
+	step(delta) {
+		this._time += delta;
+		for (let i = 0; i < this._timers.length;) { if (this._timers[i].t <= this._time) { const t = this._timers.splice(i, 1)[0]; t.fn(); } else i++; }
+		this._tick++;
+		const dt = delta * 2;
+		if (this._tick % 2 == 0) { this._update_drops(dt); this._since_sim = 0; }
+		else {
+			this._update_runs(dt);
+			this._update_body_runs(dt);
+			this._update_bleeding(dt);
+			this._update_jets(dt);
+			this._update_pools(dt);
+		}
+		this._since_sim += delta;
+		this._smear_t += delta;
+		if (this._smear_t > 0.1) { this._smear_t = 0; this._update_smears(); }
+		for (const bot of this.people) if (bot.body_blood) bot.body_blood.grow(delta, this._time);
+	}
+
+	dispose() {
+		const J = this.J;
+		try { J.destroy(this.f_world); for (const bot of this.people) if (bot.own_filter) { J.destroy(bot.own_filter); bot.own_filter = null; } } catch (err) { /* gone */ }
+	}
+}
+
+// nearest surface point and outward normal on a part's collision shape, in shape space
+function shapeProject(shape, p) {
+	if (shape.kind == 'capsule') {
+		const half = shape.height * 0.5 - shape.radius;
+		const c = gv(0, clamp(p.y, -half, half), 0);
+		const d = p.clone().sub(c);
+		const n = d.length() > 1e-5 ? d.normalize() : gv(0, 0, 1);
+		return [c.addScaledVector(n, shape.radius), n];
+	}
+	const e = shape.size.clone().multiplyScalar(0.5).max(gv(0.001, 0.001, 0.001));
+	const q = p.clone().clamp(e.clone().negate(), e);
+	const rel = [Math.abs(q.x) / e.x, Math.abs(q.y) / e.y, Math.abs(q.z) / e.z];
+	let axis = 0;
+	if (rel[1] > rel[0] && rel[1] >= rel[2]) axis = 1;
+	else if (rel[2] > rel[0] && rel[2] > rel[1]) axis = 2;
+	const n = gv();
+	const comp = q.getComponent(axis);
+	n.setComponent(axis, comp != 0 ? Math.sign(comp) : 1);
+	q.setComponent(axis, e.getComponent(axis) * n.getComponent(axis));
+	return [q, n];
+}
+
+function cone(dir, angle) {
+	const d = dir.clone().normalize();
+	const helper = Math.abs(d.y) < 0.95 ? gv(0, 1, 0) : gv(1, 0, 0);
+	const x = d.clone().cross(helper).normalize(), y = d.clone().cross(x);
+	const a = brand() * Math.PI * 2, r = Math.sqrt(brand()) * Math.tan(angle);
+	return d.add(x.multiplyScalar(Math.cos(a) * r).addScaledVector(y, Math.sin(a) * r)).normalize();
+}
+const jitter = r => gv(brange(-r, r), brange(-r, r), brange(-r, r));
+function anyTangent(n) {
+	const helper = Math.abs(n.dot(gv(0, 0, -1))) < 0.9 ? gv(0, 0, -1) : gv(1, 0, 0);
+	return rotAround(n.clone().cross(helper), n, brand() * Math.PI * 2);
+}
+const cellKey = p => Math.floor(p.x / 0.06) + ',' + Math.floor(p.y / 0.06) + ',' + Math.floor(p.z / 0.06);
+
+// ---------------------------------------------------------------------------
+// The blood on one person's body (scripts/fx/body_blood.gd): a small volume (2 cm cells) laid over him as he stands at
+// rest, each cell holding how much blood is on him there and when it got there. His clothes and skin show what is there
+// at their place in the rest pose, so it moves with him, runs on unbroken from one part onto the next, and only dries.
+// ---------------------------------------------------------------------------
+
+class BodyBlood {
+	constructor(bot) {
+		this.bot = bot;
+		const s = bot.scale_factor;
+		this.cell = 0.02 * s;
+		this.box_min = gv(-0.42, -0.05, -0.32).multiplyScalar(s);
+		this.box_size = gv(0.84, 2.0, 0.64).multiplyScalar(s);
+		this.dims = [Math.ceil(this.box_size.x / this.cell), Math.ceil(this.box_size.y / this.cell), Math.ceil(this.box_size.z / this.cell)];
+		this.data = new Uint8Array(this.dims[0] * this.dims[1] * this.dims[2] * 2);
+		this.dirty = false;
+		this.version = 0;
+		this.blooms = [];   // stains still soaking outwards from a fresh wound
+		this.clock = 0;
+	}
+
+	// where a point of `part` (world) is in the rest pose
+	rest_of(part, world_p) { return part.rest_pos.clone().add(this.bot.toLocal(part, world_p)); }
+
+	paint(part, world_p, r, amount) { this.paint_rest(this.rest_of(part, world_p), r, amount); }
+
+	paint_rest(p, r, amount) {
+		r = Math.max(r, this.cell * 1.2);
+		const [dx, dy, dz] = this.dims, c = this.cell, m = this.box_min;
+		const lo = [p.x - r - m.x, p.y - r - m.y, p.z - r - m.z].map(v => Math.floor(v / c)), hi = [p.x + r - m.x, p.y + r - m.y, p.z + r - m.z].map(v => Math.ceil(v / c));
+		// (the same clock as the shader's blood time)
+		const slot = Math.floor(((this.clock % 256) + 256) % 256);
+		for (let z = Math.max(lo[2], 0); z < Math.min(hi[2], dz); z++) for (let y = Math.max(lo[1], 0); y < Math.min(hi[1], dy); y++) for (let x = Math.max(lo[0], 0); x < Math.min(hi[0], dx); x++) {
+			const cx = m.x + (x + 0.5) * c, cy = m.y + (y + 0.5) * c, cz = m.z + (z + 0.5) * c;
+			const d = Math.hypot(cx - p.x, cy - p.y, cz - p.z) / r;
+			if (d >= 1) continue;
+			const i = ((z * dy + y) * dx + x) * 2;
+			const add = Math.floor(amount * (1 - d * d) * 255);
+			const now = this.data[i];
+			this.data[i] = Math.min(now + add, 255);
+			if (add > now / 3) this.data[i + 1] = slot;   // (fresh blood over dried: it is wet again there)
+		}
+		this.dirty = true;
+	}
+
+	// a stain that soaks outwards from a wound over `dur` seconds to `r` across: fast at first, then slower, ragged
+	bloom(part, world_p, r, dur, amount) { this.blooms.push({p: this.rest_of(part, world_p), r, t: 0, dur, amount, seed: brand() * 100}); }
+
+	grow(delta, clock) {
+		this.clock = clock;
+		for (let i = 0; i < this.blooms.length;) {
+			const b = this.blooms[i];
+			const t0 = b.t;
+			b.t = t0 + delta;
+			const k = clamp(b.t / b.dur, 0, 1), k0 = clamp(t0 / b.dur, 0, 1);
+			// (the front moves as the square root of time: quick, then creeping)
+			const r = b.r * Math.sqrt(k), dr = r - b.r * Math.sqrt(k0);
+			if (dr > 0.002 || k >= 1) {
+				this.paint_rest(b.p, r * 0.6, b.amount * 0.35);
+				// the edge soaks on unevenly: a few dabs round it, where the weave takes it up faster
+				for (let j = 0; j < 3; j++) {
+					const ang = b.seed + j * 2.1 + k * 1.3;
+					this.paint_rest(b.p.clone().add(gv(Math.cos(ang), Math.sin(ang * 1.7), Math.sin(ang)).multiplyScalar(r * 0.55)), r * (0.35 + 0.15 * Math.sin(b.seed + j)), b.amount * 0.25);
+				}
+			}
+			if (k >= 1) this.blooms.splice(i, 1); else i++;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// What the blood looks like in the viewport (blood.gd's drawing, blood_canvas.gd, blood.gdshaderinc, blood_splash.gd,
+// body_blood.gdshaderinc). Everything lives in one group in the scene, scaled from metres to Blockbench pixels.
+//  - The ground: blood is painted into a floor map (a render target that is never cleared: thickness, time, coverage
+//    per texel, blended like the game's), and a sheet over the ground shows it as the level shader does.
+//  - Anything else (a chair, a moving thing): decals - flat stains lying on the surface.
+//  - Drops: flat beads turned to the eye and stretched along their flight. The splash at a hit: an 8-frame sprite.
+//    The mist: a puff of fine spray.
+//  - On the person: his blood volume (body_blood.gd) shown over his clothes and skin.
+// ---------------------------------------------------------------------------
+
+const BV_AREA = 36.0, BV_RES = 2048, BV_PPM = BV_RES / BV_AREA;
+const BV_TIME_SPAN = 16384.0;
+const BV_DRY_COLOR = new THREE.Color(0.42, 0.3, 0.27);
+const BV_MAX_DECALS = 800;
+
+const BV_COMMON = `
+float bh(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float bnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(bh(i), bh(i + vec2(1.0, 0.0)), f.x), mix(bh(i + vec2(0.0, 1.0)), bh(i + vec2(1.0, 1.0)), f.x), f.y); }
+`;
+
+class BloodView {
+	constructor(sim, rt) {
+		this.sim = sim;
+		this.rt = rt;
+		this.group = new THREE.Group();
+		this.group.name = 'ragdoll_blood';
+		this.group.scale.setScalar(SCALE);
+		this.root = typeof scene != 'undefined' ? scene : null;
+		if (this.root) this.root.add(this.group);
+		this.textures = {};
+		this.queue = [];
+		this.decals = [];
+		this.decal_next = 0;
+		this.pool_decals = new Map();
+		this.splashes = [];
+		this.mists = [];
+		this.overlays = [];
+		this.time = 0;
+		// the floor map round the people
+		const people = sim.people;
+		const c = people.length ? people[0].pos(people[0].pelvis) : gv();
+		this.area_min = gv(c.x - BV_AREA / 2, 0, c.z - BV_AREA / 2);
+		this.ground = sim.ground;
+		this.renderer = this.findRenderer();
+		this.makeFloor();
+		this.makeDrops();
+		this.makeSplash();
+		this.makeMist();
+		this.makeBodies();
+	}
+
+	findRenderer() {
+		try { if (typeof Preview != 'undefined') { const p = Preview.selected || (Preview.all || []).find(x => x.renderer); if (p && p.renderer) return p.renderer; } } catch (err) { /* none */ }
+		return null;
+	}
+
+	tex(kind, variant, which) {
+		const key = kind + variant + which;
+		if (this.textures[key]) return this.textures[key];
+		const sh = bloodShape(kind, variant);
+		const t = new THREE.DataTexture(which == 'mask' ? sh.mask : sh.albedo, sh.size, sh.size, THREE.RGBAFormat);
+		t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+		t.needsUpdate = true;
+		return (this.textures[key] = t);
+	}
+
+	// ---- the ground ----
+	makeFloor() {
+		if (!this.renderer || !THREE.WebGLRenderTarget) return;
+		const type = THREE.HalfFloatType || THREE.FloatType;
+		this.target = new THREE.WebGLRenderTarget(BV_RES, BV_RES, {type, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter});
+		this.paint_scene = new THREE.Scene();
+		this.paint_cam = new THREE.OrthographicCamera(0, BV_RES, BV_RES, 0, -10, 10);
+		this.dab_geo = new THREE.PlaneGeometry(1, 1);
+		this.dab_meshes = [];
+		this.cleared = false;
+		// the sheet over the ground that shows it (blood.gdshaderinc: blood_apply)
+		const mat = new THREE.ShaderMaterial({
+			uniforms: {map: {value: this.target.texture}, area: {value: new THREE.Vector3(this.area_min.x, this.area_min.z, BV_AREA)}, time: {value: 0}, texel: {value: 1 / BV_RES}},
+			vertexShader: `varying vec3 vw; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vw = w.xyz / ${SCALE.toFixed(1)}; gl_Position = projectionMatrix * viewMatrix * w; }`,
+			fragmentShader: `
+				uniform sampler2D map; uniform vec3 area; uniform float time; uniform float texel; varying vec3 vw;
+				${BV_COMMON}
+				vec3 bsample(vec2 p) {
+					vec2 uv = (p - area.xy) / area.z;
+					if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec3(0.0);
+					vec4 s = texture2D(map, uv);
+					if (s.a < 0.04) return vec3(0.0);
+					vec3 v = clamp(s.rgb / s.a, vec3(0.0), vec3(1.0));
+					float age = mod(time - v.b * ${BV_TIME_SPAN.toFixed(1)} + ${BV_TIME_SPAN.toFixed(1)}, ${BV_TIME_SPAN.toFixed(1)});
+					return vec3(s.a, v.r, clamp(age / 150.0, 0.0, 1.0));
+				}
+				void main() {
+					vec2 p = vw.xz;
+					vec3 b = bsample(p);
+					float o = 0.011;
+					float c4 = bsample(p + vec2(o, o)).x + bsample(p + vec2(o, -o)).x + bsample(p - vec2(o, o)).x + bsample(p - vec2(o, -o)).x;
+					b.x = b.x * 0.4 + c4 * 0.15;
+					float n_ok = 0.0; vec2 yz = vec2(0.0);
+					for (int k = 0; k < 4; k++) {
+						vec2 sg = vec2(k < 2 ? 1.0 : -1.0, (k == 0 || k == 2) ? 1.0 : -1.0);
+						vec3 q = bsample(p + sg * o * 1.6);
+						if (q.x > 0.0) { yz += q.yz; n_ok += 1.0; }
+					}
+					if (b.x <= 0.0) discard;
+					if (n_ok > 0.0) b.yz = b.y > 0.0 ? (b.yz + yz) / (1.0 + n_ok) : yz / n_ok;
+					float detail = bnoise(p * 300.0);
+					float thick = clamp(b.y, 0.0, 1.0);
+					float film = smoothstep(0.03, 0.09, thick);
+					float ragged = bnoise(p * 70.0) * 0.6 + bnoise(p * 190.0) * 0.4;
+					float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
+					float soft = smoothstep(0.08, 0.8, b.x + (detail - 0.5) * 0.3) * (0.3 + 0.35 * detail);
+					float cov = mix(soft, crisp, film);
+					if (cov <= 0.0) discard;
+					float deep = smoothstep(0.08, 0.45, thick);
+					float clot = bnoise(p * 9.0) * 0.6 + bnoise(p * 31.0) * 0.4;
+					float edge = 1.0 - smoothstep(0.25, 0.85, thick);
+					float dry = pow(clamp(b.z * (0.75 + 0.5 * clot) + edge * b.z * 0.8, 0.0, 1.0), 0.7);
+					vec3 wet_col = mix(vec3(0.075, 0.004, 0.003), vec3(0.02, 0.0009, 0.0007), deep);
+					wet_col *= mix(1.0, 0.5 + 1.0 * clot, deep);
+					vec3 dry_col = mix(vec3(0.055, 0.017, 0.012), vec3(0.026, 0.009, 0.007), deep);
+					dry_col *= 0.8 + 0.45 * clot;
+					float crust = smoothstep(0.1, 0.5, b.z) * edge * smoothstep(0.02, 0.2, thick);
+					dry_col = mix(dry_col, vec3(0.018, 0.006, 0.005), crust * 0.7);
+					vec3 col = mix(wet_col, dry_col, dry);
+					// lit like the ground round it, and a wet sheen on a real layer of it
+					float gloss = film * smoothstep(0.35, 0.8, cov) * (1.0 - smoothstep(0.35, 0.55, dry));
+					float sheen = smoothstep(0.35, 0.75, bnoise(p * 5.0 + 3.1) * 0.7 + clot * 0.3);
+					col = col * 2.2 + vec3(0.05, 0.035, 0.035) * gloss * sheen;
+					gl_FragColor = linearToOutputTexel(vec4(col, cov));
+				}`,
+			transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+		});
+		const geo = new THREE.PlaneGeometry(BV_AREA, BV_AREA);
+		geo.rotateX(-Math.PI / 2);
+		this.floor = new THREE.Mesh(geo, mat);
+		this.floor.position.set(this.area_min.x + BV_AREA / 2, this.ground + 0.002, this.area_min.z + BV_AREA / 2);
+		this.floor.renderOrder = 2;
+		this.floor.frustumCulled = false;
+		this.group.add(this.floor);
+	}
+
+	// a dab of blood on the ground (blood_canvas.gd dab) or, for a pool that is not on the ground, its decal
+	dab(p, n, along, w, l, kind, variant, thick, alpha, pool) {
+		if (pool) { this.poolDecal(pool, p, n, along, w, l, kind, variant); return; }
+		if (!this.target) return;
+		const u = (p.x - this.area_min.x) * BV_PPM, v = (p.z - this.area_min.z) * BV_PPM;
+		if (u < 0 || v < 0 || u > BV_RES || v > BV_RES) { this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time); return; }
+		const dir = [along.x, along.z];
+		const angle = Math.hypot(dir[0], dir[1]) > 1e-4 ? Math.atan2(-dir[0], dir[1]) : brand() * Math.PI * 2;
+		this.queue.push({u, v, w: w * BV_PPM, l: l * BV_PPM, angle, tex: this.tex(kind, variant, 'mask'), data: [clamp(thick, 0, 1), 0.5, (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha]});
+	}
+
+	flushDabs() {
+		if (!this.target || !this.renderer) { this.queue.length = 0; return; }
+		const r = this.renderer;
+		const prev = r.getRenderTarget(), auto = r.autoClear;
+		if (!this.cleared) { r.setRenderTarget(this.target); r.setClearColor(0x000000, 0); r.clear(true, false, false); this.cleared = true; }
+		while (this.queue.length) {
+			const batch = this.queue.splice(0, 256);
+			while (this.dab_meshes.length < batch.length) {
+				const m = new THREE.Mesh(this.dab_geo, new THREE.ShaderMaterial({
+					uniforms: {map: {value: null}, data: {value: new THREE.Vector4()}},
+					vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+					fragmentShader: 'uniform sampler2D map; uniform vec4 data; varying vec2 vUv; void main() { vec4 m = texture2D(map, vUv); gl_FragColor = vec4(data.r * m.r, data.g, data.b, m.a * data.a); }',
+					transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending,
+					blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+				}));
+				m.frustumCulled = false;
+				this.dab_meshes.push(m);
+				this.paint_scene.add(m);
+			}
+			this.dab_meshes.forEach((m, i) => {
+				const d = batch[i];
+				m.visible = !!d;
+				if (!d) return;
+				m.position.set(d.u, d.v, 0);
+				m.rotation.set(0, 0, d.angle);
+				m.scale.set(d.w, d.l, 1);
+				m.renderOrder = i;
+				m.material.uniforms.map.value = d.tex;
+				m.material.uniforms.data.value.set(...d.data);
+			});
+			r.setRenderTarget(this.target);
+			r.autoClear = false;
+			r.render(this.paint_scene, this.paint_cam);
+		}
+		r.autoClear = auto;
+		r.setRenderTarget(prev);
+	}
+
+	// ---- decals: flat stains lying on what they landed on (a moving thing carries them) ----
+	decal(entry, p, n, along, w, l, kind, variant, alpha, birth) {
+		let d;
+		if (this.decals.length < BV_MAX_DECALS) {
+			d = {mesh: new THREE.Mesh(this.decalGeo(), new THREE.MeshBasicMaterial({transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4}))};
+			d.mesh.renderOrder = 3;
+			this.group.add(d.mesh);
+			this.decals.push(d);
+		} else {
+			// the least important of the next few: small and old goes first
+			let best = Infinity, pick = this.decal_next;
+			for (let t = 0; t < 24; t++) {
+				const k = (this.decal_next + t) % BV_MAX_DECALS, c = this.decals[k];
+				const score = c.prio / (1 + (this.sim._time - c.birth) / 60);
+				if (score < best) { best = score; pick = k; }
+			}
+			this.decal_next = (this.decal_next + 24) % BV_MAX_DECALS;
+			d = this.decals[pick];
+		}
+		const q = decalBasis(n, along);
+		d.mesh.material.map = this.tex(kind, variant, 'albedo');
+		d.mesh.material.needsUpdate = true;
+		d.mesh.material.opacity = alpha;
+		d.mesh.material.color.set(0xffffff);
+		d.birth = birth; d.prio = w * l; d.entry = entry || null;
+		d.mesh.quaternion.copy(q);
+		d.mesh.position.copy(p).addScaledVector(n, 0.002);
+		d.mesh.scale.set(w, 1, l);
+		if (entry) {
+			// kept in the moving thing's own frame
+			const bp = entry.body.GetPosition(), br = entry.body.GetRotation();
+			const bm = new THREE.Matrix4().compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1));
+			d.local = bm.invert().multiply(new THREE.Matrix4().compose(d.mesh.position, d.mesh.quaternion, d.mesh.scale));
+		} else d.local = null;
+		return d;
+	}
+
+	decalGeo() {
+		if (!this.decal_geo) { const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); this.decal_geo = g; }
+		return this.decal_geo;
+	}
+
+	poolStarted(pool) { if (!pool.on_ground) this.pool_decals.delete(pool); }
+
+	poolDecal(pool, p, n, along, w, l, kind, variant) {
+		// a pool on something that is not the ground: its one decal, made bigger as it spreads
+		let d = this.pool_decals.get(pool);
+		if (!d || this.decals.indexOf(d) < 0 || d.pool !== pool) { d = this.decal(null, pool.pos, n, along, w, l, kind, variant, 1, this.sim._time); d.pool = pool; this.pool_decals.set(pool, d); }
+		if (p.distanceTo(pool.pos) < 1e-6) { d.mesh.scale.set(w, 1, l); d.birth = this.sim._time; d.prio = w * l * 10; }
+	}
+
+	// ---- drops: flat beads turned to the eye about their line of flight, stretched along it ----
+	makeDrops() {
+		const geo = new THREE.PlaneGeometry(1, 1);
+		const mat = new THREE.ShaderMaterial({
+			vertexShader: `
+				varying vec2 vUv;
+				void main() {
+					mat4 M = modelMatrix * instanceMatrix;
+					vec3 centre = M[3].xyz; vec3 axis_v = M[1].xyz; float len = length(axis_v); float r = length(M[0].xyz);
+					vec3 axis = axis_v / max(len, 1e-5);
+					vec3 to_eye = normalize(cameraPosition - centre);
+					vec3 side = cross(axis, to_eye);
+					side = length(side) > 1e-3 ? normalize(side) : normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
+					vec3 w = centre + side * position.x * 2.0 * r + axis * position.y * 2.0 * max(len, r);
+					vUv = uv;
+					gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+				}`,
+			fragmentShader: `
+				varying vec2 vUv;
+				void main() {
+					vec2 d = vUv * 2.0 - 1.0; float q = dot(d, d);
+					if (q > 1.0) discard;
+					// a round wet bead: dark, glossy, the light glinting off it
+					vec3 albedo = vec3(0.14, 0.006, 0.005) * (1.0 - 0.4 * q);
+					vec3 nrm = normalize(vec3(d.x, -d.y, sqrt(max(1.0 - q, 0.0)) + 0.3));
+					float spec = pow(max(dot(nrm, normalize(vec3(-0.4, 0.6, 0.7))), 0.0), 40.0) * 0.6;
+					gl_FragColor = linearToOutputTexel(vec4(albedo * 2.2 + vec3(spec), 1.0));
+				}`,
+			side: THREE.DoubleSide,
+		});
+		this.drops = new THREE.InstancedMesh(geo, mat, B_MAX_DROPS);
+		this.drops.count = 0;
+		this.drops.frustumCulled = false;
+		this.drops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		this.group.add(this.drops);
+	}
+
+	drawDrops(extra) {
+		const list = this.sim._drops, n = Math.min(list.length, B_MAX_DROPS), m = new THREE.Matrix4();
+		for (let i = 0; i < n; i++) {
+			const d = list[i];
+			const p = d.pos.clone().addScaledVector(d.vel, extra);
+			const r = 0.0062 * Math.cbrt(d.vol), sp = d.vel.length();
+			const y = sp > 0.01 ? d.vel.clone().divideScalar(sp) : gv(0, 1, 0);
+			const x = y.clone().cross(Math.abs(y.y) < 0.95 ? gv(0, 1, 0) : gv(1, 0, 0)).normalize();
+			const z = x.clone().cross(y);
+			const stretch = r + sp * d.streak;
+			m.makeBasis(x.multiplyScalar(r), y.multiplyScalar(stretch), z.multiplyScalar(r)).setPosition(p);
+			this.drops.setMatrixAt(i, m);
+		}
+		this.drops.count = n;
+		this.drops.instanceMatrix.needsUpdate = true;
+	}
+
+	// ---- the splash at a hit: an animated sprite (eight frames drawn once), turned to the camera ----
+	makeSplash() {
+		const a = splashAtlas();
+		const tex = new THREE.DataTexture(a.data, a.width, a.height, THREE.RGBAFormat);
+		tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+		this.splash_tex = tex;
+		this.splash_geo = new THREE.PlaneGeometry(1, 1);
+		for (let i = 0; i < 24; i++) {
+			const mat = new THREE.ShaderMaterial({
+				uniforms: {atlas: {value: tex}, k: {value: 0}, spin: {value: 0}, shade: {value: 1}, size: {value: 1}},
+				vertexShader: `
+					uniform float spin; uniform float size; varying vec2 vUv;
+					void main() {
+						vUv = uv;
+						float c = cos(spin), s = sin(spin);
+						vec2 v = vec2(c * position.x - s * position.y, s * position.x + c * position.y) * size;
+						vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+						mv.xy += v * ${SCALE.toFixed(1)};
+						gl_Position = projectionMatrix * mv;
+					}`,
+				fragmentShader: `
+					uniform sampler2D atlas; uniform float k; uniform float shade; varying vec2 vUv;
+					void main() {
+						float f = min(floor(k * 8.0), 7.0), fn = min(f + 1.0, 7.0), blend = fract(k * 8.0);
+						vec2 cell = vec2(mod(f, 4.0), floor(f / 4.0)), cell2 = vec2(mod(fn, 4.0), floor(fn / 4.0));
+						vec4 a = texture2D(atlas, (vUv + cell) / vec2(4.0, 2.0));
+						vec4 b = texture2D(atlas, (vUv + cell2) / vec2(4.0, 2.0));
+						vec4 t = mix(a, b, blend * 0.6);
+						vec3 col = mix(vec3(0.16, 0.0, 0.005), vec3(0.45, 0.02, 0.015), t.r * 0.6) * shade;
+						col += vec3(0.25, 0.08, 0.06) * t.g;
+						if (t.a < 0.01) discard;
+						gl_FragColor = linearToOutputTexel(vec4(col, t.a));
+					}`,
+				transparent: true, depthWrite: false, side: THREE.DoubleSide,
+			});
+			const mesh = new THREE.Mesh(this.splash_geo, mat);
+			mesh.visible = false;
+			mesh.frustumCulled = false;
+			mesh.renderOrder = 6;
+			this.group.add(mesh);
+			this.splashes.push({mesh, age: 0, dur: 0});
+		}
+		this.splash_next = 0;
+	}
+
+	camera() { try { const p = typeof Preview != 'undefined' && Preview.selected; return p && p.camera; } catch (err) { return null; } }
+
+	splash(at, dir, size, dur) {
+		const s = this.splashes[this.splash_next];
+		this.splash_next = (this.splash_next + 1) % this.splashes.length;
+		const cam = this.camera();
+		const p = at.clone();
+		let spin = brand() * Math.PI * 2;
+		if (cam) {
+			const cp = cam.getWorldPosition(gv()).divideScalar(SCALE);
+			p.addScaledVector(cp.clone().sub(at).normalize(), 0.06);   // (pushed a little toward the camera: not lost inside the body)
+			const sd = dir.clone().applyQuaternion(cam.getWorldQuaternion(new THREE.Quaternion()).invert());
+			if (Math.hypot(sd.x, sd.y) > 0.2) spin = Math.atan2(sd.y, sd.x);
+		}
+		p.addScaledVector(dir.clone().normalize(), size * 0.18);
+		s.mesh.position.copy(p);
+		const u = s.mesh.material.uniforms;
+		u.spin.value = spin; u.k.value = 0; u.shade.value = brange(0.8, 1.15); u.size.value = size;
+		s.mesh.visible = true;
+		s.age = 0; s.dur = dur;
+	}
+
+	// ---- mist: a puff of fine spray (GPUParticles3D in the game) ----
+	makeMist() {
+		const sp = smokePuff();
+		const tex = new THREE.DataTexture(sp.data, sp.size, sp.size, THREE.RGBAFormat);
+		tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+		this.mist_mat = new THREE.SpriteMaterial({map: tex, color: new THREE.Color(0.4, 0.02, 0.02), transparent: true, depthWrite: false});
+		this.mist_parts = [];
+	}
+
+	mist(pos, dir, strength) {
+		const d = dir.clone().normalize();
+		const amount = Math.round(26 * clamp(strength, 0.1, 1));
+		for (let i = 0; i < amount; i++) {
+			const v = cone(d, deg(22)).multiplyScalar(brange(0.6, 4.5));
+			const s = new THREE.Sprite(this.mist_mat.clone());
+			s.material.rotation = brand() * Math.PI * 2;
+			s.renderOrder = 5;
+			this.group.add(s);
+			this.mist_parts.push({s, p: pos.clone().add(jitter(0.03)), v, damp: brange(5, 9), scale: brange(0.5, 1.3), age: 0});
+		}
+	}
+
+	updateMist(dt) {
+		for (let i = 0; i < this.mist_parts.length;) {
+			const m = this.mist_parts[i];
+			m.age += dt;
+			const k = m.age / 0.9;
+			if (k >= 1) { this.group.remove(m.s); m.s.material.dispose(); this.mist_parts.splice(i, 1); continue; }
+			const sp = m.v.length();
+			if (sp > 0) m.v.multiplyScalar(Math.max(0, sp - m.damp * dt) / sp);
+			m.v.y -= 1.2 * dt;
+			m.p.addScaledVector(m.v, dt);
+			m.s.position.copy(m.p);
+			const size = 0.1 * m.scale * glerp(0.4, 2.6, k);
+			m.s.scale.set(size, size, 1);
+			m.s.material.opacity = glerp(0.55, 0, k);
+			i++;
+		}
+	}
+
+	// ---- on the people: their blood volume over their clothes and skin ----
+	makeBodies() {
+		if (!THREE.DataTexture3D) return;
+		for (const bot of this.sim.people) {
+			const overlays = [];
+			for (const part of bot.parts) {
+				for (const el of part.group.children || []) {
+					if (!el.mesh || !el.mesh.geometry || !(el instanceof Mesh || el instanceof Cube)) continue;
+					overlays.push({el});
+				}
+			}
+			this.overlays.push({bot, overlays, tex: null, made: false, version: -1, flush: 0});
+		}
+	}
+
+	bodyMaterial(bot, rest, pass) {
+		const bb = bot.body_blood;
+		const u = {vol: {value: null}, vol_min: {value: bb.box_min.clone()}, vol_size: {value: gv(bb.dims[0], bb.dims[1], bb.dims[2]).multiplyScalar(bb.cell)}, time: {value: 0}, rest: {value: rest}};
+		return new THREE.ShaderMaterial({
+			uniforms: u,
+			vertexShader: 'uniform mat4 rest; varying vec3 rp; void main() { rp = (rest * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+			fragmentShader: `
+				precision highp sampler3D;
+				uniform sampler3D vol; uniform vec3 vol_min; uniform vec3 vol_size; uniform float time; varying vec3 rp;
+				float h3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+				float n3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+					return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+						mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
+				void main() {
+					vec3 uvw = (rp - vol_min) / vol_size;
+					if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) discard;
+					vec2 s = texture(vol, uvw).rg;
+					float nz = n3(rp * 60.0) * 0.6 + n3(rp * 170.0) * 0.4;
+					float amt = s.r + (nz - 0.5) * 0.12 * (1.0 - s.r);
+					if (amt < 0.03) discard;
+					float age = mod(time - s.g * 255.0, 256.0);
+					float dry = clamp(age / 140.0, 0.0, 1.0);
+					float film = smoothstep(0.03, 0.3, amt);
+					float solid = smoothstep(0.3, 0.7, amt);
+					vec3 wet_col = mix(vec3(0.2, 0.012, 0.01), vec3(0.09, 0.004, 0.003), solid);
+					vec3 dry_col = mix(vec3(0.12, 0.035, 0.025), vec3(0.05, 0.015, 0.01), solid);
+					vec3 bc = mix(wet_col, dry_col, pow(dry, 0.7));
+					bc *= 0.7 + 0.6 * nz * (0.5 + 0.5 * solid);
+					float a2 = solid * 0.95 + film * 0.25;
+					vec3 tint = mix(vec3(1.0), vec3(0.55, 0.12, 0.1), film);
+					${pass == 0
+						// first: what is under it, stained and covered (multiplied)
+						? 'gl_FragColor = vec4(tint * (1.0 - a2), 1.0);'
+						// then the blood itself on top (added)
+						: 'gl_FragColor = vec4(linearToOutputTexel(vec4(bc * 2.0, 1.0)).rgb * a2, 1.0);'}
+				}`,
+			transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+			blending: pass == 0 ? THREE.MultiplyBlending : THREE.AdditiveBlending, premultipliedAlpha: pass == 0,
+		});
+	}
+
+	updateBodies(dt) {
+		for (const o of this.overlays) {
+			const bb = o.bot.body_blood;
+			if (!bb) continue;
+			o.flush -= dt;
+			if (bb.dirty && o.flush <= 0) {
+				o.flush = bb.blooms.length ? 0.06 : 0.12;
+				bb.dirty = false;
+				if (!o.tex) {
+					o.tex = new THREE.DataTexture3D(bb.data, bb.dims[0], bb.dims[1], bb.dims[2]);
+					o.tex.format = THREE.RGFormat; o.tex.type = THREE.UnsignedByteType;
+					o.tex.minFilter = o.tex.magFilter = THREE.LinearFilter;
+					o.tex.unpackAlignment = 1;
+				}
+				o.tex.needsUpdate = true;
+			}
+			if (!o.tex) continue;
+			if (!o.made) {
+				o.made = true;
+				// where each piece of him is in the rest pose: Blockbench rest (no bone turned), pixels -> the game's metres
+				const off = o.bot.rest_offset;
+				for (const ov of o.overlays) {
+					const el = ov.el, g = el.parent && el.parent.origin ? el.parent : null;
+					el.mesh.updateMatrix();
+					const rest = new THREE.Matrix4().makeTranslation(-off.x, -off.y, -off.z).multiply(new THREE.Matrix4().makeScale(1 / SCALE, 1 / SCALE, 1 / SCALE))
+						.multiply(new THREE.Matrix4().makeTranslation(...(g ? g.origin : [0, 0, 0]))).multiply(el.mesh.matrix);
+					ov.meshes = [0, 1].map(pass => {
+						const m = new THREE.Mesh(el.mesh.geometry, this.bodyMaterial(o.bot, rest, pass));
+						m.renderOrder = 4 + pass;
+						m.frustumCulled = false;
+						el.mesh.add(m);
+						return m;
+					});
+				}
+			}
+			for (const ov of o.overlays) for (const m of ov.meshes || []) { m.material.uniforms.vol.value = o.tex; m.material.uniforms.time.value = this.sim._time % 256; }
+		}
+	}
+
+	// ---- every frame ----
+	update(dt) {
+		this.time = this.sim._time;
+		if (this.floor) this.floor.material.uniforms.time.value = this.sim._time % BV_TIME_SPAN;
+		this.flushDabs();
+		this.drawDrops(this.sim._since_sim);
+		for (const s of this.splashes) {
+			if (s.dur <= 0) continue;
+			s.age += dt;
+			const k = s.age / s.dur;
+			if (k >= 1) { s.dur = 0; s.mesh.visible = false; continue; }
+			s.mesh.material.uniforms.k.value = k;
+		}
+		this.updateMist(dt);
+		// decals: carried by what they are on, and drying (colour to dark brown)
+		for (const d of this.decals) {
+			if (d.entry && d.local) {
+				const bp = d.entry.body.GetPosition(), br = d.entry.body.GetRotation();
+				const m = new THREE.Matrix4().compose(gv(bp.GetX(), bp.GetY(), bp.GetZ()), new THREE.Quaternion(br.GetX(), br.GetY(), br.GetZ(), br.GetW()), gv(1, 1, 1)).multiply(d.local);
+				m.decompose(d.mesh.position, d.mesh.quaternion, d.mesh.scale);
+			}
+		}
+		const budget = Math.min(40, this.decals.length);
+		for (let k = 0; k < budget; k++) {
+			this.dry_cursor = ((this.dry_cursor || 0) + 1) % this.decals.length;
+			const d = this.decals[this.dry_cursor];
+			const k_dry = clamp((this.sim._time - d.birth) / B_DRY_TIME, 0, 1);
+			d.mesh.material.color.setRGB(1, 1, 1).lerp(BV_DRY_COLOR, Math.pow(k_dry, 0.7));
+		}
+		this.updateBodies(dt);
+	}
+
+	dispose() {
+		if (this.group.parent) this.group.parent.remove(this.group);
+		this.group.traverse(o => { if (o.geometry && o.geometry !== this.decal_geo) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+		if (this.decal_geo) this.decal_geo.dispose();
+		for (const o of this.overlays) { for (const ov of o.overlays) for (const m of ov.meshes || []) { if (m.parent) m.parent.remove(m); m.material.dispose(); } if (o.tex) o.tex.dispose(); }
+		if (this.target) this.target.dispose();
+		for (const m of this.dab_meshes || []) m.material.dispose();
+		if (this.dab_geo) this.dab_geo.dispose();
+		for (const k in this.textures) this.textures[k].dispose();
+		if (this.splash_tex) this.splash_tex.dispose();
+	}
+}
+
+// basis whose Y is the surface normal and Z follows `along`
+function decalBasis(n, along) {
+	const y = n.clone().normalize();
+	let z = along.clone().addScaledVector(y, -y.dot(along));
+	if (z.length() < 1e-4) z = anyTangent(y);
+	z.normalize();
+	const x = y.clone().cross(z);
+	return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+}
+
 
 function hasHumanoidParts(bones) {
 	const need = HUMANOID_PARTS.map(d => humanoidRole(d.name));
@@ -2200,19 +4006,38 @@ const physicsHook = {
 				else list.push(new RagdollRuntime(rt, root));
 			} catch (err) { console.warn('[Ragdoll]', root.name, err); }
 		}
-		let blood = null;
-		if (list.some(r => r.s.blood)) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
-		for (const r of list) r.blood = r.s.blood ? blood : null;
-		current = {rt, list, blood};
+		let blood = null, sim = null;
+		const plain = list.filter(r => !r.is_humanoid && r.s.blood), people = list.filter(r => r.is_humanoid && r.s.blood);
+		if (plain.length) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
+		for (const r of plain) r.blood = blood;
+		// the people of the Blood project bleed as in the game
+		if (people.length) {
+			try {
+				sim = new BloodSim(rt, people);
+				for (const r of people) r.blood = sim;
+				try { sim.view = new BloodView(sim, rt); } catch (err) { console.warn('[Ragdoll] blood view', err); }
+			} catch (err) { console.warn('[Ragdoll] blood', err); sim = null; }
+		}
+		current = {rt, list, blood, sim, last_show: null};
 	},
 	step(rt, dt) {
 		if (!current || current.rt !== rt) return;
 		for (const r of current.list) r.step(dt);
 		if (current.blood) current.blood.step(dt);
+		if (current.sim) current.sim.step(dt);
 	},
-	show() { if (current && current.blood) current.blood.show(); },
+	show() {
+		if (!current) return;
+		if (current.blood) current.blood.show();
+		if (current.sim && current.sim.view) {
+			const now = performance.now(), dt = current.last_show ? Math.min(0.1, (now - current.last_show) / 1000) : 0;
+			current.last_show = now;
+			try { current.sim.view.update(dt); } catch (err) { console.warn('[Ragdoll] blood view', err); current.sim.view = null; }
+		}
+	},
 	stop() {
 		if (current && current.blood) { try { current.blood.dispose(); } catch (err) { /* scene is gone */ } }
+		if (current && current.sim) { try { if (current.sim.view) current.sim.view.dispose(); current.sim.dispose(); } catch (err) { /* scene is gone */ } }
 		current = null;
 	},
 };
@@ -3492,7 +5317,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, HUMANOID_PARTS, castRay, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, HUMANOID_PARTS, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',

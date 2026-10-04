@@ -149,6 +149,7 @@ class Humanoid {
 		const root_m = this.modelMatrix();
 		// rest pose (no rotations) of the game in this character's model space (metres), then in the world
 		const offset = new THREE.Vector3(...pv.origin).divideScalar(SCALE).sub(gv(0, 0.97 * s, 0));
+		this.rest_offset = offset;
 		this.rest_rot = new THREE.Quaternion().setFromRotationMatrix(root_m);
 		const restWorld = p => p.clone().multiplyScalar(s).add(offset).multiplyScalar(SCALE).applyMatrix4(root_m).divideScalar(SCALE);
 		this.parts = [];
@@ -901,6 +902,10 @@ class Humanoid {
 	}
 
 	shoot(hit) { this.pending.push(Object.assign({t: this.time}, hit)); }
+
+	// the blood on him (body_blood.gd), made when first needed
+	paint_blood(part, world_p, r, amount) { (this.body_blood || (this.body_blood = new BodyBlood(this))).paint(part, world_p, r, amount); }
+	bloom_blood(part, world_p, r, dur, amount) { (this.body_blood || (this.body_blood = new BodyBlood(this))).bloom(part, world_p, r, dur, amount); }
 
 	receive_hit(body, point, dir, impulse, weapon) {
 		this.wake();

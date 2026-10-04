@@ -755,6 +755,9 @@ class BloodFX {
 }
 
 /* @include lib/humanoid.js */
+/* @include lib/blood_tex.js */
+/* @include lib/blood.js */
+/* @include lib/blood_view.js */
 
 function hasHumanoidParts(bones) {
 	const need = HUMANOID_PARTS.map(d => humanoidRole(d.name));
@@ -781,19 +784,38 @@ const physicsHook = {
 				else list.push(new RagdollRuntime(rt, root));
 			} catch (err) { console.warn('[Ragdoll]', root.name, err); }
 		}
-		let blood = null;
-		if (list.some(r => r.s.blood)) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
-		for (const r of list) r.blood = r.s.blood ? blood : null;
-		current = {rt, list, blood};
+		let blood = null, sim = null;
+		const plain = list.filter(r => !r.is_humanoid && r.s.blood), people = list.filter(r => r.is_humanoid && r.s.blood);
+		if (plain.length) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
+		for (const r of plain) r.blood = blood;
+		// the people of the Blood project bleed as in the game
+		if (people.length) {
+			try {
+				sim = new BloodSim(rt, people);
+				for (const r of people) r.blood = sim;
+				try { sim.view = new BloodView(sim, rt); } catch (err) { console.warn('[Ragdoll] blood view', err); }
+			} catch (err) { console.warn('[Ragdoll] blood', err); sim = null; }
+		}
+		current = {rt, list, blood, sim, last_show: null};
 	},
 	step(rt, dt) {
 		if (!current || current.rt !== rt) return;
 		for (const r of current.list) r.step(dt);
 		if (current.blood) current.blood.step(dt);
+		if (current.sim) current.sim.step(dt);
 	},
-	show() { if (current && current.blood) current.blood.show(); },
+	show() {
+		if (!current) return;
+		if (current.blood) current.blood.show();
+		if (current.sim && current.sim.view) {
+			const now = performance.now(), dt = current.last_show ? Math.min(0.1, (now - current.last_show) / 1000) : 0;
+			current.last_show = now;
+			try { current.sim.view.update(dt); } catch (err) { console.warn('[Ragdoll] blood view', err); current.sim.view = null; }
+		}
+	},
 	stop() {
 		if (current && current.blood) { try { current.blood.dispose(); } catch (err) { /* scene is gone */ } }
+		if (current && current.sim) { try { if (current.sim.view) current.sim.view.dispose(); current.sim.dispose(); } catch (err) { /* scene is gone */ } }
 		current = null;
 	},
 };
@@ -2073,7 +2095,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, HUMANOID_PARTS, castRay, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, HUMANOID_PARTS, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
