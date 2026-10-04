@@ -908,6 +908,18 @@ class Humanoid {
 			const h = this._ground_distance();
 			this.custom_h = h > 0 ? h : this.stand_height;
 		}
+		// arms turned by hand in Blockbench (the rotate tool, a pose applied) while the posture is one of the standard ones:
+		// they keep the pose they were given - a thing held up stays up - instead of dropping to hang by his sides
+		this.held_arms = {};
+		if (!this.custom_targets) {
+			const relaxed = {upper_arm: gv(0.05, 0, 0.08), forearm: gv(0.2, 0, 0)};
+			for (const side of ['r', 'l']) for (const part of ['upper_arm', 'forearm']) {
+				const i = this.part_index[part + '_' + side];
+				if (i === undefined) continue;
+				const e = side == 'l' ? gv(relaxed[part].x, -relaxed[part].y, -relaxed[part].z) : relaxed[part];
+				if (this.start_angles[i].distanceTo(e) > 0.35) this.held_arms[side] = true;
+			}
+		}
 		// already settled in a held pose (sat on his chair, down on his knees): placed at once, not got down into
 		if (this._hold_kind()) { this._hold_t = 0.3; this._compose_pose(0); this._update_squat_hold(0, true); }
 	}
@@ -1368,6 +1380,10 @@ class Humanoid {
 			this._side('upper_arm', side, gv(arm_swing + 0.05, 0, 0.08));
 			this._side('forearm', side, gv(glerp(0.2, 1.4, run) + 0.1 * walk, 0, 0));
 			this._side('hand', side, gv(0.1, 0, 0));
+		}
+		for (const side of Object.keys(this.held_arms || {})) for (const part of ['upper_arm', 'forearm', 'hand']) {
+			const i = this.part_index[part + '_' + side];
+			if (i !== undefined) this.parts[i].target = this.start_angles[i].clone();
 		}
 		if (!base) {
 			this._pose_set('abdomen', gv(-0.02 * run, 0.07 * Math.sin(this._phase) * walk, 0));
@@ -7313,7 +7329,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.9.7',
+	version: '0.9.8',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
