@@ -5348,8 +5348,10 @@ const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false
 const DEFAULT_CAMERA = {fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
 const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {});
 const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
-const isLight = node => node instanceof Group && !!node.render_light;
-const isCamera = node => node instanceof Group && !!node.render_camera;
+// a group named "Camera" is a camera even when it came from Blockbench itself (it has no data of ours yet)
+const looksLikeCamera = node => node instanceof Group && /camera|камер/i.test(node.name || '');
+const isCamera = node => node instanceof Group && (!!node.render_camera || looksLikeCamera(node));
+const isLight = node => node instanceof Group && !!node.render_light && !looksLikeCamera(node) && !node.render_camera;
 const lightGroups = () => Group.all.filter(isLight);
 const cameraGroups = () => Group.all.filter(isCamera);
 const findNode = uuid => uuid && [...Cube.all, ...Mesh.all, ...Group.all].find(n => n.uuid == uuid);
@@ -5498,7 +5500,7 @@ function frustumGeometry(fov) {
 
 function syncEditorHelpers() {
 	if (!Project) return clearEditorHelpers();
-	const groups = [...lightGroups(), ...cameraGroups()].filter(g => g.mesh);
+	const groups = [...lightGroups(), ...cameraGroups().filter(g => g.render_camera)].filter(g => g.mesh);
 	for (const uuid of [...editor_helpers.keys()]) {
 		const g = groups.find(x => x.uuid == uuid);
 		if (!g || editor_helpers.get(uuid).kind != (isLight(g) ? 'light' : 'camera')) removeEditorHelper(uuid);
@@ -5591,6 +5593,8 @@ function openSettings(group, kind) {
 	if (!group || !Project) return;
 	if (open_settings) open_settings.cancel();
 	const camera = kind == 'camera';
+	if (camera && !group.render_camera) group.render_camera = Object.assign({}, DEFAULT_CAMERA);
+	if (camera && group.render_light) group.render_light = null;   // a camera does not shine
 	const d = camera ? cameraOf(group) : lightOf(group);
 	const was_looking = activeCameraGroup() === group;
 	Undo.initEdit({outliner: true, groups: [group]});
@@ -5662,8 +5666,6 @@ function addGroupMenuActions() {
 	menu_actions = [
 		make('render_camera_fx', tr('act_camera_fx'), 'tune', () => { const g = selected(); return !!g && isCamera(g); }, () => openSettings(Group.first_selected, 'camera')),
 		make('render_light_settings', tr('act_light_settings'), 'lightbulb', () => { const g = selected(); return !!g && isLight(g); }, () => openSettings(Group.first_selected, 'light')),
-		make('render_make_camera', tr('act_make_camera'), 'videocam', () => { const g = selected(); return !!g && !isCamera(g) && !isLight(g); }, () => makeGroup(Group.first_selected, 'camera')),
-		make('render_make_light', tr('act_make_light'), 'lightbulb', () => { const g = selected(); return !!g && !isCamera(g) && !isLight(g); }, () => makeGroup(Group.first_selected, 'light')),
 	];
 	try {
 		menu_actions.forEach((a, i) => Group.prototype.menu.addAction(a, i));
@@ -5685,17 +5687,6 @@ function removeGroupMenuActions() {
 	});
 	menu_actions = [];
 }
-function makeGroup(group, kind) {
-	if (!group) return;
-	Undo.initEdit({outliner: true, groups: [group]});
-	if (kind == 'camera') group.render_camera = Object.assign({}, DEFAULT_CAMERA);
-	else group.render_light = Object.assign({}, DEFAULT_LIGHT);
-	Undo.finishEdit(kind == 'camera' ? 'Make camera' : 'Make light', {outliner: true, groups: [group]});
-	Project.saved = false;
-	syncEditorHelpers();
-	if (panel && panel.inside_vue) panel.inside_vue.loadSel();
-}
-
 // --- putting the spawn actions into the "+" (Add) menu ---------------------------
 
 const ADD_ANCHORS = ['add_mesh', 'add_cube', 'add_spline', 'add_billboard', 'add_armature', 'add_locator', 'add_null_object', 'add_bounding_box', 'add_group', 'add_texture_mesh'];
@@ -5752,7 +5743,34 @@ function injectAddActions(actions) {
 		console.warn('[Render view] could not add Light / Camera to the Add menu', err);
 	}
 }
+// the "+" button builds its list in a way we cannot see: so whenever any menu is about to open and it holds the Add entries,
+// our entries are put in there
+let menu_patches = [];
+function patchMenusOpening(actions) {
+	if (typeof Menu == 'undefined' || !Menu.prototype) return;
+	for (const name of ['open', 'show']) {
+		const original = Menu.prototype[name];
+		if (typeof original != 'function') continue;
+		Menu.prototype[name] = function (...args) {
+			try {
+				const structure = this.structure;
+				if (Array.isArray(structure) && !actions.some(a => structure.includes(a))) {
+					const at = lastAddIndex(structure);
+					if (at >= 0) { structure.splice(at + 1, 0, ...actions); injected.push({list: structure, actions}); }
+				}
+			} catch (err) { console.warn('[Render view]', err); }
+			return original.apply(this, args);
+		};
+		menu_patches.push({name, original});
+	}
+}
+function unpatchMenusOpening() {
+	for (const {name, original} of menu_patches) Menu.prototype[name] = original;
+	menu_patches = [];
+}
+
 function removeAddActions() {
+	unpatchMenusOpening();
 	for (const entry of injected) {
 		try {
 			if (entry.list) entry.actions.forEach(a => { const i = entry.list.indexOf(a); if (i >= 0) entry.list.splice(i, 1); });
@@ -6260,7 +6278,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.1',
+	version: '0.2.2',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -6300,6 +6318,7 @@ Plugin.register('render', {
 			condition: () => !!Project, click() { spawnGroup('camera'); },
 		});
 		injectAddActions([add_light_action, add_camera_action]);
+		patchMenusOpening([add_light_action, add_camera_action]);
 		addGroupMenuActions();
 		if (!injected.length) {
 			// no Add menu found: they are still in the Edit menu and in the action search (Ctrl+K)
