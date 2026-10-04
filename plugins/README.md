@@ -8,7 +8,7 @@ Load a plugin with **File → Plugins → Load Plugin from File**.
 | `render.js` | Render view: materials, skybox, lights, cameras with lens effects |
 | `softbody.js` | Soft body tab: crash deformation of meshes (dents) |
 | `rope.js` | Ropes tab: a physical rope mesh between two objects (segments, sides, thickness, slack...), pulls physics bodies |
-| `ragdoll.js` | Ragdoll tab: the Blood-project character (bones and proportions from the Godot project), joints and muscles, shots, per-body-part reactions, skeleton pose editor, held items, NPC mode (blood loss, pain, shock, balance, stumbling, falling, fainting, death) and blood (drops, sprays, arterial jets, pools); bakes through the Physics tab (blood is shown live only) |
+| `ragdoll.js` | Ragdoll tab: the person of the Blood game ported from its Godot source (humanoid.gd: 15 body parts with the game's shapes and masses, 6DOF joints with motor muscles, balance assist, stumbling, falling, getting up, fainting, bleeding out, head-shot death, held poses on a chair / knees / heels) and its blood (blood.gd, body_blood.gd, blood_tex.gd, blood_splash.gd: drops, sprays, arterial pulses, jets, runs, pools with tongues, floor map, decals, stains on the clothes, drying); also plain ragdolls with reactions, a skeleton pose editor and held items; bakes through the Physics tab (blood is shown live only) |
 | `pipe.js` | Connect: join faces of two meshes with a pipe (right click → Connect faces…): smoothing, path, waypoints, going around obstacles |
 | `seam.js` | Fillet between intersecting meshes (right click → Seam) |
 

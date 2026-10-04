@@ -377,8 +377,14 @@ class BloodSim {
 		r.pos = hit.position;
 		r.n = hit.normal;
 		r.vol -= step.length() * B_DEPOSIT_WALL * (r.width / 0.012);
-		// paint the film where the front has been: dabs every step make one continuous trail
-		this._world_stamp(null, r.pos.clone().addScaledVector(step, -0.5), r.n, r.dir, r.width, r.width + step.length(), 'drop', 0, 1.0, 0.45);
+		// paint the film where the front has been: dabs every step make one continuous trail (on the ground they go into
+		// the floor map; anywhere else each is a decal, so there a dab is only laid every one and a half widths of the run, as long as the way it came)
+		const ground = this.isGround(r.pos, r.n);
+		if (ground || !r.last_dab || r.last_dab.distanceTo(r.pos) > r.width * 1.5) {
+			const len = ground ? step.length() : (r.last_dab ? r.last_dab.distanceTo(r.pos) : step.length());
+			this._world_stamp(null, r.pos.clone().addScaledVector(r.dir, -len * 0.5), r.n, r.dir, r.width, r.width + len, 'drop', 0, 1.0, 0.45);
+			r.last_dab = r.pos.clone();
+		}
 		return true;
 	}
 
@@ -759,7 +765,7 @@ class BloodSim {
 	isGround(p, n) { return n.y > 0.55 && Math.abs(p.y - this.ground) < 0.03; }
 
 	_dab(pool, p, n, along, w, l, kind, variant, thick, alpha) {
-		if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, pool && !pool.on_ground ? pool : null);
+		if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, pool);
 	}
 
 	// col: null (the level) or {entry} (a moving thing: the stain goes with it)

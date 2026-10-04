@@ -75,7 +75,8 @@ function humanoidParts() {
 	}
 	return parts;
 }
-const HUMANOID_PARTS = humanoidParts();
+let humanoid_parts_cache = null;
+const humanoidPartsList = () => humanoid_parts_cache || (humanoid_parts_cache = humanoidParts());
 // a part of the game -> the bone of a character made here (role, side)
 const humanoidRole = name => {
 	const base = name.replace(/_[rl]$/, '');
@@ -83,17 +84,18 @@ const humanoidRole = name => {
 };
 
 // The standing pose the muscles hold (_compose_pose with no walking), and the legs of the held poses (HOLD_LEGS).
-const HOLD_LEGS = {
+let hold_legs_cache = null;
+const holdLegs = () => hold_legs_cache || (hold_legs_cache = {
 	squat: [0.35, gv(1.9, 0.12, 0.35), gv(-2.35, 0, 0), gv(0.55, 0, 0)],
 	kneel: [0.0, gv(0.06, 0.0, 0.06), gv(-1.57, 0, 0), gv(-1.25, 0, 0)],
 	sit: [-0.08, gv(1.57, 0.05, 0.12), gv(-1.5, 0, 0), gv(0.0, 0, 0)],
-};
+});
 
 // The pose a character is made in: joint angles per part (right side; the left one mirrored), in radians (Godot euler)
 function humanoidPose(posture) {
 	const a = {upper_arm: gv(0.05, 0, 0.08), forearm: gv(0.2, 0, 0), hand: gv(0.1, 0, 0), thigh: gv(0, 0, 0.04), shin: gv(-0.06, 0, 0), foot: gv(0, 0, 0)};
 	const t = {abdomen: gv(), chest: gv(), head: gv()};
-	if (HOLD_LEGS[posture]) { const l = HOLD_LEGS[posture]; a.thigh = l[1].clone(); a.shin = l[2].clone(); a.foot = l[3].clone(); t.pelvis_lean = l[0]; }
+	if (holdLegs()[posture]) { const l = holdLegs()[posture]; a.thigh = l[1].clone(); a.shin = l[2].clone(); a.foot = l[3].clone(); t.pelvis_lean = l[0]; }
 	return {a, t};
 }
 
@@ -155,7 +157,7 @@ class Humanoid {
 		this.parts = [];
 		this.part_index = {};
 		this.total_mass = 0;
-		for (const d of HUMANOID_PARTS) {
+		for (const d of humanoidPartsList()) {
 			const {role, side} = humanoidRole(d.name);
 			const g = find(role, side);
 			const entry = g && entryOf(g);
@@ -283,7 +285,7 @@ class Humanoid {
 		st.mSwingType = J.ESwingType_Pyramid;
 		const AX = this.axes();
 		for (const t of [AX.tx, AX.ty, AX.tz]) st.MakeFixedAxis(t);
-		const d = HUMANOID_PARTS[this.parts.indexOf(p)];
+		const d = humanoidPartsList()[this.parts.indexOf(p)];
 		[AX.rx, AX.ry, AX.rz].forEach((axis, i) => {
 			const lo = [d.lo.x, d.lo.y, d.lo.z][i], hi = [d.hi.x, d.hi.y, d.hi.z][i];
 			if (lo > hi) st.MakeFreeAxis(axis); else st.SetLimitedAxis(axis, lo, hi);
@@ -1073,7 +1075,7 @@ class Humanoid {
 		// arms and head follow the pose targets smoothly; the legs are the pose's
 		const k = Math.min(delta * 6, 1);
 		this.parts.forEach((p, i) => this._hold_angle[i].lerp(p.target, k));
-		const legs = HOLD_LEGS[kind];
+		const legs = holdLegs()[kind];
 		const ang = this._hold_angle.map(a => a.clone());
 		for (const side of ['r', 'l']) {
 			const m = side == 'r' ? gv(1, 1, 1) : gv(1, -1, -1);
@@ -1350,7 +1352,7 @@ function humanoidSpec(o = {}) {
 	const ang = {};
 	const set = (name, e) => { ang[name] = e.clone(); };
 	const side = (part, sd, e) => set(part + '_' + sd, sd == 'l' ? gv(e.x, -e.y, -e.z) : e);
-	for (const d of HUMANOID_PARTS) ang[d.name] = gv();
+	for (const d of humanoidPartsList()) ang[d.name] = gv();
 	for (const sd of ['r', 'l']) {
 		side('thigh', sd, gv(0, 0, 0.04)); side('shin', sd, gv(-0.06, 0, 0)); side('foot', sd, gv(0, 0, 0));
 		side('upper_arm', sd, gv(0.05, 0, 0.08)); side('forearm', sd, gv(0.2, 0, 0)); side('hand', sd, gv(0.1, 0, 0));
@@ -1369,15 +1371,15 @@ function humanoidSpec(o = {}) {
 		for (const sd of ['r', 'l']) { side('upper_arm', sd, gv(0.6, 0, 0.22)); side('forearm', sd, gv(0.75, 0, 0)); side('hand', sd, gv(0.35, 0, 0)); }
 		set('abdomen', gv(-0.28, 0, 0)); set('chest', gv(-0.12, 0, 0));
 	} else if (posture == 'kneel') set('abdomen', gv(-0.08, 0, 0));
-	if (HOLD_LEGS[posture]) {
-		const l = HOLD_LEGS[posture];
+	if (holdLegs()[posture]) {
+		const l = holdLegs()[posture];
 		lean = l[0];
 		for (const sd of ['r', 'l']) { side('thigh', sd, l[1]); side('shin', sd, l[2]); side('foot', sd, l[3]); }
 	}
 	// forward kinematics of the posture (metres, the game's rest frame); the hips are where the lowest point lands on the
 	// ground (or the pelvis on the seat)
-	const parts = HUMANOID_PARTS.map(d => ({d, rest: d.center.clone().multiplyScalar(s), joint: d.joint ? d.joint.clone().multiplyScalar(s) : null}));
-	const index = Object.fromEntries(HUMANOID_PARTS.map((d, i) => [d.name, i]));
+	const parts = humanoidPartsList().map(d => ({d, rest: d.center.clone().multiplyScalar(s), joint: d.joint ? d.joint.clone().multiplyScalar(s) : null}));
+	const index = Object.fromEntries(humanoidPartsList().map((d, i) => [d.name, i]));
 	const root_q = new THREE.Quaternion().setFromAxisAngle(gv(1, 0, 0), -lean);
 	const xfs = [];
 	parts.forEach((p, i) => {

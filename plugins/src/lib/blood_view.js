@@ -11,7 +11,7 @@
 
 const BV_AREA = 36.0, BV_RES = 2048, BV_PPM = BV_RES / BV_AREA;
 const BV_TIME_SPAN = 16384.0;
-const BV_DRY_COLOR = new THREE.Color(0.42, 0.3, 0.27);
+const BV_DRY_COLOR = [0.42, 0.3, 0.27];
 const BV_MAX_DECALS = 800;
 
 const BV_COMMON = `
@@ -144,10 +144,12 @@ class BloodView {
 
 	// a dab of blood on the ground (blood_canvas.gd dab) or, for a pool that is not on the ground, its decal
 	dab(p, n, along, w, l, kind, variant, thick, alpha, pool) {
-		if (pool) { this.poolDecal(pool, p, n, along, w, l, kind, variant); return; }
-		if (!this.target) return;
 		const u = (p.x - this.area_min.x) * BV_PPM, v = (p.z - this.area_min.z) * BV_PPM;
-		if (u < 0 || v < 0 || u > BV_RES || v > BV_RES) { this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time); return; }
+		const on_map = this.target && u >= 0 && v >= 0 && u <= BV_RES && v <= BV_RES;
+		// a pool that is not on the map (on a chair, far off): its one decal, made bigger as it spreads
+		if (pool && (!pool.on_ground || !on_map)) { this.poolDecal(pool, p, n, along, w, l, kind, variant); return; }
+		if (!this.target) return;
+		if (!on_map) { this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time); return; }
 		const dir = [along.x, along.z];
 		const angle = Math.hypot(dir[0], dir[1]) > 1e-4 ? Math.atan2(-dir[0], dir[1]) : brand() * Math.PI * 2;
 		this.queue.push({u, v, w: w * BV_PPM, l: l * BV_PPM, angle, tex: this.tex(kind, variant, 'mask'), data: [clamp(thick, 0, 1), 0.5, (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha]});
@@ -469,7 +471,7 @@ class BloodView {
 				bb.dirty = false;
 				if (!o.tex) {
 					o.tex = new THREE.DataTexture3D(bb.data, bb.dims[0], bb.dims[1], bb.dims[2]);
-					o.tex.format = THREE.RGFormat; o.tex.type = THREE.UnsignedByteType;
+					o.tex.format = THREE.RGFormat; o.tex.type = THREE.UnsignedByteType; o.tex.internalFormat = 'RG8';
 					o.tex.minFilter = o.tex.magFilter = THREE.LinearFilter;
 					o.tex.unpackAlignment = 1;
 				}
@@ -525,7 +527,7 @@ class BloodView {
 			this.dry_cursor = ((this.dry_cursor || 0) + 1) % this.decals.length;
 			const d = this.decals[this.dry_cursor];
 			const k_dry = clamp((this.sim._time - d.birth) / B_DRY_TIME, 0, 1);
-			d.mesh.material.color.setRGB(1, 1, 1).lerp(BV_DRY_COLOR, Math.pow(k_dry, 0.7));
+			d.mesh.material.color.setRGB(1, 1, 1).lerp(new THREE.Color(...BV_DRY_COLOR), Math.pow(k_dry, 0.7));
 		}
 		this.updateBodies(dt);
 	}

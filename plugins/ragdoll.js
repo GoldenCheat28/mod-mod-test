@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -831,7 +831,8 @@ function humanoidParts() {
 	}
 	return parts;
 }
-const HUMANOID_PARTS = humanoidParts();
+let humanoid_parts_cache = null;
+const humanoidPartsList = () => humanoid_parts_cache || (humanoid_parts_cache = humanoidParts());
 // a part of the game -> the bone of a character made here (role, side)
 const humanoidRole = name => {
 	const base = name.replace(/_[rl]$/, '');
@@ -839,17 +840,18 @@ const humanoidRole = name => {
 };
 
 // The standing pose the muscles hold (_compose_pose with no walking), and the legs of the held poses (HOLD_LEGS).
-const HOLD_LEGS = {
+let hold_legs_cache = null;
+const holdLegs = () => hold_legs_cache || (hold_legs_cache = {
 	squat: [0.35, gv(1.9, 0.12, 0.35), gv(-2.35, 0, 0), gv(0.55, 0, 0)],
 	kneel: [0.0, gv(0.06, 0.0, 0.06), gv(-1.57, 0, 0), gv(-1.25, 0, 0)],
 	sit: [-0.08, gv(1.57, 0.05, 0.12), gv(-1.5, 0, 0), gv(0.0, 0, 0)],
-};
+});
 
 // The pose a character is made in: joint angles per part (right side; the left one mirrored), in radians (Godot euler)
 function humanoidPose(posture) {
 	const a = {upper_arm: gv(0.05, 0, 0.08), forearm: gv(0.2, 0, 0), hand: gv(0.1, 0, 0), thigh: gv(0, 0, 0.04), shin: gv(-0.06, 0, 0), foot: gv(0, 0, 0)};
 	const t = {abdomen: gv(), chest: gv(), head: gv()};
-	if (HOLD_LEGS[posture]) { const l = HOLD_LEGS[posture]; a.thigh = l[1].clone(); a.shin = l[2].clone(); a.foot = l[3].clone(); t.pelvis_lean = l[0]; }
+	if (holdLegs()[posture]) { const l = holdLegs()[posture]; a.thigh = l[1].clone(); a.shin = l[2].clone(); a.foot = l[3].clone(); t.pelvis_lean = l[0]; }
 	return {a, t};
 }
 
@@ -911,7 +913,7 @@ class Humanoid {
 		this.parts = [];
 		this.part_index = {};
 		this.total_mass = 0;
-		for (const d of HUMANOID_PARTS) {
+		for (const d of humanoidPartsList()) {
 			const {role, side} = humanoidRole(d.name);
 			const g = find(role, side);
 			const entry = g && entryOf(g);
@@ -1039,7 +1041,7 @@ class Humanoid {
 		st.mSwingType = J.ESwingType_Pyramid;
 		const AX = this.axes();
 		for (const t of [AX.tx, AX.ty, AX.tz]) st.MakeFixedAxis(t);
-		const d = HUMANOID_PARTS[this.parts.indexOf(p)];
+		const d = humanoidPartsList()[this.parts.indexOf(p)];
 		[AX.rx, AX.ry, AX.rz].forEach((axis, i) => {
 			const lo = [d.lo.x, d.lo.y, d.lo.z][i], hi = [d.hi.x, d.hi.y, d.hi.z][i];
 			if (lo > hi) st.MakeFreeAxis(axis); else st.SetLimitedAxis(axis, lo, hi);
@@ -1829,7 +1831,7 @@ class Humanoid {
 		// arms and head follow the pose targets smoothly; the legs are the pose's
 		const k = Math.min(delta * 6, 1);
 		this.parts.forEach((p, i) => this._hold_angle[i].lerp(p.target, k));
-		const legs = HOLD_LEGS[kind];
+		const legs = holdLegs()[kind];
 		const ang = this._hold_angle.map(a => a.clone());
 		for (const side of ['r', 'l']) {
 			const m = side == 'r' ? gv(1, 1, 1) : gv(1, -1, -1);
@@ -2106,7 +2108,7 @@ function humanoidSpec(o = {}) {
 	const ang = {};
 	const set = (name, e) => { ang[name] = e.clone(); };
 	const side = (part, sd, e) => set(part + '_' + sd, sd == 'l' ? gv(e.x, -e.y, -e.z) : e);
-	for (const d of HUMANOID_PARTS) ang[d.name] = gv();
+	for (const d of humanoidPartsList()) ang[d.name] = gv();
 	for (const sd of ['r', 'l']) {
 		side('thigh', sd, gv(0, 0, 0.04)); side('shin', sd, gv(-0.06, 0, 0)); side('foot', sd, gv(0, 0, 0));
 		side('upper_arm', sd, gv(0.05, 0, 0.08)); side('forearm', sd, gv(0.2, 0, 0)); side('hand', sd, gv(0.1, 0, 0));
@@ -2125,15 +2127,15 @@ function humanoidSpec(o = {}) {
 		for (const sd of ['r', 'l']) { side('upper_arm', sd, gv(0.6, 0, 0.22)); side('forearm', sd, gv(0.75, 0, 0)); side('hand', sd, gv(0.35, 0, 0)); }
 		set('abdomen', gv(-0.28, 0, 0)); set('chest', gv(-0.12, 0, 0));
 	} else if (posture == 'kneel') set('abdomen', gv(-0.08, 0, 0));
-	if (HOLD_LEGS[posture]) {
-		const l = HOLD_LEGS[posture];
+	if (holdLegs()[posture]) {
+		const l = holdLegs()[posture];
 		lean = l[0];
 		for (const sd of ['r', 'l']) { side('thigh', sd, l[1]); side('shin', sd, l[2]); side('foot', sd, l[3]); }
 	}
 	// forward kinematics of the posture (metres, the game's rest frame); the hips are where the lowest point lands on the
 	// ground (or the pelvis on the seat)
-	const parts = HUMANOID_PARTS.map(d => ({d, rest: d.center.clone().multiplyScalar(s), joint: d.joint ? d.joint.clone().multiplyScalar(s) : null}));
-	const index = Object.fromEntries(HUMANOID_PARTS.map((d, i) => [d.name, i]));
+	const parts = humanoidPartsList().map(d => ({d, rest: d.center.clone().multiplyScalar(s), joint: d.joint ? d.joint.clone().multiplyScalar(s) : null}));
+	const index = Object.fromEntries(humanoidPartsList().map((d, i) => [d.name, i]));
 	const root_q = new THREE.Quaternion().setFromAxisAngle(gv(1, 0, 0), -lean);
 	const xfs = [];
 	parts.forEach((p, i) => {
@@ -2817,8 +2819,14 @@ class BloodSim {
 		r.pos = hit.position;
 		r.n = hit.normal;
 		r.vol -= step.length() * B_DEPOSIT_WALL * (r.width / 0.012);
-		// paint the film where the front has been: dabs every step make one continuous trail
-		this._world_stamp(null, r.pos.clone().addScaledVector(step, -0.5), r.n, r.dir, r.width, r.width + step.length(), 'drop', 0, 1.0, 0.45);
+		// paint the film where the front has been: dabs every step make one continuous trail (on the ground they go into
+		// the floor map; anywhere else each is a decal, so there a dab is only laid every one and a half widths of the run, as long as the way it came)
+		const ground = this.isGround(r.pos, r.n);
+		if (ground || !r.last_dab || r.last_dab.distanceTo(r.pos) > r.width * 1.5) {
+			const len = ground ? step.length() : (r.last_dab ? r.last_dab.distanceTo(r.pos) : step.length());
+			this._world_stamp(null, r.pos.clone().addScaledVector(r.dir, -len * 0.5), r.n, r.dir, r.width, r.width + len, 'drop', 0, 1.0, 0.45);
+			r.last_dab = r.pos.clone();
+		}
 		return true;
 	}
 
@@ -3199,7 +3207,7 @@ class BloodSim {
 	isGround(p, n) { return n.y > 0.55 && Math.abs(p.y - this.ground) < 0.03; }
 
 	_dab(pool, p, n, along, w, l, kind, variant, thick, alpha) {
-		if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, pool && !pool.on_ground ? pool : null);
+		if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, pool);
 	}
 
 	// col: null (the level) or {entry} (a moving thing: the stain goes with it)
@@ -3438,7 +3446,7 @@ class BodyBlood {
 
 const BV_AREA = 36.0, BV_RES = 2048, BV_PPM = BV_RES / BV_AREA;
 const BV_TIME_SPAN = 16384.0;
-const BV_DRY_COLOR = new THREE.Color(0.42, 0.3, 0.27);
+const BV_DRY_COLOR = [0.42, 0.3, 0.27];
 const BV_MAX_DECALS = 800;
 
 const BV_COMMON = `
@@ -3571,10 +3579,12 @@ class BloodView {
 
 	// a dab of blood on the ground (blood_canvas.gd dab) or, for a pool that is not on the ground, its decal
 	dab(p, n, along, w, l, kind, variant, thick, alpha, pool) {
-		if (pool) { this.poolDecal(pool, p, n, along, w, l, kind, variant); return; }
-		if (!this.target) return;
 		const u = (p.x - this.area_min.x) * BV_PPM, v = (p.z - this.area_min.z) * BV_PPM;
-		if (u < 0 || v < 0 || u > BV_RES || v > BV_RES) { this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time); return; }
+		const on_map = this.target && u >= 0 && v >= 0 && u <= BV_RES && v <= BV_RES;
+		// a pool that is not on the map (on a chair, far off): its one decal, made bigger as it spreads
+		if (pool && (!pool.on_ground || !on_map)) { this.poolDecal(pool, p, n, along, w, l, kind, variant); return; }
+		if (!this.target) return;
+		if (!on_map) { this.decal(null, p, n, along, w, l, kind, variant, alpha, this.sim._time); return; }
 		const dir = [along.x, along.z];
 		const angle = Math.hypot(dir[0], dir[1]) > 1e-4 ? Math.atan2(-dir[0], dir[1]) : brand() * Math.PI * 2;
 		this.queue.push({u, v, w: w * BV_PPM, l: l * BV_PPM, angle, tex: this.tex(kind, variant, 'mask'), data: [clamp(thick, 0, 1), 0.5, (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha]});
@@ -3896,7 +3906,7 @@ class BloodView {
 				bb.dirty = false;
 				if (!o.tex) {
 					o.tex = new THREE.DataTexture3D(bb.data, bb.dims[0], bb.dims[1], bb.dims[2]);
-					o.tex.format = THREE.RGFormat; o.tex.type = THREE.UnsignedByteType;
+					o.tex.format = THREE.RGFormat; o.tex.type = THREE.UnsignedByteType; o.tex.internalFormat = 'RG8';
 					o.tex.minFilter = o.tex.magFilter = THREE.LinearFilter;
 					o.tex.unpackAlignment = 1;
 				}
@@ -3952,7 +3962,7 @@ class BloodView {
 			this.dry_cursor = ((this.dry_cursor || 0) + 1) % this.decals.length;
 			const d = this.decals[this.dry_cursor];
 			const k_dry = clamp((this.sim._time - d.birth) / B_DRY_TIME, 0, 1);
-			d.mesh.material.color.setRGB(1, 1, 1).lerp(BV_DRY_COLOR, Math.pow(k_dry, 0.7));
+			d.mesh.material.color.setRGB(1, 1, 1).lerp(new THREE.Color(...BV_DRY_COLOR), Math.pow(k_dry, 0.7));
 		}
 		this.updateBodies(dt);
 	}
@@ -3982,7 +3992,7 @@ function decalBasis(n, along) {
 
 
 function hasHumanoidParts(bones) {
-	const need = HUMANOID_PARTS.map(d => humanoidRole(d.name));
+	const need = humanoidPartsList().map(d => humanoidRole(d.name));
 	return need.every(n => bones.some(g => roleOf(g) == n.role && (!n.side || sideOfGroup(g, bones) == n.side)));
 }
 
@@ -4030,7 +4040,8 @@ const physicsHook = {
 		if (!current) return;
 		if (current.blood) current.blood.show();
 		if (current.sim && current.sim.view) {
-			const now = performance.now(), dt = current.last_show ? Math.min(0.1, (now - current.last_show) / 1000) : 0;
+			// (the simulation's own time: the blood moves with the physics, however fast that plays)
+			const now = current.sim._time, dt = current.last_show !== null ? clamp(now - current.last_show, 0, 0.1) : 0;
 			current.last_show = now;
 			try { current.sim.view.update(dt); } catch (err) { console.warn('[Ragdoll] blood view', err); current.sim.view = null; }
 		}
@@ -4398,7 +4409,8 @@ const TEXTS = {
 		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
 		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
 		blood: 'Blood', blood_amount: 'Amount ×', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
-		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting, hands on knees', height: 'Height (px)', add_character_btn: 'Add the default character',
+		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting on a chair', pose_kneel: 'Kneeling', pose_squat: 'Squatting', pose_crouch: 'Crouching', pose_hands_up: 'Hands up', pose_cover_head: 'Covering the head', pose_aim: 'Aiming',
+		npc_game: 'The person of the Blood game: its body, muscles, balance, wounds and blood, as in the game. A pistol in the game hits with 2-6 N*s.', weapon: 'Weapon', w_pistol: 'Pistol', w_revolver: 'Revolver', w_rifle: 'Rifle', w_akm: 'AKM', w_shotgun: 'Shotgun (pellet)', height: 'Height (px)', add_character_btn: 'Add the default character',
 		auto_bones: 'Place bones automatically on the selected model', auto_bones_hint: 'Select the cubes (or the group) of a standing person: they are sorted into head, spine, arms and legs, the joints are put in and the ragdoll is built.',
 		auto_react: 'Every part of the body reacts by itself', react_scale: 'Reaction strength', facing: 'The character looks toward', facing_north: 'North (−Z, the front in Blockbench)', facing_south: 'South (+Z)',
 		shot_box: 'Shot', shot_at: 'Hits the part', shot_auto: 'Chest', shot_from: 'The shot comes from (the orange arrow in 3D)', d_front: 'Front', d_right: 'Right', d_back: 'Back', d_left: 'Left',
@@ -4432,7 +4444,8 @@ const TEXTS = {
 		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
 		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
 		blood: 'Кровь', blood_amount: 'Количество ×', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
-		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит, руки на коленях', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
+		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит на стуле', pose_kneel: 'На коленях', pose_squat: 'На корточках', pose_crouch: 'Пригнулся', pose_hands_up: 'Руки вверх', pose_cover_head: 'Закрывает голову', pose_aim: 'Целится',
+		npc_game: 'Человек из игры Blood: тело, мышцы, баланс, ранения и кровь — как в игре. Пистолет в игре бьёт с силой 2–6 Н·с.', weapon: 'Оружие', w_pistol: 'Пистолет', w_revolver: 'Револьвер', w_rifle: 'Винтовка', w_akm: 'АКМ', w_shotgun: 'Дробовик (дробина)', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
 		auto_bones: 'Расставить кости автоматически на выбранной модели', auto_bones_hint: 'Выделите кубы (или группу) стоящего человека: они разложатся по голове, позвоночнику, рукам и ногам, суставы встанут на места и регдолл будет создан.',
 		auto_react: 'Каждая часть тела реагирует по-своему', react_scale: 'Сила реакции', facing: 'Персонаж смотрит на', facing_north: 'Север (−Z, перед в Blockbench)', facing_south: 'Юг (+Z)',
 		shot_box: 'Выстрел', shot_at: 'Попадает в часть', shot_auto: 'Грудь', shot_from: 'Откуда летит выстрел (оранжевая стрелка в 3D)', d_front: 'Спереди', d_right: 'Справа', d_back: 'Сзади', d_left: 'Слева',
@@ -4544,7 +4557,7 @@ function updatePanel(force) {
 		vue.sel_name = sel ? sel.name : '';
 		if (root) {
 			const s = ragdollOf(root);
-			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, blood: s.blood, blood_amount: s.blood_amount, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance,
+			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, posture: s.posture || 'stand', weapon: s.weapon || 'pistol', is_human: hasHumanoidParts(bonesOf(root)), blood: s.blood, blood_amount: s.blood_amount, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance,
 				bone_list: bonesOf(root).map(g => ({uuid: g.uuid, name: g.name})), poses: s.poses.map(p => ({name: p.name})), items: itemsOf(root).map(n => ({uuid: n.uuid, name: n.name, bone_name: ((bonesOf(root).find(g => g.uuid == n.attach.bone)) || {}).name || '?', drop: n.attach.drop !== false})),
 				root_name: root.name, bone_count: bonesOf(root).length, hits: s.hits.map(h => Object.assign({}, h)), reactions: s.reactions.map(r => Object.assign({name: '', zone: 'any', hold: 0.8, tension: 1}, r, {pose_count: Object.keys(r.pose || {}).length}))});
 			vue.is_bone = !!(sel && sel.bone && sel.bone.joint);
@@ -4580,7 +4593,7 @@ function panelComponent() {
 					root.ragdoll = Object.assign(ragdollOf(root), {total_mass: clamp(num_(this.total_mass, 70), 1, 5000), tone: clamp(num_(this.tone, 0.6), 0, 1.5), power: clamp(num_(this.power, 1), 0, 4),
 						flinch: clamp(num_(this.flinch, 0.7), 0, 1), radius: clamp(num_(this.radius, 32), 0, 400), pin: this.pin, limp: Math.max(0, num_(this.limp, 0)), limp_time: Math.max(0, num_(this.limp_time, 0)), shot: clamp(num_(this.shot, 40), 1, 2000), auto_react: !!this.auto_react, react_scale: clamp(num_(this.react_scale, 1), 0, 3), facing: this.facing,
 						shot_part: this.shot_part, shot_yaw: clamp(num_(this.shot_yaw, 0), -360, 360), shot_pitch: clamp(num_(this.shot_pitch, 8), -85, 85), shot_time: Math.max(0, num_(this.shot_time, 0.5)),
-						npc: !!this.npc, blood: !!this.blood, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2)});
+						npc: !!this.npc, posture: this.posture, weapon: this.weapon, blood: !!this.blood, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2)});
 				});
 				updatePanel(true);
 			},
@@ -4656,7 +4669,7 @@ function panelComponent() {
 						<select v-model="new_model"><option value="npc">{{ t('model_npc') }}</option><option value="mannequin">{{ t('model_mannequin') }}</option></select>
 					</label>
 					<label class="rd_row">{{ t('pose') }}
-						<select v-model="new_pose"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option></select>
+						<select v-model="new_pose"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
 					</label>
 					<div class="rd_grid"><rope-num :label="t('height')" v-model="new_height" :min="8" :max="200" :step="0.5" :decimals="1"></rope-num></div>
 					<button class="rd_full" @click="addCharacter()">{{ t('add_character_btn') }}</button>
@@ -4699,7 +4712,14 @@ function panelComponent() {
 					<details class="rd_box" open>
 						<summary>{{ t('living') }}</summary>
 						<label class="rd_row" :title="t('npc_tip')">{{ t('npc') }}<input type="checkbox" v-model="npc" @change="saveRoot()"></label>
-						<template v-if="npc">
+						<template v-if="npc && is_human">
+							<div class="rd_dim">{{ t('npc_game') }}</div>
+							<label class="rd_row">{{ t('pose') }}<select v-model="posture" @change="saveRoot()"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select></label>
+							<label class="rd_row">{{ t('weapon') }}<select v-model="weapon" @change="saveRoot()">
+								<option value="pistol">{{ t('w_pistol') }}</option><option value="revolver">{{ t('w_revolver') }}</option><option value="rifle">{{ t('w_rifle') }}</option><option value="akm">{{ t('w_akm') }}</option><option value="shotgun">{{ t('w_shotgun') }}</option>
+							</select></label>
+						</template>
+						<template v-if="npc && !is_human">
 							<label class="rd_row">{{ t('head_kills') }}<input type="checkbox" v-model="head_kills" @change="saveRoot()"></label>
 							<div class="rd_grid">
 								${num('balance', 'balance', 0, 2, 0.05, 2, 'balance_tip', 'saveRoot()')}
@@ -4707,7 +4727,7 @@ function panelComponent() {
 							</div>
 						</template>
 						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="blood" @change="saveRoot()"></label>
-						<div class="rd_grid" v-if="blood">${num('blood_amount', 'blood_amount', 0, 5, 0.1, 1, null, 'saveRoot()')}</div>
+						<div class="rd_grid" v-if="blood && !is_human">${num('blood_amount', 'blood_amount', 0, 5, 0.1, 1, null, 'saveRoot()')}</div>
 						<div class="rd_dim" v-if="blood">{{ t('blood_note') }}</div>
 					</details>
 
@@ -5317,7 +5337,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, HUMANOID_PARTS, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -5325,7 +5345,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.4.0',
+	version: '0.5.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
