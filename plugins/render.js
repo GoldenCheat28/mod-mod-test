@@ -2724,7 +2724,7 @@
 
 		void main() {
 
-			vec4 texel = min( texture2D( tDiffuse, vUv ), vec4( 32.0 ) );
+			vec4 texel = min( texture2D( tDiffuse, vUv ), vec4( 12.0 ) );
 			if ( !( texel.x == texel.x && texel.y == texel.y && texel.z == texel.z ) ) texel = vec4( 0.0 );
 
 			vec3 luma = vec3( 0.299, 0.587, 0.114 );
@@ -2813,7 +2813,7 @@
 			} ); // Gaussian Blur Materials
 
 			this.separableBlurMaterials = [];
-			const kernelSizeArray = [ 3, 5, 7, 9, 11 ];
+			const kernelSizeArray = [ 6, 10, 14, 18, 22 ];
 			resx = Math.round( this.resolution.x / 2 );
 			resy = Math.round( this.resolution.y / 2 );
 
@@ -2986,7 +2986,7 @@
 			return new THREE.ShaderMaterial( {
 				defines: {
 					'KERNEL_RADIUS': kernelRadius,
-					'SIGMA': kernelRadius
+					'SIGMA': (kernelRadius / 2.4).toFixed(3)
 				},
 				uniforms: {
 					'colorTexture': {
@@ -6320,7 +6320,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.7',
+	version: '0.2.8',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
