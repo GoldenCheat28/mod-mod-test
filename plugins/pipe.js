@@ -284,7 +284,7 @@ const TEXTS = {
 		msg_select: 'Connect: select two meshes and one or more faces on each (face selection mode)',
 		msg_loop: 'Connect: the chosen faces have no open edge (select a part of the surface, not the whole closed shape)',
 		msg_done: 'Pipe created',
-		msg_waypoint_none: 'Open the Connect window first',
+		msg_waypoint_none: 'Open the Connect window first', waypoint_name: 'Pipe point',
 	},
 	ru: {
 		connect: 'Соединить грани…', connect_desc: 'Соединить выбранные грани двух мешей трубой',
@@ -297,7 +297,7 @@ const TEXTS = {
 		msg_select: 'Соединение: выделите два меша и по одной или нескольким граням на каждом (режим выбора граней)',
 		msg_loop: 'Соединение: у выбранных граней нет открытого края (выделите часть поверхности, а не всю замкнутую форму)',
 		msg_done: 'Труба создана',
-		msg_waypoint_none: 'Сначала откройте окно соединения',
+		msg_waypoint_none: 'Сначала откройте окно соединения', waypoint_name: 'Точка трубы',
 	},
 };
 const tr = key => {
@@ -384,7 +384,8 @@ function openConnect() {
 	const pipeRadius = Math.max(radiusOf(loopA), radiusOf(loopB));
 	let last_signature = '', error_shown = false, current = null;
 
-	const waypoints = () => [...markers.map(m => centerOf(m)), ...extras.map(centerOf)];
+	// a marker you deleted yourself (select it, press Delete) is simply gone from the way
+	const waypoints = () => [...markers.filter(m => Cube.all.includes(m)).map(m => centerOf(m)), ...extras.map(centerOf)];
 	const bounds = () => obstacles.map(el => new THREE.Box3().setFromObject(el.mesh)).filter(b => !b.isEmpty());
 
 	function rebuild(form) {
@@ -408,9 +409,11 @@ function openConnect() {
 
 	function addMarker() {
 		const at = current ? current.path[Math.floor(current.path.length / 2)] : loopA.center.clone().lerp(loopB.center, 0.5);
-		const m = new Cube({name: 'Pipe point', from: [at.x - 1.5, at.y - 1.5, at.z - 1.5], to: [at.x + 1.5, at.y + 1.5, at.z + 1.5], color: 4}).addTo('root').init();
+		const m = new Cube({name: tr('waypoint_name') + ' ' + (markers.length + 1), from: [at.x - 2, at.y - 2, at.z - 2], to: [at.x + 2, at.y + 2, at.z + 2], color: 4}).addTo('root').init();
 		markers.push(m);
 		Canvas.updateView({elements: [m], element_aspects: {geometry: true, transform: true}});
+		// ready to drag: the new point is selected and the Move tool is on
+		try { m.select(); if (typeof BarItems != 'undefined' && BarItems.move_tool) BarItems.move_tool.select(); } catch (err) { /* selecting is only a convenience */ }
 		last_signature = '';
 	}
 	function clearMarkers() {
