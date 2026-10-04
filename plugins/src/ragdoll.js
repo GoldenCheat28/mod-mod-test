@@ -875,10 +875,7 @@ function removeRagdoll(root) {
 
 // angles are in three.js terms (degrees): x tips a limb that hangs down toward -Z (the front), z swings it sideways
 const POSES = {   // the simple mannequin
-	stand: {   // relaxed: arms hang with a little bend at the elbows, the feet turned out a little, knees not locked
-		upperarm: {x: -4, z: -6}, forearm: {x: 14, z: 0}, hand: {x: 4, z: 0}, thigh: {x: 2, z: 2}, shin: {x: -3, z: 0}, foot: {x: 1, y: 8},
-		abdomen: {x: 0}, chest: {x: 1}, neck: {x: 2}, head: {x: -1}, pelvis: {x: 0},
-	},
+	stand: {},   // straight: arms down, legs straight, feet forward
 	sit: {     // on a stool, hands resting on the knees
 		thigh: {x: 90, z: 3}, shin: {x: -90, z: 0}, foot: {x: 0, y: 6}, pelvis: {x: 0}, abdomen: {x: -3}, chest: {x: -2}, neck: {x: 4}, head: {x: 2},
 		upperarm: {x: 0, z: 20}, forearm: {x: 93, z: 0}, hand: {x: 0},
@@ -893,7 +890,7 @@ const NPC_COLORS = {skin: '#d1a180', shirt: '#29334d', pants: '#1f1f21', shoes: 
 const NPC_MATERIALS = ['skin', 'shirt', 'pants', 'shoes', 'hair', 'eye', 'lips', 'chair'];
 
 const NPC_POSES = {
-	stand: {upperarm: {x: -3, z: -5}, forearm: {x: 10, z: 0}, hand: {x: 4, z: 0}, thigh: {x: 1, z: 1}, shin: {x: -2, z: 0}, foot: {x: 1, y: 6}},
+	stand: {},
 	sit: {thigh: {x: 90, z: 3}, shin: {x: -90, z: 0}, foot: {x: 0, y: 5}, abdomen: {x: -3}, chest: {x: -2}, head: {x: 2},
 		upperarm: {x: 0, z: 20}, forearm: {x: 75, z: 0}, hand: {x: 0}},
 };
@@ -923,7 +920,7 @@ function npcSpec(o = {}) {
 	], [r(P.head, 'x'), 0, 0]);
 	for (const s of [1, -1]) {
 		const L = s > 0 ? 'R' : 'L';
-		add('Upper Arm ' + L, 'upperarm', 'Chest', [s * 0.22, hi(1.43), 0], [cube([s * 0.25, hi(1.3), 0], [0.116, 0.32, 0.116], 'shirt'), cube([s * 0.25, hi(1.42), 0], [0.124, 0.12, 0.124], 'shirt')], [r(P.upperarm, 'x'), 0, -s * r(P.upperarm, 'z')]);
+		add('Upper Arm ' + L, 'upperarm', 'Chest', [s * 0.25, hi(1.43), 0], [cube([s * 0.25, hi(1.3), 0], [0.116, 0.32, 0.116], 'shirt'), cube([s * 0.25, hi(1.42), 0], [0.124, 0.12, 0.124], 'shirt')], [r(P.upperarm, 'x'), 0, -s * r(P.upperarm, 'z')]);
 		add('Forearm ' + L, 'forearm', 'Upper Arm ' + L, [s * 0.25, hi(1.155), 0], [cube([s * 0.25, hi(1.02), 0], [0.094, 0.29, 0.094], 'skin')], [r(P.forearm, 'x'), 0, -s * r(P.forearm, 'z')]);
 		add('Hand ' + L, 'hand', 'Forearm ' + L, [s * 0.25, hi(0.88), 0], [cube([s * 0.25, hi(0.812), -0.005], [0.044, 0.11, 0.078], 'skin'), cube([s * 0.25, hi(0.87), -0.005], [0.06, 0.1, 0.06], 'skin'), cube([s * 0.25, hi(0.84), -0.052], [0.022, 0.045, 0.022], 'skin')], [r(P.hand, 'x'), 0, 0]);
 		add('Thigh ' + L, 'thigh', 'Pelvis', [s * 0.1, hi(0.92), 0], [cube([s * 0.1, hi(0.72), 0], [0.164, 0.46, 0.164], 'pants')], [r(P.thigh, 'x'), 0, -s * r(P.thigh, 'z')]);
@@ -1169,6 +1166,165 @@ function autoRig(elements) {
 }
 
 // ---------------------------------------------------------------------------
+// Saved ragdolls: a character (its skeleton, joints, muscles, settings and its own model: cubes, meshes, textures) kept
+// in the list of models, so it can be added again in any project. Kept by Blockbench (in its local storage).
+// When it is added again, the pose and the chair come from the chosen pose, like the built-in person: only the model is his.
+// ---------------------------------------------------------------------------
+
+const SAVED_KEY = 'ragdoll_saved_models';
+let saved_memory = null;   // when the storage cannot be used
+function savedModels() {
+	try { const raw = localStorage.getItem(SAVED_KEY); if (raw) return JSON.parse(raw); } catch (err) { /* no storage */ }
+	return saved_memory || [];
+}
+function storeSavedModels(list) {
+	saved_memory = list;
+	try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); return true; } catch (err) { console.warn('[Ragdoll] saving the model', err); return false; }
+}
+
+const GROUP_KEYS = ['name', 'origin', 'rotation', 'color', 'visibility', 'export', 'locked', 'ragdoll', 'bone', 'physics', 'attach', 'render_light', 'render_camera', 'render_particles', 'softbody'];
+function groupData(g) {
+	const out = {};
+	const keys = typeof Group != 'undefined' && Group.properties ? [...new Set([...Object.keys(Group.properties), ...GROUP_KEYS])] : GROUP_KEYS;
+	for (const k of keys) if (g[k] !== undefined && k != 'uuid' && k != 'children' && k != 'parent') out[k] = JSON.parse(JSON.stringify(g[k]));
+	return out;
+}
+function elementData(el) {
+	if (el.getSaveCopy) return JSON.parse(JSON.stringify(el.getSaveCopy()));
+	const out = {type: el instanceof Mesh ? 'mesh' : 'cube'};
+	for (const k of ['name', 'from', 'to', 'origin', 'rotation', 'faces', 'vertices', 'color', 'render_material', 'physics', 'inflate']) if (el[k] !== undefined) out[k] = JSON.parse(JSON.stringify(el[k]));
+	return out;
+}
+
+// the character as data: the group tree, the textures its faces use, and what is needed to pose it again
+function characterData(root) {
+	const textures = new Set();
+	const walk = g => ({uuid: g.uuid, group: groupData(g), children: (g.children || []).map(c => {
+		if (c instanceof Group) return walk(c);
+		if (!(c instanceof Cube || c instanceof Mesh)) return null;
+		const d = elementData(c);
+		d.uuid = c.uuid;
+		for (const f of Object.values(d.faces || {})) if (f && f.texture) textures.add(f.texture);
+		return {element: d};
+	}).filter(Boolean)});
+	const tree = walk(root);
+	const tex = [];
+	for (const uuid of textures) {
+		const t = (Texture.all || []).find(x => x.uuid == uuid);
+		if (!t) continue;
+		let data = null;
+		try { data = (t.getDataURL && t.getDataURL()) || (t.canvas && t.canvas.toDataURL()) || (t.img && t.img.src && t.img.src.startsWith('data:') ? t.img.src : null) || (String(t.source || '').startsWith('data:') ? t.source : null); } catch (err) { /* left out */ }
+		if (data) tex.push({uuid, name: t.name, data});
+	}
+	const pelvis = bonesOf(root).find(g => roleOf(g) == 'pelvis');
+	const head = bonesOf(root).find(g => roleOf(g) == 'head');
+	const s = ragdollOf(root);
+	return {version: 1, tree, textures: tex, posture: s.posture || 'stand',
+		pelvis_y: pelvis ? pelvis.origin[1] : null, head_y: head ? head.origin[1] : null};
+}
+
+function saveCharacterModel(root, name) {
+	if (!root) { Blockbench.showQuickMessage(tr('msg_save_none'), 2500); return null; }
+	const list = savedModels();
+	const entry = {id: 'm' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), name: name || root.name, created: Date.now(), data: characterData(root)};
+	list.push(entry);
+	if (!storeSavedModels(list)) Blockbench.showQuickMessage(tr('msg_save_big'), 4000);
+	else Blockbench.showQuickMessage(tr('msg_saved_model').replace('%', entry.name), 2500);
+	return entry;
+}
+function deleteSavedModel(id) {
+	storeSavedModels(savedModels().filter(m => m.id != id));
+}
+
+// adds a saved character; pose: one of the postures ('stand', 'sit'...), or 'saved' for the pose it was saved in
+function createSavedCharacter(entry, pose) {
+	const data = JSON.parse(JSON.stringify(entry.data));
+	// the textures: the same picture already in the project is used again
+	const tex_map = new Map();
+	for (const t of data.textures || []) {
+		let found = null;
+		try { found = (Texture.all || []).find(x => x.name == t.name && ((x.getDataURL && x.getDataURL()) || x.source) == t.data); } catch (err) { /* compare failed */ }
+		if (!found) { try { found = new Texture({name: t.name}).fromDataURL(t.data).add(false); } catch (err) { console.warn('[Ragdoll] texture', err); } }
+		if (found) tex_map.set(t.uuid, found.uuid);
+	}
+	// the pose: the joint angles of the built-in person, by bone name; the body moved up or down so it stands (or sits) right
+	const humanoid = POSTURES.includes(pose);
+	let spec = null, dy = 0;
+	const scale = data.pelvis_y !== null && data.head_y !== null ? (data.head_y - data.pelvis_y) / ((1.53 - 0.97) * SCALE) : 1;
+	if (humanoid && data.pelvis_y !== null) {
+		spec = humanoidSpec({pose, height: 28.7 * scale});
+		const before = humanoidSpec({pose: POSTURES.includes(data.posture) ? data.posture : 'stand', height: 28.7 * scale});
+		const pb = spec.bones.find(b => b.role == 'pelvis'), pa = before.bones.find(b => b.role == 'pelvis');
+		if (pb && pa) dy = pb.pivot[1] - pa.pivot[1];
+	}
+	const rot_of = new Map(spec ? spec.bones.map(b => [b.name, bbOfThree(b.rot)]) : []);
+	const up = v => v ? [v[0], v[1] + dy, v[2]] : v;
+	Undo.initEdit({outliner: true, elements: [], groups: [], selection: true});
+	const groups = [], elements = [], uuids = new Map();
+	const make = (node, parent) => {
+		const gd = Object.assign({}, node.group);
+		gd.origin = up(gd.origin || [0, 0, 0]);
+		if (spec && rot_of.has(gd.name) && node !== data.tree) gd.rotation = rot_of.get(gd.name);
+		const g = new Group(gd);
+		g.addTo(parent).init();
+		for (const k of ['ragdoll', 'bone', 'physics', 'attach', 'render_particles', 'render_light']) if (gd[k] !== undefined) g[k] = gd[k];
+		uuids.set(node.uuid, g.uuid);
+		groups.push(g);
+		for (const c of node.children) {
+			if (c.group) { make(c, g); continue; }
+			const d = c.element;
+			const old = d.uuid;
+			delete d.uuid;
+			for (const f of Object.values(d.faces || {})) if (f && f.texture) f.texture = tex_map.get(f.texture) || false;
+			if (d.from) d.from = up(d.from);
+			if (d.to) d.to = up(d.to);
+			if (d.origin) d.origin = up(d.origin);
+			let el = null;
+			try {
+				el = typeof OutlinerElement != 'undefined' && OutlinerElement.fromSave ? OutlinerElement.fromSave(d) : (d.type == 'mesh' ? new Mesh(d) : new Cube(d));
+			} catch (err) { console.warn('[Ragdoll] element', err); continue; }
+			el.addTo(g).init();
+			uuids.set(old, el.uuid);
+			elements.push(el);
+		}
+	};
+	make(data.tree, 'root');
+	const root = groups[0];
+	// what pointed at the old bones (poses, hits, the shot part) points at the new ones
+	const remap = obj => {
+		if (!obj || typeof obj != 'object') return obj;
+		let s = JSON.stringify(obj);
+		for (const [a, b] of uuids) s = s.split(a).join(b);
+		return JSON.parse(s);
+	};
+	for (const g of groups) for (const k of ['ragdoll', 'bone', 'attach']) if (g[k]) g[k] = remap(g[k]);
+	// the chair of a sitting person
+	let chair = null;
+	if (spec && spec.chair) {
+		chair = new Group({name: spec.chair.name, origin: [0, 0, 0]});
+		chair.addTo('root').init();
+		chair.physics = {type: 'static', friction: 0.8, restitution: 0.05};
+		groups.push(chair);
+		const palette = npcPalette();
+		for (const c of spec.chair.cubes) {
+			const el = new Cube({name: 'chair', from: c.from, to: c.to, origin: [0, 1, 2].map(i => (c.from[i] + c.to[i]) / 2)});
+			el.addTo(chair).init();
+			if (palette) paintCube(el, 'chair', palette);
+			elements.push(el);
+		}
+	}
+	if (spec) {
+		root.ragdoll = Object.assign(ragdollOf(root), {posture: pose});
+		// the pose he is put in is his rest pose
+		bonesOf(root).forEach(g => { g.bone = Object.assign(boneOf(g), {rest: g.rotation.slice()}); });
+	}
+	Undo.finishEdit('Add saved character', {outliner: true, elements, groups, selection: true});
+	if (typeof Canvas != 'undefined') { Canvas.updateAllBones(); Canvas.updateAllPositions(); }
+	root.select();
+	return {root, chair};
+}
+
+// ---------------------------------------------------------------------------
 // Blockbench side
 // ---------------------------------------------------------------------------
 
@@ -1191,6 +1347,9 @@ const TEXTS = {
 		swing: 'Swing (°)', twist: 'Twist (±°)', axis: 'Hinge axis', hmin: 'Hinge from (°)', hmax: 'Hinge to (°)', strength: 'Muscle strength', zone: 'Zone',
 		z_auto: 'Automatic', z_head: 'Head', z_torso: 'Torso', z_arms: 'Arms', z_legs: 'Legs', z_any: 'Any',
 		model: 'Model', model_npc: 'Blood NPC (from the Godot project)', model_mannequin: 'Plain mannequin',
+		save_model: 'Save this ragdoll as a model', save_model_tip: 'The selected character (skeleton, joints, muscles, settings and its model: cubes, meshes, textures) goes into this list and can be added again in any project. Put your own model on the skeleton and save it: only the model changes, the pose and the rest work as before.',
+		save_model_name: 'Name of the model', delete_model: 'Delete the saved model', delete_model_q: 'Delete the saved model "%"?', cancel: 'Cancel', pose_saved: 'As saved',
+		msg_save_none: 'Select a character first', msg_saved_model: 'Saved: %', msg_save_big: 'The model is too big to keep (the storage is full); it is kept until Blockbench closes', msg_save_gone: 'This saved model is gone',
 		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
 		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
 		blood: 'Blood', blood_amount: 'Amount ×', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
@@ -1233,6 +1392,9 @@ const TEXTS = {
 		swing: 'Отклонение (°)', twist: 'Кручение (±°)', axis: 'Ось шарнира', hmin: 'Шарнир от (°)', hmax: 'Шарнир до (°)', strength: 'Сила мышцы', zone: 'Зона',
 		z_auto: 'Автоматически', z_head: 'Голова', z_torso: 'Торс', z_arms: 'Руки', z_legs: 'Ноги', z_any: 'Любая',
 		model: 'Модель', model_npc: 'NPC из Blood (Godot-проект)', model_mannequin: 'Простой манекен',
+		save_model: 'Сохранить этот регдолл как модель', save_model_tip: 'Выбранный персонаж (скелет, суставы, мышцы, настройки и его модель: кубы, меши, текстуры) попадает в этот список, и его можно добавить снова в любом проекте. Наденьте на скелет свою модель и сохраните: меняется только модель, поза и всё остальное работают как раньше.',
+		save_model_name: 'Имя модели', delete_model: 'Удалить сохранённую модель', delete_model_q: 'Удалить сохранённую модель «%»?', cancel: 'Отмена', pose_saved: 'Как сохранён',
+		msg_save_none: 'Сначала выделите персонажа', msg_saved_model: 'Сохранено: %', msg_save_big: 'Модель слишком большая для хранилища; она сохранена до закрытия Blockbench', msg_save_gone: 'Эта сохранённая модель удалена',
 		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
 		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
 		blood: 'Кровь', blood_amount: 'Количество ×', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
@@ -1387,7 +1549,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -1441,7 +1603,29 @@ function panelComponent() {
 			},
 			detach(uuid) { detachItem(uuid); },
 			addCharacter() { addCharacter(this.new_pose, num_(this.new_height, 28.6), this.new_model); },
-			spawn() { addCharacter(this.new_pose, 28.6, 'npc'); },
+			spawn() { addCharacter(this.new_pose, 28.6, this.new_model || 'npc'); },
+			isSaved() { return String(this.new_model).startsWith('saved:'); },
+			modelChanged() { if (this.isSaved()) this.new_pose = 'saved'; else if (this.new_pose == 'saved') this.new_pose = 'stand'; },
+			loadSaved() { this.saved_models = savedModels().map(m => ({id: m.id, name: m.name})); },
+			saveModel() {
+				const root = activeRoot();
+				if (!root) { Blockbench.showQuickMessage(tr('msg_save_none'), 2500); return; }
+				const done = name => {
+					if (name === null || name === undefined) return;
+					const entry = saveCharacterModel(root, String(name).trim() || root.name);
+					this.loadSaved();
+					if (entry) { this.new_model = 'saved:' + entry.id; this.new_pose = 'saved'; }
+				};
+				if (Blockbench.textPrompt) Blockbench.textPrompt(tr('save_model_name'), root.name, done);
+				else done(root.name);
+			},
+			deleteModel() {
+				if (!this.isSaved()) return;
+				const id = this.new_model.slice(6), m = savedModels().find(x => x.id == id);
+				const go = () => { deleteSavedModel(id); this.new_model = 'npc'; this.new_pose = 'stand'; this.loadSaved(); };
+				if (Blockbench.showMessageBox) Blockbench.showMessageBox({title: tr('delete_model'), message: tr('delete_model_q').replace('%', m ? m.name : ''), buttons: [tr('delete_model'), tr('cancel')], confirm: 0, cancel: 1}, b => { if (b === 0) go(); });
+				else go();
+			},
 			toggleClickShot() {
 				click_shot = !click_shot;
 				// a shot that was being moved is let go
@@ -1513,8 +1697,10 @@ function panelComponent() {
 				<div class="rd_box rd_simple">
 					<div class="rd_row">
 						<button class="rd_big" @click="spawn()">{{ t('spawn') }}</button>
-						<select v-model="new_pose" :title="t('pose')"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
+						<select v-model="new_pose" :title="t('pose')"><option v-if="isSaved()" value="saved">{{ t('pose_saved') }}</option><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
 					</div>
+					<label class="rd_row">{{ t('model') }} <select v-model="new_model" @change="modelChanged()" :title="t('model')"><option value="npc">{{ t('model_npc') }}</option><option value="mannequin">{{ t('model_mannequin') }}</option><option v-for="m in saved_models" :value="'saved:' + m.id">{{ m.name }}</option></select></label>
+					<div class="rd_row"><button class="rd_full" @click="saveModel()" :title="t('save_model_tip')">+ {{ t('save_model') }}</button><button v-if="isSaved()" class="rd_x" @click="deleteModel()" :title="t('delete_model')">✕</button></div>
 					<div class="rd_grid">
 						<rope-num :label="t('rec_time')" v-model="rec_time" :min="0.5" :max="120" :step="0.5" :decimals="1" @change="saveRecTime()"></rope-num>
 						<rope-num :label="t('rec_fps')" v-model="rec_fps" :min="1" :max="120" :step="1" :decimals="0" @change="saveRecTime()"></rope-num>
@@ -1562,12 +1748,13 @@ function panelComponent() {
 				<details class="rd_box" :open="!has_root">
 					<summary>{{ t('add_character') }}</summary>
 					<label class="rd_row">{{ t('model') }}
-						<select v-model="new_model"><option value="npc">{{ t('model_npc') }}</option><option value="mannequin">{{ t('model_mannequin') }}</option></select>
+						<select v-model="new_model" @change="modelChanged()" :title="t('model')"><option value="npc">{{ t('model_npc') }}</option><option value="mannequin">{{ t('model_mannequin') }}</option><option v-for="m in saved_models" :value="'saved:' + m.id">{{ m.name }}</option></select>
 					</label>
+					<div class="rd_row"><button class="rd_full" @click="saveModel()" :title="t('save_model_tip')">+ {{ t('save_model') }}</button><button v-if="isSaved()" class="rd_x" @click="deleteModel()" :title="t('delete_model')">✕</button></div>
 					<label class="rd_row">{{ t('pose') }}
-						<select v-model="new_pose"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
+						<select v-model="new_pose"><option v-if="isSaved()" value="saved">{{ t('pose_saved') }}</option><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
 					</label>
-					<div class="rd_grid"><rope-num :label="t('height')" v-model="new_height" :min="8" :max="200" :step="0.5" :decimals="1"></rope-num></div>
+					<div class="rd_grid" v-if="!isSaved()"><rope-num :label="t('height')" v-model="new_height" :min="8" :max="200" :step="0.5" :decimals="1"></rope-num></div>
 					<button class="rd_full" @click="addCharacter()">{{ t('add_character_btn') }}</button>
 					<button class="rd_full" @click="autoBones()">{{ t('auto_bones') }}</button>
 					<div class="rd_dim small">{{ t('auto_bones_hint') }}</div>
@@ -1853,7 +2040,45 @@ const itemsOf = root => [...Group.all, ...Cube.all, ...Mesh.all].filter(n => n.a
 // Skeleton poses: drag the joints, the parts follow and stay joined (no part is moved by itself)
 // ---------------------------------------------------------------------------
 
-const PRINCIPAL = {pelvis: 'abdomen', abdomen: 'chest', chest: 'neck', neck: 'head', upperarm: 'forearm', forearm: 'hand', thigh: 'shin', shin: 'foot'};
+const PRINCIPAL = {pelvis: ['abdomen', 'chest'], abdomen: ['chest'], chest: ['neck', 'head'], neck: ['head'], upperarm: ['forearm', 'hand'], forearm: ['hand'], thigh: ['shin', 'foot'], shin: ['foot']};
+
+// The far end of a bone that has no next bone (head, hand, foot): straight out of the joint through the middle of its
+// shapes, up to where they end. Measured in the bone's own frame, and a direction that is nearly along an axis of the
+// bone is put exactly on it, so the skeleton is even from the front, the side and above. A foot points to its toe.
+function boneEnd(g, role) {
+	g.mesh.updateMatrixWorld(true);
+	const inv = new THREE.Matrix4().copy(g.mesh.matrixWorld).invert(), box = new THREE.Box3();
+	directParts(g).forEach(el => {
+		const m = el.mesh;
+		if (!m || !m.geometry) return;
+		m.updateMatrixWorld(true);
+		if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+		const bb = m.geometry.boundingBox, to = new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld);
+		for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) box.expandByPoint(new THREE.Vector3(x, y, z).applyMatrix4(to));
+	});
+	if (box.isEmpty()) return new THREE.Vector3(0, -4, 0);
+	const c = box.getCenter(new THREE.Vector3());
+	if (role == 'foot') {
+		// the toe: the end of the foot that is farthest from the ankle along the ground
+		const front = Math.abs(box.min.z) > Math.abs(box.max.z) ? box.min.z : box.max.z;
+		return new THREE.Vector3(Math.abs(c.x) < 0.25 * (box.max.x - box.min.x) ? 0 : c.x, c.y, front);
+	}
+	const dir = c.clone();
+	if (dir.lengthSq() < 1e-6) dir.set(0, -1, 0);
+	dir.normalize();
+	const ax = [Math.abs(dir.x), Math.abs(dir.y), Math.abs(dir.z)], k = ax.indexOf(Math.max(...ax));
+	if (ax[k] > Math.cos(30 * D2R)) { const sign = Math.sign(dir.getComponent(k)); dir.set(0, 0, 0).setComponent(k, sign); }
+	// out to the side of the box the direction leaves through
+	let t = Infinity;
+	for (let a = 0; a < 3; a++) {
+		const d = dir.getComponent(a);
+		if (Math.abs(d) < 1e-6) continue;
+		const lim = d > 0 ? box.max.getComponent(a) : box.min.getComponent(a);
+		if (lim / d > 0) t = Math.min(t, lim / d);
+	}
+	if (!isFinite(t)) t = box.getSize(new THREE.Vector3()).length() / 2;
+	return dir.multiplyScalar(t);
+}
 
 // the bones of a character with what is needed to move them: the pivot, the end (the joint of the next bone, or the far end)
 function skeletonOf(root) {
@@ -1863,19 +2088,9 @@ function skeletonOf(root) {
 	bones.forEach(g => { const p = bone_of(g); if (p) { info.get(g).parent = info.get(p); info.get(p).children.push(info.get(g)); } });
 	scene.updateMatrixWorld(true);
 	for (const i of info.values()) {
-		const want = PRINCIPAL[i.role];
-		i.principal = i.children.find(c => c.role == want) || (i.children.length == 1 ? i.children[0] : null);
-		if (!i.principal) {
-			// the far end of the cubes of this bone, seen from its pivot
-			const pivot = i.g.mesh.getWorldPosition(new THREE.Vector3()), box = new THREE.Box3();
-			directParts(i.g).forEach(el => { if (el.mesh) { el.mesh.updateMatrixWorld(true); box.union(new THREE.Box3().setFromObject(el.mesh)); } });
-			let far = pivot, best = -1;
-			if (!box.isEmpty()) for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
-				const p = new THREE.Vector3(x, y, z), d = p.distanceTo(pivot);
-				if (d > best) { best = d; far = p; }
-			}
-			i.end_local = i.g.mesh.worldToLocal(far.clone());
-		}
+		const want = PRINCIPAL[i.role] || [];
+		i.principal = want.map(r => i.children.find(c => c.role == r)).find(Boolean) || (i.children.length == 1 ? i.children[0] : null);
+		if (!i.principal) i.end_local = boneEnd(i.g, i.role);
 	}
 	return [...info.values()];
 }
@@ -2217,6 +2432,15 @@ function syncArrow() {
 
 function addCharacter(pose, height, model) {
 	if (!Project) return;
+	if (String(model).startsWith('saved:')) {
+		const entry = savedModels().find(m => 'saved:' + m.id == model);
+		if (!entry) { Blockbench.showQuickMessage(tr('msg_save_gone'), 2500); return; }
+		const res = createSavedCharacter(entry, pose);
+		Blockbench.showQuickMessage(tr('msg_char'), 1800);
+		updatePanel(true);
+		return res;
+	}
+	if (pose == 'saved') pose = 'stand';
 	const res = createCharacter({pose, height, model});
 	Blockbench.showQuickMessage(tr('msg_char'), 1800);
 	updatePanel(true);
@@ -2484,7 +2708,7 @@ function toHand(root, side, drop, mass) {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -2492,7 +2716,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.7.2',
+	version: '0.8.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

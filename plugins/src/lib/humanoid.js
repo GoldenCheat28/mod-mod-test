@@ -61,7 +61,7 @@ function humanoidParts() {
 			return [other[0], -src[1], -src[2]];
 		};
 		const arm_lo = [-0.9, -1.3, -0.7], arm_hi = [2.8, 1.3, 2.6];
-		add('upper_arm_' + side, 'chest', [0.25 * sx, 1.3, 0], {cap: [0.052, 0.3], rot: none}, 2.1, [0.22 * sx, 1.43, 0], m(arm_lo, arm_hi, false), m(arm_lo, arm_hi, true), 14, 130);
+		add('upper_arm_' + side, 'chest', [0.25 * sx, 1.3, 0], {cap: [0.052, 0.3], rot: none}, 2.1, [0.25 * sx, 1.43, 0], m(arm_lo, arm_hi, false), m(arm_lo, arm_hi, true), 14, 130);
 		const fa_lo = [0, -1.3, 0], fa_hi = [2.5, 1.3, 0];
 		add('forearm_' + side, 'upper_arm_' + side, [0.25 * sx, 1.02, 0], {cap: [0.043, 0.28], rot: none}, 1.2, [0.25 * sx, 1.155, 0], m(fa_lo, fa_hi, false), m(fa_lo, fa_hi, true), 12, 80, 1.5);
 		// (a wrist bends only so far, and the light hand is held firmly: with a loose one it whipped about at the end of every swing)
@@ -1416,10 +1416,8 @@ function humanoidSpec(o = {}) {
 	const set = (name, e) => { ang[name] = e.clone(); };
 	const side = (part, sd, e) => set(part + '_' + sd, sd == 'l' ? gv(e.x, -e.y, -e.z) : e);
 	for (const d of humanoidPartsList()) ang[d.name] = gv();
-	for (const sd of ['r', 'l']) {
-		side('thigh', sd, gv(0, 0, 0.04)); side('shin', sd, gv(-0.06, 0, 0)); side('foot', sd, gv(0, 0, 0));
-		side('upper_arm', sd, gv(0.05, 0, 0.08)); side('forearm', sd, gv(0.2, 0, 0)); side('hand', sd, gv(0.1, 0, 0));
-	}
+	// standing: every bone straight (arms straight down, legs straight, feet forward), so the skeleton is even from the
+	// front, the side and above
 	let lean = 0;
 	if (posture == 'crouch' || posture == 'cover_head') {
 		for (const sd of ['r', 'l']) { side('thigh', sd, gv(1.55, 0, 0.18)); side('shin', sd, gv(-2.2, 0, 0)); side('foot', sd, gv(0.4, 0, 0)); }
