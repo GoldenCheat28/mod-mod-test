@@ -5502,7 +5502,7 @@ function frustumGeometry(fov) {
 
 function syncEditorHelpers() {
 	if (!Project) return clearEditorHelpers();
-	const groups = [...lightGroups(), ...cameraGroups().filter(g => hasData(g.render_camera))].filter(g => g.mesh);
+	const groups = [...lightGroups(), ...cameraGroups()].filter(g => g.mesh);
 	for (const uuid of [...editor_helpers.keys()]) {
 		const g = groups.find(x => x.uuid == uuid);
 		if (!g || editor_helpers.get(uuid).kind != (isLight(g) ? 'light' : 'camera')) removeEditorHelper(uuid);
@@ -5543,11 +5543,48 @@ function syncEditorHelpers() {
 			h.frustum.quaternion.copy(g.mesh.getWorldQuaternion(new THREE.Quaternion()));
 			if (h.fov != d.fov) { h.frustum.geometry.dispose(); h.frustum.geometry = frustumGeometry(d.fov); h.fov = d.fov; }
 			const here = active && active.uuid == g.uuid;
-			h.frustum.visible = !here;
+			h.frustum.visible = hasData(g.render_camera) && !here;   // the frustum is ours only: a camera of Blockbench draws its own
 			h.sprite.visible = !here;
 			h.frustum.material.color.setHex(g.selected ? 0xffffff : 0x6aa8ff);
 		}
 	}
+}
+
+// --- picking the icons with the mouse ------------------------------------------------
+// The icons are not elements, so Blockbench's own picking never sees them: a click on one is caught before Blockbench handles it
+
+// the icon of a light / camera under the mouse (nearest, in pixels), as the group it belongs to
+function pickEditorHelper(event, preview) {
+	const rect = preview.canvas.getBoundingClientRect(), camera = preview.camera;
+	let best = null, bestDistance = Infinity;
+	for (const [uuid, h] of editor_helpers) {
+		if (!h.sprite.visible || !h.object.parent) continue;
+		const v = h.object.position.clone().project(camera);
+		if (v.z > 1 || v.z < -1) continue;   // behind the camera
+		const x = rect.left + (v.x * 0.5 + 0.5) * rect.width, y = rect.top + (-v.y * 0.5 + 0.5) * rect.height;
+		const scale = h.sprite.scale.x;
+		const half = camera.isOrthographicCamera
+			? 0.5 * scale / ((camera.top - camera.bottom) / (camera.zoom || 1)) * rect.height
+			: rect.height * 0.25 * scale / Math.tan(camera.fov * Math.PI / 360);
+		const d = Math.hypot(event.clientX - x, event.clientY - y);
+		if (d <= Math.max(14, half) * 1.15 + 3 && d < bestDistance) { best = uuid; bestDistance = d; }
+	}
+	return best ? Group.all.find(g => g.uuid == best) || null : null;
+}
+
+function onIconPress(event) {
+	if (event.button !== 0 || !Project || event.__render_icon) return;
+	const previews = (typeof Preview != 'undefined' && Preview.all) || [];
+	const preview = previews.find(p => p.canvas && p.canvas === event.target);
+	if (!preview) return;
+	const group = pickEditorHelper(event, preview);
+	if (!group || group.selected) return;   // an already selected one is left alone, so its move / rotate handles keep working
+	event.__render_icon = true;
+	event.preventDefault();
+	event.stopImmediatePropagation();
+	group.select(event);
+	syncEditorHelpers();
+	if (panel && panel.inside_vue) panel.inside_vue.loadSel();
 }
 
 // --- real lights in the render view -------------------------------------------
@@ -6272,7 +6309,7 @@ const STYLE = `
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
-if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf});
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf});
 
 Plugin.register('render', {
 	title: 'Render view',
@@ -6280,7 +6317,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.3',
+	version: '0.2.4',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -6344,6 +6381,8 @@ Plugin.register('render', {
 		Blockbench.on('undo', onSelection);
 		Blockbench.on('redo', onSelection);
 		poll = setInterval(syncEditorHelpers, 100);
+		document.addEventListener('pointerdown', onIconPress, true);
+		document.addEventListener('mousedown', onIconPress, true);
 		},
 	onunload() {
 		setEnabled(false);
@@ -6356,6 +6395,8 @@ Plugin.register('render', {
 		Blockbench.removeListener('undo', onSelection);
 		Blockbench.removeListener('redo', onSelection);
 		if (poll) clearInterval(poll);
+		document.removeEventListener('pointerdown', onIconPress, true);
+		document.removeEventListener('mousedown', onIconPress, true);
 		clearEditorHelpers();
 		removeAddActions();
 		removeGroupMenuActions();

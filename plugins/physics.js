@@ -1877,6 +1877,38 @@ function syncFieldHelpers() {
 	}
 }
 
+// clicking the icon of a force field selects it (the icons are not elements, so Blockbench's picking cannot see them)
+function pickFieldHelper(event, preview) {
+	const rect = preview.canvas.getBoundingClientRect(), camera = preview.camera;
+	let best = null, bestDistance = Infinity;
+	for (const [uuid, h] of field_helpers) {
+		if (!h.sprite.visible || !h.object.parent) continue;
+		const v = h.object.position.clone().project(camera);
+		if (v.z > 1 || v.z < -1) continue;
+		const x = rect.left + (v.x * 0.5 + 0.5) * rect.width, y = rect.top + (-v.y * 0.5 + 0.5) * rect.height;
+		const scale = h.sprite.scale.x;
+		const half = camera.isOrthographicCamera
+			? 0.5 * scale / ((camera.top - camera.bottom) / (camera.zoom || 1)) * rect.height
+			: rect.height * 0.25 * scale / Math.tan(camera.fov * Math.PI / 360);
+		const d = Math.hypot(event.clientX - x, event.clientY - y);
+		if (d <= Math.max(14, half) * 1.15 + 3 && d < bestDistance) { best = uuid; bestDistance = d; }
+	}
+	return best ? Group.all.find(g => g.uuid == best) || null : null;
+}
+function onFieldIconPress(event) {
+	if (event.button !== 0 || !Project || event.__physics_icon || event.__render_icon) return;
+	const preview = ((typeof Preview != 'undefined' && Preview.all) || []).find(p => p.canvas && p.canvas === event.target);
+	if (!preview) return;
+	const group = pickFieldHelper(event, preview);
+	if (!group || group.selected) return;   // an already selected one keeps its move / rotate handles
+	event.__physics_icon = true;
+	event.preventDefault();
+	event.stopImmediatePropagation();
+	group.select(event);
+	syncFieldHelpers();
+	updatePanel();
+}
+
 // the Move / Rotate tools have to work in the physics tab (to aim sources and winds and to place empties)
 let tool_patches = [];
 function allowToolInPhysics(tool) {
@@ -2340,7 +2372,7 @@ const onPoll = () => {
 	if (Modes.physics && !sim) updateArrows();
 };
 
-if (typeof __PHYSICS_EXPORT !== 'undefined') __PHYSICS_EXPORT({piecePose, createRuntime, stepRuntime, forceNodes, LiquidSim, DEFAULT_LIQUID, setJolt: j => { Jolt = j; }, createWorld, describeBody, liquidColliders, bodyWorld, DEFAULT_WORLD, DEFAULT_BODY, FIXED_DT, LIQUID_DT, SCALE});
+if (typeof __PHYSICS_EXPORT !== 'undefined') __PHYSICS_EXPORT({pickFieldHelper, onFieldIconPress, syncFieldHelpers, piecePose, createRuntime, stepRuntime, forceNodes, LiquidSim, DEFAULT_LIQUID, setJolt: j => { Jolt = j; }, createWorld, describeBody, liquidColliders, bodyWorld, DEFAULT_WORLD, DEFAULT_BODY, FIXED_DT, LIQUID_DT, SCALE});
 if (typeof Plugin === 'undefined' || typeof Blockbench === 'undefined') return;
 
 Plugin.register('physics', {
@@ -2406,9 +2438,13 @@ Plugin.register('physics', {
 		Blockbench.on('select_project', onModeChange);
 		Blockbench.on('select_project', onSelection);
 		poll = setInterval(onPoll, 100);
+		document.addEventListener('pointerdown', onFieldIconPress, true);
+		document.addEventListener('mousedown', onFieldIconPress, true);
 	},
 	onunload() {
 		if (poll) clearInterval(poll);
+		document.removeEventListener('pointerdown', onFieldIconPress, true);
+		document.removeEventListener('mousedown', onFieldIconPress, true);
 		if (sim) reset();
 		clearLiquidDisplay();
 		hideArrows();
