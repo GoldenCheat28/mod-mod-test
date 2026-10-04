@@ -754,6 +754,13 @@ class BloodFX {
 	}
 }
 
+/* @include lib/humanoid.js */
+
+function hasHumanoidParts(bones) {
+	const need = HUMANOID_PARTS.map(d => humanoidRole(d.name));
+	return need.every(n => bones.some(g => roleOf(g) == n.role && (!n.side || sideOfGroup(g, bones) == n.side)));
+}
+
 // ---------------------------------------------------------------------------
 // The hook into the Physics tab
 // ---------------------------------------------------------------------------
@@ -767,7 +774,12 @@ const physicsHook = {
 		const roots = Group.all.filter(g => g.ragdoll && g.ragdoll.enabled);
 		const list = [];
 		for (const root of roots) {
-			try { list.push(new RagdollRuntime(rt, root)); } catch (err) { console.warn('[Ragdoll]', root.name, err); }
+			try {
+				// a person of the Blood project (its 15 body parts are all there): the game's body, muscles and mind
+				const bones = bonesOf(root);
+				if (ragdollOf(root).npc && hasHumanoidParts(bones)) list.push(new Humanoid(rt, root, bones));
+				else list.push(new RagdollRuntime(rt, root));
+			} catch (err) { console.warn('[Ragdoll]', root.name, err); }
 		}
 		let blood = null;
 		if (list.some(r => r.s.blood)) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
@@ -843,7 +855,8 @@ const POSES = {   // the simple mannequin
 
 // ---- the person from the game Blood: 15 body parts with the proportions and the joints of that ragdoll (1.8 m tall) ----
 
-const NPC_COLORS = {skin: '#cc9e80', shirt: '#59738f', pants: '#33383f', shoes: '#1f1a1a', hair: '#33231a', eye: '#141010', lips: '#4a1a18', chair: '#7a5a3a'};
+// the game's casual outfit (humanoid.gd _make_materials): skin, a dark blue shirt, dark trousers, black shoes, dark hair
+const NPC_COLORS = {skin: '#d1a180', shirt: '#29334d', pants: '#1f1f21', shoes: '#141212', hair: '#120d0a', eye: '#0a0908', lips: '#381412', chair: '#7a5a3a'};
 const NPC_MATERIALS = ['skin', 'shirt', 'pants', 'shoes', 'hair', 'eye', 'lips', 'chair'];
 
 const NPC_POSES = {
@@ -894,7 +907,7 @@ function npcSpec(o = {}) {
 }
 
 function characterSpec(o = {}) {
-	if (o.model != 'mannequin') return npcSpec(o);
+	if (o.model != 'mannequin') return humanoidSpec(o);
 	const k = (o.height || 28.6) / 28.6, pose = POSES[o.pose] ? o.pose : 'stand', P = POSES[pose], sit = pose == 'sit';
 	const y = v => v * k;
 	const drop = sit ? y(6.9) : 0;   // sitting: the whole body comes down by the length of the thigh
@@ -958,6 +971,15 @@ function paintCube(el, mat, texture) {
 	} catch (err) { /* unpainted */ }
 }
 
+function paintMesh(el, mat, texture) {
+	try {
+		const k = Math.max(0, NPC_MATERIALS.indexOf(mat || 'skin')), ratio = ((typeof Project != 'undefined' && Project && Project.texture_width) || 16) / 16;
+		const uv = [((k % 4) * 4 + 2) * ratio, (Math.floor(k / 4) * 4 + 2) * ratio];
+		for (const key in el.faces) { const f = el.faces[key]; f.texture = texture.uuid; for (const v of f.vertices) f.uv[v] = uv.slice(); }
+		if (typeof Canvas != 'undefined' && Canvas.updateView) Canvas.updateView({elements: [el], element_aspects: {geometry: true, uv: true, faces: true}});
+	} catch (err) { /* unpainted */ }
+}
+
 // makes the groups and cubes of the character; returns the group that holds the character
 function createCharacter(o = {}) {
 	const spec = characterSpec(o), made = new Map();
@@ -977,6 +999,15 @@ function createCharacter(o = {}) {
 			if (palette && c.mat) paintCube(el, c.mat, palette);
 			elements.push(el);
 		}
+		// the person of the Blood project: his shapes as meshes
+		for (const m of b.meshes || []) {
+			const el = new Mesh({name: b.name.toLowerCase().replace(/ /g, '_'), origin: m.origin.slice(), vertices: {}});
+			const keys = el.addVertices(...m.vertices.map(v => [v[0] - m.origin[0], v[1] - m.origin[1], v[2] - m.origin[2]]));
+			el.addFaces(...m.faces.map(f => new MeshFace(el, {vertices: f.map(i => keys[i])})));
+			el.addTo(g).init();
+			if (palette) paintMesh(el, m.mat, palette);
+			elements.push(el);
+		}
 	}
 	let chair = null;
 	if (spec.chair) {
@@ -993,7 +1024,7 @@ function createCharacter(o = {}) {
 	}
 	const bones = bonesOf(root);
 	buildRagdoll(root, o.mass || 70);
-	root.ragdoll = Object.assign(ragdollOf(root), spec.model == 'npc' ? {npc: true, pin: 'none', limp: 0} : {pin: 'until_limp', limp: 120});
+	root.ragdoll = Object.assign(ragdollOf(root), spec.model == 'npc' ? {npc: true, pin: 'none', limp: 0, posture: spec.pose, shot: 4, weapon: 'pistol', blood: true} : {pin: 'until_limp', limp: 120});
 	bones.forEach(g => { const b = boneOf(g), role = roleOfName(g.name); g.bone = Object.assign(b, {role, rest: g.rotation.slice()}); });
 	Undo.finishEdit('Add character', {outliner: true, elements, groups, selection: true});
 	if (typeof Canvas != 'undefined') { Canvas.updateAllBones(); Canvas.updateAllPositions(); }
@@ -2042,7 +2073,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, HUMANOID_PARTS, castRay, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',

@@ -3,6 +3,8 @@ const fs = require('fs'), path = require('path');
 const dir = __dirname;
 for (const name of fs.readdirSync(path.join(dir, 'src')).filter(f => f.endsWith('.js'))) {
 	let code = fs.readFileSync(path.join(dir, 'src', name), 'utf8');
+	// shared parts: /* @include lib/<file>.js */
+	code = code.replace(/\/\* @include ([\w\/.-]+) \*\//g, (m, file) => fs.readFileSync(path.join(dir, 'src', file), 'utf8'));
 	if (code.includes('__JOLT_SOURCE__')) {
 		const jolt = fs.readFileSync(path.join(dir, 'jolt.b64'), 'utf8').trim();
 		code = code.replace('"__JOLT_SOURCE__"', () => "'" + jolt + "'");
