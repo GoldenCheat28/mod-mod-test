@@ -2771,7 +2771,8 @@
 			const pars = {
 				minFilter: THREE.LinearFilter,
 				magFilter: THREE.LinearFilter,
-				format: THREE.RGBAFormat
+				format: THREE.RGBAFormat,
+				type: THREE.HalfFloatType
 			};
 			this.renderTargetsHorizontal = [];
 			this.renderTargetsVertical = [];
@@ -4508,7 +4509,7 @@ const TEXTS = {
 		shadows: 'Shadows', shadow_softness: 'Shadow softness', sky: 'Sky light', sky_color: 'Sky color', ground_color: 'Ground bounce',
 		floor: 'Shadow floor', floor_reflect: 'Reflective floor', hide_grid: 'Hide grid',
 		effects: 'Effects', exposure: 'Exposure', ao: 'Ambient occlusion', ao_strength: 'Occlusion strength', ao_radius: 'Occlusion radius',
-		ssr: 'Reflections (SSR)', ssr_strength: 'Reflection strength', bloom: 'Bloom (glow)', bloom_strength: 'Glow strength', bloom_threshold: 'Glow threshold',
+		ssr: 'Reflections (SSR)', ssr_strength: 'Reflection strength', bloom: 'Bloom (glow)', bloom_strength: 'Glow strength', bloom_threshold: 'Glow threshold', bloom_radius: 'Glow spread',
 		dof: 'Depth of field', dof_focus: 'Focus distance', dof_blur: 'Blur', fxaa: 'Anti-aliasing', vignette: 'Vignette',
 		new_material: '+ New material', texture_material: 'texture', custom_material: 'custom', name: 'Name',
 		base: 'Base', color: 'Color', texture: 'Texture', roughness: 'Roughness', metalness: 'Metalness', map: 'Map',
@@ -4542,7 +4543,7 @@ const TEXTS = {
 		shadows: 'Тени', shadow_softness: 'Мягкость теней', sky: 'Свет неба', sky_color: 'Цвет неба', ground_color: 'Отражённый от земли',
 		floor: 'Пол для теней', floor_reflect: 'Зеркальный пол', hide_grid: 'Скрыть сетку',
 		effects: 'Эффекты', exposure: 'Экспозиция', ao: 'Затенение в углах (AO)', ao_strength: 'Сила затенения', ao_radius: 'Радиус затенения',
-		ssr: 'Отражения (SSR)', ssr_strength: 'Сила отражений', bloom: 'Свечение (bloom)', bloom_strength: 'Сила свечения', bloom_threshold: 'Порог свечения',
+		ssr: 'Отражения (SSR)', ssr_strength: 'Сила отражений', bloom: 'Свечение (bloom)', bloom_strength: 'Сила свечения', bloom_threshold: 'Порог свечения', bloom_radius: 'Размытие свечения',
 		dof: 'Глубина резкости', dof_focus: 'Дистанция фокуса', dof_blur: 'Размытие', fxaa: 'Сглаживание', vignette: 'Виньетка',
 		new_material: '+ Новый материал', texture_material: 'текстура', custom_material: 'свой', name: 'Имя',
 		base: 'Основа', color: 'Цвет', texture: 'Текстура', roughness: 'Шероховатость', metalness: 'Металличность', map: 'Карта',
@@ -4583,7 +4584,7 @@ const DEFAULT_SETTINGS = {
 	sun_azimuth: 40, sun_elevation: 50, sun_strength: 1.6, sun_color: '#fff3e0', shadows: true, shadow_softness: 1,
 	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true,
 	exposure: 1, ao: true, ao_strength: 0.8, ao_radius: 4, ssr: false, ssr_strength: 0.6,
-	bloom: true, bloom_strength: 0.3, bloom_threshold: 3, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, vignette: 0.25,
+	bloom: true, bloom_strength: 0.8, bloom_threshold: 0.9, bloom_radius: 0.5, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, vignette: 0.25,
 	sky_mode: 'off', sky_top: '#2f6fd6', sky_horizon: '#bcd8ff', sky_ground: '#6b5a48', sky_sun: true, sky_clouds: 0.4, sky_image: '', sky_image_name: '', sky_rotation: 0,
 	};
 const DEFAULT_MATERIAL = {
@@ -5192,7 +5193,7 @@ function buildPipeline(preview) {
 		composer.addPass(p.ssr);
 	}
 	if (s.bloom) {
-		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength, 0.5, s.bloom_threshold);
+		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength, s.bloom_radius, s.bloom_threshold);
 		composer.addPass(p.bloom);
 	}
 	if (s.dof || wantsFocus(activeCameraData())) {
@@ -5252,7 +5253,7 @@ function pipelineFor(preview) {
 		p.ssr.inner.selects = selectsForSSR();
 		p.ssr.inner.thickness = 1.5;
 	}
-	if (p.bloom) { p.bloom.strength = s.bloom_strength; p.bloom.threshold = s.bloom_threshold; }
+	if (p.bloom) { p.bloom.strength = s.bloom_strength; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
 	const cam = activeCameraData();   // the camera we look through adds its own look
 	if (p.dof) {
 		const focus = wantsFocus(cam) ? focusDepth(preview.camera, cam.focus) : null;
@@ -5989,7 +5990,7 @@ function openMaterials() {
 					</div>
 					<div class="render_mat_edit" v-if="d">
 						<div class="render_mat_top">
-							<img :src="big" width="160" height="160" class="render_mat_ball">
+							<img :src="big" width="96" height="96" class="render_mat_ball">
 							<div style="flex: 1;">
 								<label class="render_row">{{ t('name') }} <input type="text" v-model="d.name" @change="save()"></label>
 								<template v-if="selected.startsWith('mat:')">
@@ -6003,68 +6004,64 @@ function openMaterials() {
 							</div>
 						</div>
 
-						<h3>{{ t('base') }}</h3>
-						<label class="render_row">{{ t('color') }} <input type="color" v-model="d.color" @change="save()"></label>
-						<label class="render_row">{{ t('texture') }}
-							<select :value="mapValue('map')" @change="setMap('map', $event.target.value)">
+						<div class="render_cgrid">
+							<span class="cl">{{ t('color') }}</span>
+							<div class="cc"><input type="color" v-model="d.color" @change="save()"></div>
+							<span class="cl">{{ t('texture') }}</span>
+							<select class="cc" :value="mapValue('map')" @change="setMap('map', $event.target.value)">
 								<option value="">{{ t('none') }}</option>
 								<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
 								<option v-if="imageName('map')" value="image">{{ imageName('map') }}</option>
 								<option value="load">{{ t('load_image') }}</option>
 							</select>
-						</label>
 
-						<h3>{{ t('roughness') }}</h3>
-						<div class="render_slider"><input type="range" min="0" max="1" step="0.01" v-model.number="d.roughness" @change="save()"><span>{{ d.roughness }}</span></div>
-						<label class="render_row">{{ t('map') }}
-							<select :value="mapValue('roughness_map')" @change="setMap('roughness_map', $event.target.value)">
-								<option value="">{{ t('none') }}</option>
-								<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
-								<option v-if="imageName('roughness_map')" value="image">{{ imageName('roughness_map') }}</option>
-								<option value="load">{{ t('load_image') }}</option>
-							</select>
-						</label>
+							<span class="cl">{{ t('roughness') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="1" step="0.01" v-model.number="d.roughness" @change="save()"><span>{{ d.roughness }}</span>
+								<select :value="mapValue('roughness_map')" @change="setMap('roughness_map', $event.target.value)" :title="t('map')">
+									<option value="">{{ t('map') }}: {{ t('none') }}</option>
+									<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
+									<option v-if="imageName('roughness_map')" value="image">{{ imageName('roughness_map') }}</option>
+									<option value="load">{{ t('load_image') }}</option>
+								</select></div>
 
-						<h3>{{ t('metalness') }}</h3>
-						<div class="render_slider"><input type="range" min="0" max="1" step="0.01" v-model.number="d.metalness" @change="save()"><span>{{ d.metalness }}</span></div>
-						<label class="render_row">{{ t('map') }}
-							<select :value="mapValue('metalness_map')" @change="setMap('metalness_map', $event.target.value)">
-								<option value="">{{ t('none') }}</option>
-								<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
-								<option v-if="imageName('metalness_map')" value="image">{{ imageName('metalness_map') }}</option>
-								<option value="load">{{ t('load_image') }}</option>
-							</select>
-						</label>
+							<span class="cl">{{ t('metalness') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="1" step="0.01" v-model.number="d.metalness" @change="save()"><span>{{ d.metalness }}</span>
+								<select :value="mapValue('metalness_map')" @change="setMap('metalness_map', $event.target.value)" :title="t('map')">
+									<option value="">{{ t('map') }}: {{ t('none') }}</option>
+									<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
+									<option v-if="imageName('metalness_map')" value="image">{{ imageName('metalness_map') }}</option>
+									<option value="load">{{ t('load_image') }}</option>
+								</select></div>
 
-						<h3>{{ t('normal') }}</h3>
-						<label class="render_row">{{ t('map') }}
-							<select :value="mapValue('normal_map')" @change="setMap('normal_map', $event.target.value)">
-								<option value="">{{ t('none') }}</option>
-								<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
-								<option v-if="imageName('normal_map')" value="image">{{ imageName('normal_map') }}</option>
-								<option value="load">{{ t('load_image') }}</option>
-							</select>
-						</label>
-						<div class="render_slider"><span class="label">{{ t('normal_strength') }}</span><input type="range" min="0" max="3" step="0.05" v-model.number="d.normal_strength" @change="save()"><span>{{ d.normal_strength }}</span></div>
+							<span class="cl">{{ t('normal') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="3" step="0.05" v-model.number="d.normal_strength" @change="save()"><span>{{ d.normal_strength }}</span>
+								<select :value="mapValue('normal_map')" @change="setMap('normal_map', $event.target.value)" :title="t('map')">
+									<option value="">{{ t('map') }}: {{ t('none') }}</option>
+									<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
+									<option v-if="imageName('normal_map')" value="image">{{ imageName('normal_map') }}</option>
+									<option value="load">{{ t('load_image') }}</option>
+								</select></div>
 
-						<h3>{{ t('emission') }}</h3>
-						<label class="render_row">{{ t('color') }} <input type="color" v-model="d.emission" @change="save()"></label>
-						<div class="render_slider"><span class="label">{{ t('emission_strength') }}</span><input type="range" min="0" max="10" step="0.1" v-model.number="d.emission_strength" @change="save()"><span>{{ d.emission_strength }}</span></div>
-						<label class="render_row">{{ t('map') }}
-							<select :value="mapValue('emission_map')" @change="setMap('emission_map', $event.target.value)">
-								<option value="">{{ t('none') }}</option>
-								<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
-								<option v-if="imageName('emission_map')" value="image">{{ imageName('emission_map') }}</option>
-								<option value="load">{{ t('load_image') }}</option>
-							</select>
-						</label>
+							<span class="cl">{{ t('emission') }}</span>
+							<div class="cc cs"><input type="color" v-model="d.emission" @change="save()" style="flex: none; width: 34px;"><input type="range" min="0" max="10" step="0.1" v-model.number="d.emission_strength" @change="save()"><span>{{ d.emission_strength }}</span>
+								<select :value="mapValue('emission_map')" @change="setMap('emission_map', $event.target.value)" :title="t('map')">
+									<option value="">{{ t('map') }}: {{ t('none') }}</option>
+									<option v-for="tx in textures" :value="'texture:' + tx.uuid">{{ tx.name }}</option>
+									<option v-if="imageName('emission_map')" value="image">{{ imageName('emission_map') }}</option>
+									<option value="load">{{ t('load_image') }}</option>
+								</select></div>
 
-						<h3>{{ t('opacity') }}</h3>
-						<div class="render_slider"><input type="range" min="0" max="1" step="0.01" v-model.number="d.opacity" @change="save()"><span>{{ d.opacity }}</span></div>
-						<div class="render_slider"><span class="label">{{ t('glass') }}</span><input type="range" min="0" max="1" step="0.01" v-model.number="d.transmission" @change="save()"><span>{{ d.transmission }}</span></div>
-						<div class="render_slider"><span class="label">{{ t('ior') }}</span><input type="range" min="1" max="2.4" step="0.01" v-model.number="d.ior" @change="save()"><span>{{ d.ior }}</span></div>
-						<div class="render_slider"><span class="label">{{ t('clearcoat') }}</span><input type="range" min="0" max="1" step="0.01" v-model.number="d.clearcoat" @change="save()"><span>{{ d.clearcoat }}</span></div>
-						<div class="render_slider"><span class="label">{{ t('env') }}</span><input type="range" min="0" max="3" step="0.05" v-model.number="d.env" @change="save()"><span>{{ d.env }}</span></div>
+							<span class="cl">{{ t('opacity') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="1" step="0.01" v-model.number="d.opacity" @change="save()"><span>{{ d.opacity }}</span></div>
+							<span class="cl">{{ t('glass') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="1" step="0.01" v-model.number="d.transmission" @change="save()"><span>{{ d.transmission }}</span></div>
+							<span class="cl">{{ t('ior') }}</span>
+							<div class="cc cs"><input type="range" min="1" max="2.4" step="0.01" v-model.number="d.ior" @change="save()"><span>{{ d.ior }}</span></div>
+							<span class="cl">{{ t('clearcoat') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="1" step="0.01" v-model.number="d.clearcoat" @change="save()"><span>{{ d.clearcoat }}</span></div>
+							<span class="cl">{{ t('env') }}</span>
+							<div class="cc cs"><input type="range" min="0" max="3" step="0.05" v-model.number="d.env" @change="save()"><span>{{ d.env }}</span></div>
+						</div>
 					</div>
 					<div class="render_mat_edit" v-else style="opacity: 0.7;">{{ t('select_material') }}</div>
 				</div>`,
@@ -6232,8 +6229,9 @@ function panelComponent() {
 				<div class="render_slider" v-if="ssr"><span class="label">{{ t('ssr_strength') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="ssr_strength" @input="save()"><span>{{ ssr_strength }}</span></div>
 				<label class="render_row">{{ t('bloom') }} <input type="checkbox" v-model="bloom" @change="save()"></label>
 				<template v-if="bloom">
-					<div class="render_slider"><span class="label">{{ t('bloom_strength') }}</span><input type="range" min="0" max="2" step="0.05" v-model.number="bloom_strength" @input="save()"><span>{{ bloom_strength }}</span></div>
-					<div class="render_slider"><span class="label">{{ t('bloom_threshold') }}</span><input type="range" min="0.5" max="6" step="0.1" v-model.number="bloom_threshold" @input="save()"><span>{{ bloom_threshold }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('bloom_strength') }}</span><input type="range" min="0" max="5" step="0.05" v-model.number="bloom_strength" @input="save()"><span>{{ bloom_strength }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('bloom_threshold') }}</span><input type="range" min="0" max="4" step="0.05" v-model.number="bloom_threshold" @input="save()"><span>{{ bloom_threshold }}</span></div>
+					<div class="render_slider"><span class="label">{{ t('bloom_radius') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="bloom_radius" @input="save()"><span>{{ bloom_radius }}</span></div>
 				</template>
 				<label class="render_row">{{ t('dof') }} <input type="checkbox" v-model="dof" @change="save()"></label>
 				<template v-if="dof">
@@ -6291,8 +6289,8 @@ const STYLE = `
 	.render_panel input[type=text], .render_panel select, .render_materials input[type=text], .render_materials select {
 		background: var(--color-back); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 3px; padding: 2px 4px;
 	}
-	.render_materials { display: flex; gap: 12px; height: 560px; }
-	.render_mat_list { width: 250px; overflow-y: auto; padding-right: 4px; }
+	.render_materials { display: flex; gap: 10px; height: 460px; }
+	.render_mat_list { width: 190px; overflow-y: auto; padding-right: 4px; }
 	.render_mat_item { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 4px; cursor: pointer; }
 	.render_mat_item:hover { background: var(--color-button); }
 	.render_mat_item.selected { background: var(--color-selected); }
@@ -6305,6 +6303,15 @@ const STYLE = `
 	.render_box { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-back); }
 	.render_cap { font-size: 0.82em; opacity: 0.75; margin: 6px 0 2px; text-transform: uppercase; }
 	.render_row button { padding: 2px 6px; }
+	.render_cgrid { display: grid; grid-template-columns: 78px 1fr; gap: 3px 8px; align-items: center; margin-top: 8px; }
+	.render_cgrid .cl { opacity: 0.8; font-size: 0.92em; }
+	.render_cgrid .cc { min-width: 0; }
+	.render_cgrid select.cc { width: 100%; }
+	.render_cgrid .cs { display: flex; align-items: center; gap: 5px; }
+	.render_cgrid .cs input[type=range] { flex: 1; min-width: 40px; }
+	.render_cgrid .cs > span { width: 32px; text-align: right; opacity: 0.8; }
+	.render_cgrid .cs select { width: 42%; flex: none; }
+	.render_cgrid input[type=color] { height: 20px; width: 60px; border: 1px solid var(--color-border); background: transparent; padding: 0; }
 	.render_mat_top { display: flex; gap: 12px; align-items: flex-start; }
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
@@ -6317,7 +6324,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.4',
+	version: '0.2.5',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
