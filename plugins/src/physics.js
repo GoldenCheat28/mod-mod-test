@@ -1573,7 +1573,9 @@ function createSim() {
 	restPose();
 	const descs = bodyNodes().map(describeBody);
 	const sources = liquidSources();
-	if (!descs.some(d => d.settings.type == 'dynamic') && !sources.length) return null;
+	// (another plugin may have something to move by itself: cloth, ropes... - then the world runs without a physics object)
+	const hooks_want = (globalThis.__physicsHooks || []).some(h => { try { return h.active && h.active(); } catch (err) { return false; } });
+	if (!descs.some(d => d.settings.type == 'dynamic') && !sources.length && !hooks_want) return null;
 	const ws = worldOf();
 	const rt = createRuntime(descs, ws);
 	sources.forEach(el => { el.mesh.visible = false; });   // the source cube only marks where the liquid comes from
@@ -1688,7 +1690,7 @@ async function bake() {
 	}
 	await loadJolt();
 	reset();
-	if (!bodyNodes().some(n => typeOf(n) == 'dynamic') && !liquidSources().length) return noObjectsMessage();
+	if (!bodyNodes().some(n => typeOf(n) == 'dynamic') && !liquidSources().length && !(globalThis.__physicsHooks || []).some(h => { try { return h.active && h.active(); } catch (err) { return false; } })) return noObjectsMessage();
 
 	// Blockbench animates groups only: ticked cubes / meshes get their own group (same pivot, same random seed)
 	const loose = bodyNodes().filter(n => isPart(n) && typeOf(n) == 'dynamic');
@@ -2482,7 +2484,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.5',
+	version: '0.8.6',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

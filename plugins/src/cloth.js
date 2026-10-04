@@ -298,6 +298,7 @@ function localPositions(item) {
 
 let hooked = null;
 const physicsHook = {
+	active: () => !!Project && allCloth().length > 0,
 	start(rt) {
 		this.stop();
 		restPose();
@@ -589,7 +590,7 @@ Plugin.register('cloth', {
 	description: 'Cloth for meshes (capes, flags, curtains): hangs, drapes over physics bodies and ragdolls, faces can be frozen or attached to objects. Runs and bakes in the Physics tab.',
 	about: 'Select a mesh and open the **Cloth** panel (or right click → **Cloth…**, or **Add cloth** for a ready sheet). Pick faces in Edit mode and **Freeze** them or **Attach** them to an object. Press Play in the **Physics** tab to see it; **Bake** records it for the Animate tab and for videos from the Render view. Needs the Physics plugin.',
 	icon: 'texture',
-	version: '0.1.2',
+	version: '0.1.3',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation', 'Physics'],
