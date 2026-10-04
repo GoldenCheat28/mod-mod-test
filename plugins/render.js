@@ -4519,7 +4519,8 @@ const TEXTS = {
 		select_material: 'Select a material on the left.',
 		msg_assigned: 'Material assigned', msg_select: 'Select cubes or meshes first',
 		maps_hint: 'Maps can be any texture of the project (paint your normal or roughness map in Blockbench) or an image file.',
-		skybox: 'Skybox', sky_mode: 'Sky', sky_off: 'Off (plain color)', sky_day: 'Day', sky_sunset: 'Sunset', sky_night: 'Night', sky_overcast: 'Overcast',
+		act_add_light: 'Add light', act_add_light_desc: 'Add a light (an empty group that shines in the Render view)', act_add_camera: 'Add camera', act_add_camera_desc: 'Add a camera with lens and look effects at the current view',
+			skybox: 'Skybox', sky_mode: 'Sky', sky_off: 'Off (plain color)', sky_day: 'Day', sky_sunset: 'Sunset', sky_night: 'Night', sky_overcast: 'Overcast',
 		sky_custom: 'Custom colors', sky_image_mode: 'Image (360° panorama)', sky_top: 'Top color', sky_horizon: 'Horizon color', sky_ground: 'Ground color',
 		sky_sun: 'Sun / moon disc', sky_clouds: 'Clouds', sky_image: 'Panorama image', sky_rotation: 'Rotation', sky_load: 'Load image…', sky_none: 'no image',
 		sky_hint: 'The skybox is the background and also lights and reflects in the materials. Use an equirectangular (2:1) panorama for an image.',
@@ -4551,7 +4552,8 @@ const TEXTS = {
 		select_material: 'Выберите материал слева.',
 		msg_assigned: 'Материал назначен', msg_select: 'Сначала выделите кубы или меши',
 		maps_hint: 'Картой может быть любая текстура проекта (нарисуйте карту нормалей или шероховатости прямо в Blockbench) или файл-картинка.',
-		skybox: 'Скайбокс', sky_mode: 'Небо', sky_off: 'Выкл (просто цвет)', sky_day: 'День', sky_sunset: 'Закат', sky_night: 'Ночь', sky_overcast: 'Пасмурно',
+		act_add_light: 'Добавить свет', act_add_light_desc: 'Добавить свет (пустая группа, светит в Рендер-виде)', act_add_camera: 'Добавить камеру', act_add_camera_desc: 'Добавить камеру с линзой и эффектами в текущем ракурсе',
+			skybox: 'Скайбокс', sky_mode: 'Небо', sky_off: 'Выкл (просто цвет)', sky_day: 'День', sky_sunset: 'Закат', sky_night: 'Ночь', sky_overcast: 'Пасмурно',
 		sky_custom: 'Свои цвета', sky_image_mode: 'Картинка (панорама 360°)', sky_top: 'Цвет сверху', sky_horizon: 'Цвет горизонта', sky_ground: 'Цвет земли',
 		sky_sun: 'Диск солнца / луны', sky_clouds: 'Облака', sky_image: 'Панорама', sky_rotation: 'Поворот', sky_load: 'Загрузить картинку…', sky_none: 'нет картинки',
 		sky_hint: 'Скайбокс — это фон, а ещё он освещает и отражается в материалах. Для картинки нужна панорама 2:1 (equirectangular).',
@@ -5133,7 +5135,7 @@ const FinalShader = {
 			c *= (1.0 + distortion * dot(c, c)) * zoom;
 			vec2 uv = vec2(c.x / aspect, c.y) + 0.5;
 			// chromatic aberration: the colors are pushed apart more and more toward the edges
-			vec2 off = (uv - 0.5) * chroma * 0.04;
+			vec2 off = (uv - 0.5) * chroma * 0.015;
 			vec4 g = texture2D(tDiffuse, uv);
 			vec3 col = vec3(texture2D(tDiffuse, uv + off).r, g.g, texture2D(tDiffuse, uv - off).b);
 			col *= vec3(1.0 + temperature * 0.18, 1.0 + temperature * 0.02, 1.0 - temperature * 0.18);
@@ -6000,6 +6002,35 @@ function panelComponent() {
 				<label class="render_row" v-if="floor">{{ t('floor_reflect') }} <input type="checkbox" v-model="floor_reflect" @change="save()"></label>
 				<label class="render_row">{{ t('hide_grid') }} <input type="checkbox" v-model="hide_grid" @change="save()"></label>
 
+					<h3>{{ t('skybox') }}</h3>
+					<label class="render_row">{{ t('sky_mode') }}
+						<select v-model="sky_mode" @change="save()">
+							<option value="off">{{ t('sky_off') }}</option>
+							<option value="day">{{ t('sky_day') }}</option>
+							<option value="sunset">{{ t('sky_sunset') }}</option>
+							<option value="night">{{ t('sky_night') }}</option>
+							<option value="overcast">{{ t('sky_overcast') }}</option>
+							<option value="custom">{{ t('sky_custom') }}</option>
+							<option value="image">{{ t('sky_image_mode') }}</option>
+						</select>
+					</label>
+					<template v-if="sky_mode != 'off'">
+						<template v-if="sky_mode == 'custom'">
+							<label class="render_row">{{ t('sky_top') }} <input type="color" v-model="sky_top" @change="save()"></label>
+							<label class="render_row">{{ t('sky_horizon') }} <input type="color" v-model="sky_horizon" @change="save()"></label>
+							<label class="render_row">{{ t('sky_ground') }} <input type="color" v-model="sky_ground" @change="save()"></label>
+						</template>
+						<template v-if="sky_mode == 'image'">
+							<div class="render_row"><span>{{ t('sky_image') }}</span><button @click="loadSky()" style="width: 58%; overflow: hidden; text-overflow: ellipsis;">{{ sky_image_name || t('sky_load') }}</button></div>
+							<div class="render_slider"><span class="label">{{ t('sky_rotation') }}</span><input type="range" min="-180" max="180" step="1" v-model.number="sky_rotation" @change="save()"><span>{{ sky_rotation }}°</span></div>
+						</template>
+						<template v-else>
+							<label class="render_row">{{ t('sky_sun') }} <input type="checkbox" v-model="sky_sun" @change="save()"></label>
+							<div class="render_slider"><span class="label">{{ t('sky_clouds') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="sky_clouds" @change="save()"><span>{{ sky_clouds }}</span></div>
+						</template>
+						<div class="render_hint">{{ t('sky_hint') }}</div>
+					</template>
+
 				<h3>{{ t('effects') }}</h3>
 				<div class="render_slider"><span class="label">{{ t('exposure') }}</span><input type="range" min="0.2" max="3" step="0.05" v-model.number="exposure" @input="save()"><span>{{ exposure }}</span></div>
 				<label class="render_row">{{ t('ao') }} <input type="checkbox" v-model="ao" @change="save()"></label>
@@ -6021,6 +6052,38 @@ function panelComponent() {
 				</template>
 				<label class="render_row">{{ t('fxaa') }} <input type="checkbox" v-model="fxaa" @change="save()"></label>
 				<div class="render_slider"><span class="label">{{ t('vignette') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="vignette" @input="save()"><span>{{ vignette }}</span></div>
+
+					<h3>{{ t('lights') }}</h3>
+					<button @click="spawn('light')" class="render_btn">{{ t('add_light') }}</button>
+					<div v-if="light" class="render_box">
+						<div class="render_cap">{{ t('light_selected') }}</div>
+						<label class="render_row">{{ t('color') }} <input type="color" v-model="light.color" @input="liveLight()" @change="endEdit('Edit light')"></label>
+						<div class="render_slider"><span class="label">{{ t('light_strength') }}</span><input type="range" min="0" max="20" step="0.1" v-model.number="light.strength" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.strength }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('light_radius') }}</span><input type="range" min="4" max="400" step="1" v-model.number="light.radius" @input="liveLight()" @change="endEdit('Edit light')"><span>{{ light.radius }}</span></div>
+						<label class="render_row">{{ t('light_shadows') }} <input type="checkbox" v-model="light.shadows" @change="liveLight(); endEdit('Edit light')"></label>
+					</div>
+					<div v-else class="render_hint">{{ t('light_hint') }}</div>
+
+					<h3>{{ t('cameras') }}</h3>
+					<button @click="spawn('camera')" class="render_btn">{{ t('add_camera') }}</button>
+					<div v-if="cam" class="render_box">
+						<div class="render_cap">{{ t('camera_selected') }}</div>
+						<button @click="lookThrough()" class="render_btn" :class="{active: looking}">{{ looking ? t('cam_looking') : t('cam_look') }}</button>
+						<div class="render_slider"><span class="label">{{ t('cam_fov') }}</span><input type="range" min="10" max="120" step="1" v-model.number="cam.fov" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.fov }}°</span></div>
+						<div class="render_cap">{{ t('cam_lens') }}</div>
+						<div class="render_slider" :title="t('cam_distortion_tip')"><span class="label">{{ t('cam_distortion') }}</span><input type="range" min="-1" max="1" step="0.02" v-model.number="cam.distortion" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.distortion }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_chroma') }}</span><input type="range" min="0" max="1" step="0.02" v-model.number="cam.chroma" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.chroma }}</span></div>
+						<div class="render_cap">{{ t('cam_look_fx') }}</div>
+						<div class="render_slider"><span class="label">{{ t('cam_vignette') }}</span><input type="range" min="0" max="1" step="0.02" v-model.number="cam.vignette" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.vignette }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_grain') }}</span><input type="range" min="0" max="1" step="0.02" v-model.number="cam.grain" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.grain }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_saturation') }}</span><input type="range" min="0" max="2" step="0.02" v-model.number="cam.saturation" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.saturation }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_contrast') }}</span><input type="range" min="0.5" max="1.6" step="0.02" v-model.number="cam.contrast" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.contrast }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_temperature') }}</span><input type="range" min="-1" max="1" step="0.02" v-model.number="cam.temperature" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.temperature }}</span></div>
+						<div class="render_cap">{{ t('cam_focus') }}</div>
+						<div class="render_row"><span>{{ focus_name || t('cam_focus_none') }}</span><span><button @click="focusSelected()">{{ t('cam_focus_pick') }}</button> <button v-if="cam.focus" @click="clearFocus()">{{ t('cam_focus_clear') }}</button></span></div>
+						<div class="render_slider" v-if="cam.focus"><span class="label">{{ t('cam_focus_blur') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="cam.focus_blur" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.focus_blur }}</span></div>
+					</div>
+					<div v-else class="render_hint">{{ t('cam_hint') }}</div>
 			</div>`,
 	};
 }
@@ -6046,17 +6109,25 @@ const STYLE = `
 	.render_mat_name { font-weight: bold; }
 	.render_mat_kind { opacity: 0.6; font-size: 0.85em; }
 	.render_mat_edit { flex: 1; overflow-y: auto; padding-right: 6px; }
+	.render_hint { opacity: 0.6; font-size: 0.85em; margin: 4px 0 6px; }
+	.render_btn { width: 100%; margin: 2px 0 6px; }
+	.render_btn.active { background: var(--color-accent); color: var(--color-accent_text, #fff); }
+	.render_box { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-back); }
+	.render_cap { font-size: 0.82em; opacity: 0.75; margin: 6px 0 2px; text-transform: uppercase; }
+	.render_row button { padding: 2px 6px; }
 	.render_mat_top { display: flex; gap: 12px; align-items: flex-start; }
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf});
+
 Plugin.register('render', {
 	title: 'Render view',
 	author: 'Claude',
-	description: 'Blender style materials (roughness, metal, normal maps, glass, emission) with ball previews, sun and sky light, shadows and post effects (AO, reflections, bloom, depth of field).',
-	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. Uses three.js r129 post processing examples (MIT).',
+	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
+	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.1.0',
+	version: '0.2.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -6065,6 +6136,9 @@ Plugin.register('render', {
 		properties.push(new Property(ModelProject, 'object', 'render_materials', {default: null}));
 		properties.push(new Property(Cube, 'string', 'render_material', {default: ''}));
 		properties.push(new Property(Mesh, 'string', 'render_material', {default: ''}));
+		properties.push(new Property(Group, 'object', 'render_light', {default: null}));
+		properties.push(new Property(Group, 'object', 'render_camera', {default: null}));
+		properties.push(new Property(ModelProject, 'string', 'render_active_camera', {default: ''}));
 		style_node = Blockbench.addCSS(STYLE);
 		Preview.prototype.render = renderWithEffects;
 		toggle = new Toggle('render_view', {
@@ -6084,6 +6158,19 @@ Plugin.register('render', {
 		});
 		MenuBar.addAction(toggle, 'view');
 		MenuBar.addAction(materials_action, 'view');
+		add_light_action = new Action('add_render_light', {
+			name: tr('act_add_light'), description: tr('act_add_light_desc'), icon: 'lightbulb', category: 'edit',
+			condition: () => !!Project, click() { spawnGroup('light'); },
+		});
+		add_camera_action = new Action('add_render_camera', {
+			name: tr('act_add_camera'), description: tr('act_add_camera_desc'), icon: 'videocam', category: 'edit',
+			condition: () => !!Project, click() { spawnGroup('camera'); },
+		});
+		injectAddActions([add_light_action, add_camera_action]);
+		if (!injected.length) {
+			// no Add menu found: they are still in the Edit menu and in the action search (Ctrl+K)
+			try { MenuBar.addAction(add_light_action, 'edit'); MenuBar.addAction(add_camera_action, 'edit'); } catch (err) { console.warn('[Render view]', err); }
+		}
 		panel = new Panel('render_view', {
 			name: tr('panel'),
 			icon: 'photo_camera',
@@ -6097,13 +6184,31 @@ Plugin.register('render', {
 		Blockbench.on('select_project', onProject);
 		Blockbench.on('update_texture', invalidate);
 		Blockbench.on('add_texture', invalidate);
-	},
+		Blockbench.on('update_selection', onSelection);
+		Blockbench.on('finished_edit', onSelection);
+		Blockbench.on('undo', onSelection);
+		Blockbench.on('redo', onSelection);
+		poll = setInterval(syncEditorHelpers, 100);
+		},
 	onunload() {
 		setEnabled(false);
 		Preview.prototype.render = original_render;
 		Blockbench.removeListener('select_project', onProject);
 		Blockbench.removeListener('update_texture', invalidate);
 		Blockbench.removeListener('add_texture', invalidate);
+		Blockbench.removeListener('update_selection', onSelection);
+		Blockbench.removeListener('finished_edit', onSelection);
+		Blockbench.removeListener('undo', onSelection);
+		Blockbench.removeListener('redo', onSelection);
+		if (poll) clearInterval(poll);
+		clearEditorHelpers();
+		removeAddActions();
+		for (const [action, path] of [[add_light_action, 'edit.add_render_light'], [add_camera_action, 'edit.add_render_camera']]) {
+			if (!action) continue;
+			try { MenuBar.removeAction(path); } catch (err) { /* it was never in the Edit menu */ }
+			action.delete();
+		}
+		add_light_action = null; add_camera_action = null;
 		if (materials_dialog) { materials_dialog.close && materials_dialog.close(); materials_dialog = null; }
 		if (panel) panel.delete();
 		if (toggle) { MenuBar.removeAction('view.render_view'); toggle.delete(); }
@@ -6116,8 +6221,14 @@ Plugin.register('render', {
 	},
 });
 
+function onSelection() {
+	syncEditorHelpers();
+	if (panel && panel.inside_vue) panel.inside_vue.loadSel();
+}
+
 function onProject() {
 	invalidate();
+	syncEditorHelpers();
 	if (panel && panel.inside_vue) panel.inside_vue.load();
 	for (const p of pipelines.values()) disposePipeline(p);
 	pipelines.clear();
