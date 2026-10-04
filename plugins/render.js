@@ -4515,6 +4515,7 @@ const TEXTS = {
 		new_material: '+ New material', texture_material: 'texture', custom_material: 'custom', name: 'Name',
 		base: 'Base', color: 'Color', texture: 'Texture', roughness: 'Roughness', metalness: 'Metalness', map: 'Map',
 		normal: 'Normal map', normal_strength: 'Strength', emission: 'Emission', emission_strength: 'Strength',
+		transparency: 'Transparency', thickness: 'Distortion (thickness)', wave: 'Ripples', tint: 'Glass colour', tint_distance: 'Colour depth (0 = clear)', glass_name: 'Glass',
 		opacity: 'Opacity', glass: 'Glass (transmission)', ior: 'Refraction (IOR)', clearcoat: 'Clearcoat (lacquer)', env: 'Reflections of the sky',
 		none: '— none —', load_image: 'Load image…', loaded_image: 'Image',
 		assign: 'Assign to selected', unassign: 'Remove from selected', delete: 'Delete', users: 'Used by', elements: 'elements',
@@ -4556,6 +4557,7 @@ const TEXTS = {
 		new_material: '+ Новый материал', texture_material: 'текстура', custom_material: 'свой', name: 'Имя',
 		base: 'Основа', color: 'Цвет', texture: 'Текстура', roughness: 'Шероховатость', metalness: 'Металличность', map: 'Карта',
 		normal: 'Карта нормалей', normal_strength: 'Сила', emission: 'Свечение', emission_strength: 'Сила',
+		transparency: 'Прозрачность', thickness: 'Искажение (толщина)', wave: 'Волны / неровность', tint: 'Цвет стекла', tint_distance: 'Глубина цвета (0 — прозрачное)', glass_name: 'Стекло',
 		opacity: 'Непрозрачность', glass: 'Стекло (пропускание)', ior: 'Преломление (IOR)', clearcoat: 'Лак (clearcoat)', env: 'Отражение неба',
 		none: '— нет —', load_image: 'Загрузить картинку…', loaded_image: 'Картинка',
 		assign: 'Назначить выделенным', unassign: 'Снять с выделенных', delete: 'Удалить', users: 'Используют', elements: 'элем.',
@@ -4606,7 +4608,12 @@ const DEFAULT_MATERIAL = {
 	name: 'Material', color: '#ffffff', map: null, roughness: 0.8, roughness_map: null, metalness: 0, metalness_map: null,
 	normal_map: null, normal_strength: 1, emission: '#ffffff', emission_strength: 0, emission_map: null,
 	opacity: 1, transmission: 0, ior: 1.45, clearcoat: 0, env: 0.6,
+	thickness: 0, wave: 0, tint: '#ffffff', tint_distance: 0,
 };
+// the glass that is always there: clear, refracting what is behind it (a thick pane bends it), a faint ripple in it
+const GLASS_ID = 'mat:glass';
+const GLASS_MATERIAL = {color: '#ffffff', roughness: 0.04, metalness: 0, opacity: 1, transmission: 1, ior: 1.5, clearcoat: 1, env: 1.2,
+	thickness: 6, wave: 0.35, tint: '#d8f0ee', tint_distance: 40};
 const MAP_KEYS = ['map', 'roughness_map', 'metalness_map', 'normal_map', 'emission_map'];
 
 const settingsOf = () => Object.assign({}, DEFAULT_SETTINGS, (Project && Project.render_settings) || {});
@@ -4619,6 +4626,7 @@ function materialStore() {
 		const id = 'tex:' + tex.uuid;
 		if (!store[id]) store[id] = Object.assign({}, DEFAULT_MATERIAL, {name: tex.name, map: {kind: 'texture', uuid: tex.uuid}});
 	}
+	if (!store[GLASS_ID]) store[GLASS_ID] = Object.assign({}, DEFAULT_MATERIAL, GLASS_MATERIAL, {name: tr('glass_name')});
 	return store;
 }
 function materialData(id) {
@@ -4676,14 +4684,40 @@ function buildMaterial(d) {
 		normalScale: new THREE.Vector2(d.normal_strength, -d.normal_strength),
 		emissive: new THREE.Color(d.emission), emissiveIntensity: d.emission_strength, emissiveMap: textureFor(d.emission_map, true),
 		opacity: d.opacity, transparent: d.opacity < 1 || d.transmission > 0,
+		// (see-through: what is behind it shows, inside too)
+		depthWrite: d.opacity >= 0.98,
 		transmission: d.transmission, ior: d.ior, clearcoat: d.clearcoat, clearcoatRoughness: 0.08,
+		// how much it bends what is seen through it, and the colour the glass takes on when thick
+		thickness: d.transmission > 0 ? d.thickness : 0,
+		attenuationColor: new THREE.Color(d.tint || '#ffffff'), attenuationDistance: d.transmission > 0 && d.tint_distance > 0 ? d.tint_distance : 0,
 		envMapIntensity: d.env * ((Project && settingsOf().sky_strength) ?? 1),
 		alphaTest: d.opacity >= 1 && d.transmission == 0 ? 0.5 : 0,   // pixel art cut outs (transparent pixels in the texture)
 		side: THREE.DoubleSide,
 	});
 	if (d.emission_strength > 0 && !m.emissiveMap && d.map) m.emissiveMap = m.map;
+	// ripples in the glass (a wavy normal), when no normal map is set
+	if (d.wave > 0 && !m.normalMap) { m.normalMap = waveNormalTexture(); m.normalScale = new THREE.Vector2(d.wave, -d.wave); }
 	m.userData.render_plugin = true;
 	return m;
+}
+
+// a seamless wavy normal map (old window glass: slow uneven ripples)
+let wave_texture = null;
+function waveNormalTexture() {
+	if (wave_texture) return wave_texture;
+	const n = 128, data = new Uint8Array(n * n * 4), T = Math.PI * 2;
+	const h = (x, y) => Math.sin(T * (x * 2 + y * 1)) * 0.5 + Math.sin(T * (x * 3 - y * 2) + 1.3) * 0.3 + Math.sin(T * (y * 5 + x) + 0.4) * 0.2 + Math.sin(T * (x * 7 + y * 4) + 2.1) * 0.08;
+	for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+		const u = x / n, v = y / n, e = 1 / n;
+		const dx = (h(u + e, v) - h(u - e, v)) / (2 * e), dy = (h(u, v + e) - h(u, v - e)) / (2 * e);
+		const k = 0.04, len = Math.hypot(dx * k, dy * k, 1);
+		data.set([(-dx * k / len * 0.5 + 0.5) * 255, (-dy * k / len * 0.5 + 0.5) * 255, (1 / len * 0.5 + 0.5) * 255, 255].map(Math.round), (y * n + x) * 4);
+	}
+	wave_texture = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+	wave_texture.wrapS = wave_texture.wrapT = THREE.RepeatWrapping;
+	wave_texture.repeat.set(2, 2);
+	wave_texture.needsUpdate = true;
+	return wave_texture;
 }
 
 function materialFor(id) {
@@ -6076,7 +6110,7 @@ function openMaterials() {
 					if (!this.selected || !this.d) return;
 					const num = v => isFinite(parseFloat(v)) ? parseFloat(v) : 0;
 					const d = Object.assign({}, this.d);
-					['roughness', 'metalness', 'normal_strength', 'emission_strength', 'opacity', 'transmission', 'ior', 'clearcoat', 'env'].forEach(k => { d[k] = num(d[k]); });
+					['roughness', 'metalness', 'normal_strength', 'emission_strength', 'opacity', 'transmission', 'ior', 'clearcoat', 'env', 'thickness', 'wave', 'tint_distance'].forEach(k => { d[k] = num(d[k]); });
 					materialStore()[this.selected] = d;
 					Project.saved = false;
 					invalidate();
@@ -6222,10 +6256,16 @@ function openMaterials() {
 							</select>
 						</label>
 
-						<h3>{{ t('opacity') }}</h3>
-						<div class="render_slider"><input type="range" min="0" max="1" step="0.01" v-model.number="d.opacity" @change="save()"><span>{{ d.opacity }}</span></div>
+						<h3>{{ t('transparency') }}</h3>
+						<div class="render_slider"><input type="range" min="0" max="1" step="0.01" :value="Math.round((1 - d.opacity) * 100) / 100" @input="d.opacity = Math.round((1 - $event.target.valueAsNumber) * 100) / 100" @change="save()"><span>{{ Math.round((1 - d.opacity) * 100) }}%</span></div>
 						<div class="render_slider"><span class="label">{{ t('glass') }}</span><input type="range" min="0" max="1" step="0.01" v-model.number="d.transmission" @change="save()"><span>{{ d.transmission }}</span></div>
-						<div class="render_slider"><span class="label">{{ t('ior') }}</span><input type="range" min="1" max="2.4" step="0.01" v-model.number="d.ior" @change="save()"><span>{{ d.ior }}</span></div>
+						<template v-if="d.transmission > 0">
+							<div class="render_slider"><span class="label">{{ t('ior') }}</span><input type="range" min="1" max="2.4" step="0.01" v-model.number="d.ior" @change="save()"><span>{{ d.ior }}</span></div>
+							<div class="render_slider"><span class="label">{{ t('thickness') }}</span><input type="range" min="0" max="32" step="0.5" v-model.number="d.thickness" @change="save()"><span>{{ d.thickness }}</span></div>
+							<div class="render_slider"><span class="label">{{ t('wave') }}</span><input type="range" min="0" max="2" step="0.05" v-model.number="d.wave" @change="save()"><span>{{ d.wave }}</span></div>
+							<label class="render_row">{{ t('tint') }} <input type="color" v-model="d.tint" @change="save()"></label>
+							<div class="render_slider"><span class="label">{{ t('tint_distance') }}</span><input type="range" min="0" max="200" step="1" v-model.number="d.tint_distance" @change="save()"><span>{{ d.tint_distance }}</span></div>
+						</template>
 						<div class="render_slider"><span class="label">{{ t('clearcoat') }}</span><input type="range" min="0" max="1" step="0.01" v-model.number="d.clearcoat" @change="save()"><span>{{ d.clearcoat }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('env') }}</span><input type="range" min="0" max="3" step="0.05" v-model.number="d.env" @change="save()"><span>{{ d.env }}</span></div>
 					</div>
@@ -6729,7 +6769,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.6.0',
+	version: '0.7.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
