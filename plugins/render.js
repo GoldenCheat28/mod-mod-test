@@ -2725,7 +2725,7 @@
 		void main() {
 
 			vec4 texel = min( texture2D( tDiffuse, vUv ), vec4( 12.0 ) );
-			if ( !( texel.x == texel.x && texel.y == texel.y && texel.z == texel.z ) ) texel = vec4( 0.0 );
+			if ( !( texel.x > -1.0 && texel.y > -1.0 && texel.z > -1.0 ) ) texel = vec4( 0.0 );   // not a number: comparisons with it are false
 
 			vec3 luma = vec3( 0.299, 0.587, 0.114 );
 
@@ -4539,7 +4539,7 @@ const TEXTS = {
 		vid_hint: 'Every frame is made one by one, so the video has exactly this frame rate however heavy the scene is (a slow computer only needs more time). Skybox, bloom, motion blur, depth of field and the camera lens effects are included. The animation is the one selected in the Animate tab.',
 		vid_cancel: 'Cancel', vid_busy: 'A video is already being rendered', vid_frame: 'Frame', vid_fps_render: 'frames/s', vid_s_frame: 's per frame', vid_left: 'left about', vid_sec: 's',
 		vid_done: 'Video saved', vid_error: 'Video failed', vid_no_encoder: 'This Blockbench cannot encode video (no H.264 or VP9 encoder found). Update Blockbench or use a screen recorder.',
-		cam_motion: 'Motion blur', motion_blur: 'Motion blur (camera)', cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
+		cam_bloom: 'Glow (bloom) strength', cam_motion: 'Motion blur', motion_blur: 'Motion blur (camera)', cam_look_fx: 'Look', cam_vignette: 'Vignette', cam_grain: 'Film grain', cam_saturation: 'Saturation', cam_contrast: 'Contrast', cam_temperature: 'Warm / cold',
 		cam_focus: 'Focus', cam_focus_pick: 'Focus on selected', cam_focus_clear: 'Clear', cam_focus_blur: 'Background blur', cam_focus_none: 'nothing',
 		cam_hint: 'A camera is an empty group looking along its -Z axis. Turn it with Rotate, move it with Move; the effects apply in the Render view while you look through it.',
 		msg_select_one: 'Select an object first',
@@ -4580,7 +4580,7 @@ const TEXTS = {
 		vid_hint: 'Каждый кадр делается отдельно, поэтому в видео ровно столько кадров в секунду, сколько выбрано, как бы тяжела ни была сцена (на слабом компьютере просто дольше). Скайбокс, свечение, размытие в движении, глубина резкости и эффекты объектива камеры включены. Берётся анимация, выбранная на вкладке «Анимация».',
 		vid_cancel: 'Отмена', vid_busy: 'Видео уже рендерится', vid_frame: 'Кадр', vid_fps_render: 'кадров/с', vid_s_frame: 'с на кадр', vid_left: 'осталось около', vid_sec: 'с',
 		vid_done: 'Видео сохранено', vid_error: 'Видео не получилось', vid_no_encoder: 'Этот Blockbench не умеет кодировать видео (нет кодировщика H.264 или VP9). Обновите Blockbench или запишите экран.',
-		cam_motion: 'Размытие в движении', motion_blur: 'Размытие в движении (камера)', cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
+		cam_bloom: 'Сила свечения (bloom)', cam_motion: 'Размытие в движении', motion_blur: 'Размытие в движении (камера)', cam_look_fx: 'Картинка', cam_vignette: 'Виньетка', cam_grain: 'Плёночное зерно', cam_saturation: 'Насыщенность', cam_contrast: 'Контраст', cam_temperature: 'Тепло / холод',
 		cam_focus: 'Фокус', cam_focus_pick: 'Фокус на выделенном', cam_focus_clear: 'Сбросить', cam_focus_blur: 'Размытие фона', cam_focus_none: 'ничего',
 		cam_hint: 'Камера — пустая группа, смотрящая вдоль своей оси -Z. Поворачивайте «Вращением», двигайте «Перемещением»; эффекты работают в Рендер-виде, пока вы смотрите через неё.',
 		msg_select_one: 'Сначала выделите объект',
@@ -5164,6 +5164,12 @@ class MotionBlurPass extends THREE.Pass {
 				const vec3 PackFactors = vec3(256. * 256. * 256., 256. * 256., 256.);
 				const vec4 UnpackFactors = UnpackDownscale / vec4(PackFactors, 1.);
 				const int TAPS = 24;
+				// a very bright pixel (or a broken one: infinity times a weight of 0 is not a number) must never poison the picture
+				vec4 safe(vec4 c) {
+					c = clamp(c, vec4(0.0), vec4(4000.0));
+					if (!(c.r > -1.0 && c.g > -1.0 && c.b > -1.0)) c = vec4(0.0);   // not a number: comparisons with it are false
+					return c;
+				}
 				void main() {
 					float depth = dot(texture2D(tDepth, vUv), UnpackFactors);
 					vec4 clip = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -5173,7 +5179,7 @@ class MotionBlurPass extends THREE.Pass {
 					vec2 uvBefore = before.xy / before.w * 0.5 + 0.5;
 					vec2 v = (vUv - uvBefore) * amount * 0.75;
 					float len = length(v);
-					if (len < 0.0004) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+					if (len < 0.0004) { gl_FragColor = safe(texture2D(tDiffuse, vUv)); return; }
 					// a long way is eased out: it approaches the limit smoothly instead of being cut off
 					float limit = 0.07;
 					v *= limit * (1.0 - exp(-len / limit)) / len;
@@ -5183,7 +5189,7 @@ class MotionBlurPass extends THREE.Pass {
 					for (int i = 0; i < TAPS; i++) {
 						float t = (float(i) + noise) / float(TAPS) - 0.5;
 						float w = 0.5 + 0.5 * cos(t * 6.2831853);
-						sum += texture2D(tDiffuse, clamp(vUv + v * t, vec2(0.001), vec2(0.999))) * w;
+						sum += safe(texture2D(tDiffuse, clamp(vUv + v * t, vec2(0.001), vec2(0.999)))) * w;
 						total += w;
 					}
 					gl_FragColor = sum / total;
@@ -5268,6 +5274,8 @@ const FinalShader = {
 			vec2 off = (uv - 0.5) * chroma * 0.015;
 			vec4 g = texture2D(tDiffuse, uv);
 			vec3 col = vec3(texture2D(tDiffuse, uv + off).r, g.g, texture2D(tDiffuse, uv - off).b);
+			col = clamp(col, vec3(0.0), vec3(5000.0));   // one broken (infinite) pixel must not turn into a black square
+			if (!(col.r > -1.0 && col.g > -1.0 && col.b > -1.0)) col = vec3(0.0);
 			col *= vec3(1.0 + temperature * 0.18, 1.0 + temperature * 0.02, 1.0 - temperature * 0.18);
 			col = aces(col * exposure);
 			float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
@@ -5279,6 +5287,23 @@ const FinalShader = {
 			gl_FragColor = vec4(pow(max(col, 0.0), vec3(1.0 / 2.2)), g.a);
 		}`,
 };
+
+// The picture is kept in 16 bit floats: anything brighter than 65000 becomes "infinity", and infinity next to a normal pixel
+// turns into "not a number" in every blur (bloom, motion blur): a black square. A shiny surface in the sun can reach that, so no
+// material may write more than this (nobody sees the difference: the picture is squeezed to 0..1 at the end anyway).
+const BRIGHTEST = 'gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(3000.0));';
+let chunk_original = null;
+function limitBrightness(on) {
+	const chunks = THREE.ShaderChunk;
+	if (on && chunk_original === null) {
+		chunk_original = chunks.tonemapping_fragment;
+		chunks.tonemapping_fragment = chunk_original + '\n' + BRIGHTEST + '\n';
+	} else if (!on && chunk_original !== null) {
+		chunks.tonemapping_fragment = chunk_original;
+		chunk_original = null;
+	}
+}
+limitBrightness(true);
 
 const pipelines = new Map();   // preview -> pipeline
 
@@ -5323,8 +5348,8 @@ function buildPipeline(preview) {
 		p.mb = new MotionBlurPass(scene, camera, w, h);
 		composer.addPass(p.mb);
 	}
-	if (s.bloom) {
-		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), s.bloom_strength * 0.35, s.bloom_radius, s.bloom_threshold);
+	if (bloomAmount() > 0) {
+		p.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), bloomAmount() * 0.35, s.bloom_radius, s.bloom_threshold);
 		composer.addPass(p.bloom);
 	}
 	if (s.dof || wantsFocus(activeCameraData())) {
@@ -5355,7 +5380,7 @@ function disposePipeline(p) {
 
 function structureKey(preview) {
 	const s = settingsOf();
-	return [preview.camera.uuid, s.ao, s.ssr, motionAmount() > 0, s.bloom, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
+	return [preview.camera.uuid, s.ao, s.ssr, motionAmount() > 0, bloomAmount() > 0, s.dof || wantsFocus(activeCameraData()), s.fxaa].join('|');
 }
 
 function pipelineFor(preview) {
@@ -5385,7 +5410,7 @@ function pipelineFor(preview) {
 		p.ssr.inner.thickness = 1.5;
 	}
 	if (p.mb) { p.mb.amount = motionAmount(); p.mb.max_gap = preview.offline ? Infinity : 250; }
-	if (p.bloom) { p.bloom.strength = s.bloom_strength * 0.35; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
+	if (p.bloom) { p.bloom.strength = bloomAmount() * 0.35; p.bloom.threshold = s.bloom_threshold; p.bloom.radius = s.bloom_radius; }
 	const cam = activeCameraData();   // the camera we look through adds its own look
 	if (p.dof) {
 		const focus = wantsFocus(cam) ? focusDepth(preview.camera, cam.focus) : null;
@@ -5478,7 +5503,7 @@ function invalidate() {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_LIGHT = {color: '#ffe0b0', strength: 3, radius: 96, shadows: false};
-const DEFAULT_CAMERA = {motion_blur: 0.5, fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
+const DEFAULT_CAMERA = {bloom: 0.35, motion_blur: 0.5, fov: 50, distortion: 0, chroma: 0, vignette: 0.3, grain: 0, saturation: 1, contrast: 1, temperature: 0, focus: '', focus_blur: 0.6};
 const lightOf = node => Object.assign({}, DEFAULT_LIGHT, node.render_light || {});
 const cameraOf = node => Object.assign({}, DEFAULT_CAMERA, node.render_camera || {});
 // a group named "Camera" is a camera even when it came from Blockbench itself (it has no data of ours yet)
@@ -5512,6 +5537,8 @@ function focusDepth(camera, uuid) {
 	const dir = camera.getWorldDirection(new THREE.Vector3());
 	return Math.max(1, nodeCenter(node).sub(camera.getWorldPosition(new THREE.Vector3())).dot(dir));
 }
+// how strong the glow is: a camera we look through sets its own, otherwise the Render panel does
+const bloomAmount = () => { const cam = activeCameraData(); return Math.max(0, cam ? cam.bloom : (settingsOf().bloom ? settingsOf().bloom_strength : 0)); };
 const motionAmount = () => { const cam = activeCameraData(); return Math.max(0, cam ? cam.motion_blur : settingsOf().motion_blur); };
 const wantsFocus = cam => !!(cam && cam.focus && findNode(cam.focus));
 
@@ -5785,6 +5812,7 @@ function openSettings(group, kind) {
 		saturation: {label: tr('cam_saturation'), type: 'range', value: d.saturation, min: 0, max: 2, step: 0.02},
 		contrast: {label: tr('cam_contrast'), type: 'range', value: d.contrast, min: 0.5, max: 1.6, step: 0.02},
 		temperature: {label: tr('cam_temperature'), type: 'range', value: d.temperature, min: -1, max: 1, step: 0.02},
+		bloom: {label: tr('cam_bloom'), type: 'range', value: d.bloom, min: 0, max: 5, step: 0.05},
 		motion_blur: {label: tr('cam_motion'), type: 'range', value: d.motion_blur, min: 0, max: 1, step: 0.05},
 		focus_info: {type: 'info', text: tr('cam_focus')},
 		focus: {label: tr('cam_focus'), type: 'select', options, value: d.focus || ''},
@@ -6407,6 +6435,7 @@ function panelComponent() {
 						<div class="render_slider"><span class="label">{{ t('cam_grain') }}</span><input type="range" min="0" max="1" step="0.02" v-model.number="cam.grain" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.grain }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_saturation') }}</span><input type="range" min="0" max="2" step="0.02" v-model.number="cam.saturation" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.saturation }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_contrast') }}</span><input type="range" min="0.5" max="1.6" step="0.02" v-model.number="cam.contrast" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.contrast }}</span></div>
+						<div class="render_slider"><span class="label">{{ t('cam_bloom') }}</span><input type="range" min="0" max="5" step="0.05" v-model.number="cam.bloom" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.bloom }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_motion') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="cam.motion_blur" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.motion_blur }}</span></div>
 						<div class="render_slider"><span class="label">{{ t('cam_temperature') }}</span><input type="range" min="-1" max="1" step="0.02" v-model.number="cam.temperature" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.temperature }}</span></div>
 						<div class="render_cap">{{ t('cam_focus') }}</div>
@@ -6685,7 +6714,7 @@ const STYLE = `
 	.render_mat_ball { border-radius: 6px; background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px; }
 `;
 
-if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, MotionBlurPass, muxMp4, renderVideo});
+if (typeof __RENDER_EXPORT !== 'undefined') __RENDER_EXPORT({pickEditorHelper, onIconPress, syncEditorHelpers, openSettings, addGroupMenuActions, removeGroupMenuActions, drawSkyCanvas, skyEquirect, FinalShader, SKY_PRESETS, DEFAULT_SETTINGS, frustumGeometry, helperIcon, buildPipeline, pipelineFor, renderWithEffects, setEnabled, settingsOf, limitBrightness, MotionBlurPass, muxMp4, renderVideo});
 
 Plugin.register('render', {
 	title: 'Render view',
@@ -6693,7 +6722,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.4.1',
+	version: '0.5.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -6767,6 +6796,7 @@ Plugin.register('render', {
 		},
 	onunload() {
 		setEnabled(false);
+		limitBrightness(false);
 		Preview.prototype.render = original_render;
 		Blockbench.removeListener('select_project', onProject);
 		Blockbench.removeListener('update_texture', invalidate);
