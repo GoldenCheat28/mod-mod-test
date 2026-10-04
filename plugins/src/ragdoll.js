@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -758,6 +758,7 @@ class BloodFX {
 /* @include lib/blood_tex.js */
 /* @include lib/blood.js */
 /* @include lib/blood_view.js */
+/* @include lib/blood_bake.js */
 
 function hasHumanoidParts(bones) {
 	const need = humanoidPartsList().map(d => humanoidRole(d.name));
@@ -785,7 +786,9 @@ const physicsHook = {
 			} catch (err) { console.warn('[Ragdoll]', root.name, err); }
 		}
 		let blood = null, sim = null;
-		const plain = list.filter(r => !r.is_humanoid && r.s.blood), people = list.filter(r => r.is_humanoid && r.s.blood);
+		// (a bake keeps the blood only if it is to be recorded: then it is written down instead of drawn)
+		const plain = rt.baking ? [] : list.filter(r => !r.is_humanoid && r.s.blood);
+		const people = list.filter(r => r.is_humanoid && r.s.blood && (!rt.baking || r.s.record_blood));
 		if (plain.length) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
 		for (const r of plain) r.blood = blood;
 		// the people of the Blood project bleed as in the game
@@ -793,7 +796,7 @@ const physicsHook = {
 			try {
 				sim = new BloodSim(rt, people);
 				for (const r of people) r.blood = sim;
-				try { sim.view = new BloodView(sim, rt); } catch (err) { console.warn('[Ragdoll] blood view', err); }
+				try { sim.view = rt.baking ? new BloodRecorder(sim) : new BloodView(sim, rt); } catch (err) { console.warn('[Ragdoll] blood view', err); }
 			} catch (err) { console.warn('[Ragdoll] blood', err); sim = null; }
 		}
 		current = {rt, list, blood, sim, last_show: null};
@@ -805,6 +808,11 @@ const physicsHook = {
 		for (const r of current.list) r.step(dt);
 		if (current.blood) current.blood.step(dt);
 		if (current.sim) current.sim.step(dt);
+	},
+	bake_frame(rt, time) { if (current && current.rt === rt && current.sim && current.sim.view instanceof BloodRecorder) current.sim.view.frame(time); },
+	baked(rt, animation) {
+		if (!current || current.rt !== rt || !current.sim || !(current.sim.view instanceof BloodRecorder) || !animation) return;
+		blood_bakes.set(animation.uuid, current.sim.view.rec);
 	},
 	show() {
 		if (!current) return;
@@ -1166,6 +1174,7 @@ function autoRig(elements) {
 
 const TEXTS = {
 	en: {
+		rec_time: 'Record (s)', rec_fps: 'Frames/s', rec_blood: 'Record the blood', rec_blood_tip: 'Bake the blood with the animation: in the Animate tab it lands, spreads and dries as the animation plays',
 		spawn: 'Spawn ragdoll', click_shot: 'Click shot', click_shot_on: 'Click shot: click the character… (press again to cancel)', click_shot_msg: 'Click the character: a shot is made there, at the current time',
 		msg_click_shot: 'Shot added', shots: 'Shots', add_shot2: 'Add shot', shot_name: 'Shot', shot_time2: 'Fires at (s)', shot_power: 'Power (N*s)',
 		grab_tip: 'Move it (W) and turn it (R) in the 3D view', grab_hint: 'A shot is a little gun: press ✥, then drag it (W) and turn it (R). It shoots along the dashed line.',
@@ -1207,6 +1216,7 @@ const TEXTS = {
 		hit_on: 'Shoot mode on: press Play and click the character',
 	},
 	ru: {
+		rec_time: 'Запись (с)', rec_fps: 'Кадров/с', rec_blood: 'Записывать кровь', rec_blood_tip: 'Кровь запекается вместе с анимацией: во вкладке Animate она падает, растекается и сохнет по ходу анимации',
 		spawn: 'Спавн регдолла', click_shot: 'Click shot', click_shot_on: 'Click shot: кликните по персонажу… (ещё раз — отмена)', click_shot_msg: 'Кликните по персонажу: туда будет выстрел, в текущий момент времени',
 		msg_click_shot: 'Выстрел добавлен', shots: 'Выстрелы', add_shot2: 'Добавить выстрел', shot_name: 'Выстрел', shot_time2: 'Через (с)', shot_power: 'Сила (Н·с)',
 		grab_tip: 'Двигать (W) и вращать (R) в окне 3D', grab_hint: 'Выстрел — это маленький пистолет: нажмите ✥ и тащите его (W) и вращайте (R). Стреляет по пунктирной линии.',
@@ -1360,7 +1370,9 @@ function updatePanel(force) {
 		vue.held = itemsOf(act).map(n => ({uuid: n.uuid, name: n.name, drop: n.attach.drop !== false,
 			where: n.attach.hands == 'both' ? tr('hand_both') : ((bones.find(g => g.uuid == n.attach.bone) || {}).name || '?')}));
 		vue.char_blood = ragdollOf(act).blood !== false;
+		vue.char_rec_blood = ragdollOf(act).record_blood !== false;
 	}
+	if (Project) { const w = Project.physics_world || {}; vue.rec_time = w.duration || 3; vue.rec_fps = w.fps || 24; }
 	const sim = simNow();
 	vue.state = !sim ? 'stopped' : sim.playing ? 'playing' : 'paused';
 	vue.shoot = shoot_mode;
@@ -1373,8 +1385,8 @@ function panelComponent() {
 	return {
 		components: {'rope-num': NumberField},
 		data() {
-			return {selection_key: null, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
+			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -1458,7 +1470,13 @@ function panelComponent() {
 				edit([g], 'Change shot', () => { g.ragdoll_shot = Object.assign({}, g.ragdoll_shot, {t: Math.max(0, num_(sh.t, 0.5)), impulse: Math.max(0.1, num_(sh.impulse, 4))}); });
 			},
 			hand(side) { toHand(activeRoot(), side, this.item_drop, 1); },
-			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood}); }); },
+			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood}); }); },
+			// how long the bake records, and how many frames a second (the Physics tab's world settings)
+			saveRecTime() {
+				if (!Project) return;
+				Project.physics_world = Object.assign({}, Project.physics_world || {}, {duration: clamp(num_(this.rec_time, 3), 0.1, 600), fps: Math.max(1, Math.round(num_(this.rec_fps, 24)))});
+				Project.saved = false;
+			},
 			autoBones() { autoBonesFromSelection(); },
 			setYaw(v) { this.shot_yaw = v; this.saveRoot(); },
 			fire() { fireShot(false); },
@@ -1495,6 +1513,10 @@ function panelComponent() {
 						<button class="rd_big" @click="spawn()">{{ t('spawn') }}</button>
 						<select v-model="new_pose" :title="t('pose')"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
 					</div>
+					<div class="rd_grid">
+						<rope-num :label="t('rec_time')" v-model="rec_time" :min="0.5" :max="120" :step="0.5" :decimals="1" @change="saveRecTime()"></rope-num>
+						<rope-num :label="t('rec_fps')" v-model="rec_fps" :min="1" :max="120" :step="1" :decimals="0" @change="saveRecTime()"></rope-num>
+					</div>
 					<button class="rd_full" :class="{rd_on: click_shot}" @click="toggleClickShot()">{{ click_shot ? t('click_shot_on') : t('click_shot') }}</button>
 					<template v-if="char_name">
 						<div class="rd_head">{{ t('shots') }}</div>
@@ -1528,6 +1550,7 @@ function panelComponent() {
 						<button class="rd_full" :class="{rd_on: pose_edit}" @click="toggleEdit()">{{ t('edit_skeleton') }}</button>
 						<div class="rd_dim small" v-if="pose_edit">{{ t('edit_skeleton_hint') }}</div>
 						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="char_blood" @change="saveBlood()"></label>
+						<label class="rd_row" v-if="char_blood" :title="t('rec_blood_tip')">{{ t('rec_blood') }}<input type="checkbox" v-model="char_rec_blood" @change="saveBlood()"></label>
 					</template>
 				</div>
 
@@ -2387,7 +2410,7 @@ function toHand(root, side, drop, mass) {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -2395,7 +2418,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.6.0',
+	version: '0.7.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -2449,6 +2472,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		document.addEventListener('pointerup', onSkeletonUp, true);
 		poll = setInterval(() => { updatePanel(); syncShotLines(); if (!drag) syncSkeletonView(); }, 250);
 		Blockbench.on('update_selection', onSelection);
+		Blockbench.on('display_animation_frame', updateBloodPlayback);
 		Blockbench.on('select_project', onSelection);
 	},
 	onunload() {
@@ -2462,6 +2486,8 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook);
 		tool_patches.splice(0).forEach(undo => { try { undo(); } catch (err) { /* already gone */ } });
 		Blockbench.removeListener('update_selection', onSelection);
+		Blockbench.removeListener('display_animation_frame', updateBloodPlayback);
+		stopBloodPlayback();
 		Blockbench.removeListener('select_project', onSelection);
 		if (Modes.ragdoll) Modes.options.edit.select();
 		const outliner = Interface.Panels.outliner;

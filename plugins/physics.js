@@ -723,7 +723,7 @@ function callHooks(name, ...args) {
 	}
 }
 
-function createRuntime(descs, ws, quality = 1) {
+function createRuntime(descs, ws, quality = 1, baking = false) {
 	const world = createWorld(descs, ws);
 	const sources = liquidSources();
 	const liquid = sources.length ? new LiquidSim(sources, ws, quality) : null;
@@ -732,7 +732,7 @@ function createRuntime(descs, ws, quality = 1) {
 		liquid.fields = fields.filter(f => f.s.liquid);
 		bindSources(liquid, world, descs);
 	}
-	const rt = {world, liquid, fields, sources, time: 0, liquid_acc: 0, Jolt, ws, colliders: skip => liquidColliders(world, skip)};
+	const rt = {world, liquid, fields, sources, time: 0, liquid_acc: 0, Jolt, ws, baking, colliders: skip => liquidColliders(world, skip)};
 	callHooks('start', rt);
 	return rt;
 }
@@ -1683,7 +1683,7 @@ async function bake() {
 	const ws = worldOf();
 	const fps = Math.max(1, Math.round(ws.fps));
 	const frames = Math.max(1, Math.round(ws.duration * fps));
-	const rt = createRuntime(descs, ws, Math.max(1, Math.min(3, Math.round(ws.bake_quality || 1))));
+	const rt = createRuntime(descs, ws, Math.max(1, Math.min(3, Math.round(ws.bake_quality || 1))), true);
 	const {world, liquid, sources} = rt;
 	const liquid_frames = [], liquid_shapes = [];
 
@@ -1707,6 +1707,7 @@ async function bake() {
 	while (rt.time + FIXED_DT / 2 < target) stepRuntime(rt);
 	base_entries.forEach(e => { if (!e.can_shatter) tracks.get(e.desc.node).push(bodyWorld(e)); if (e.hinge) axle_angles.get(e.desc.node).push(e.axle_angle); });
 	part_tracks.forEach(t => tracks.get(t.wrapper).push(piecePose(t.entry, t.i, t.ref0)));
+	callHooks('bake_frame', rt, target);   // (other plugins record what they show: the blood of the ragdoll plugin)
 		if (liquid) {
 			liquid_frames.push(snapshotLiquid(liquid));
 			if (ws.liquid_view != 'points') liquid_shapes.push(packShapes(liquidShapes(liquid)));
@@ -1764,6 +1765,8 @@ async function bake() {
 		}
 	}
 	Undo.finishEdit('Bake physics', {outliner: true, groups: new_groups, elements: [...loose, ...pieces], animations: [animation], selection: true});
+	callHooks('baked', rt, animation);
+	callHooks('stop');
 	if (liquid) {
 		liquid_bakes.set(animation.uuid, {fps, r: liquid.r, view: ws.liquid_view, sources, frames: liquid_frames, shapes: liquid_shapes.length ? liquid_shapes : null,
 			emitters: liquid.emitters.map(e => ({index: e.index, s: Object.assign({}, e.s)}))});
@@ -2412,7 +2415,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.1',
+	version: '0.8.2',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

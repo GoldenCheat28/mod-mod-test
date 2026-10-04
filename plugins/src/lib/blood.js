@@ -948,7 +948,9 @@ class BodyBlood {
 
 	paint(part, world_p, r, amount) { this.paint_rest(this.rest_of(part, world_p), r, amount); }
 
-	paint_rest(p, r, amount) {
+	paint_rest(p, r, amount, replay) {
+		// (baking with the blood recorded: every dab is written down)
+		if (!replay && this.bot.blood_log) this.bot.blood_log.push([this.clock, p.x, p.y, p.z, r, amount]);
 		r = Math.max(r, this.cell * 1.2);
 		const [dx, dy, dz] = this.dims, c = this.cell, m = this.box_min;
 		const lo = [p.x - r - m.x, p.y - r - m.y, p.z - r - m.z].map(v => Math.floor(v / c)), hi = [p.x + r - m.x, p.y + r - m.y, p.z + r - m.z].map(v => Math.ceil(v / c));
