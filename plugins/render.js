@@ -6528,6 +6528,7 @@ const VIDEO_QUALITY = {draft: 0.06, normal: 0.11, high: 0.18, max: 0.3};   // bi
 const VIDEO_SIZES = {'1280x720': [1280, 720], '1920x1080': [1920, 1080], '2560x1440': [2560, 1440], '3840x2160': [3840, 2160], '1080x1920': [1080, 1920], '1080x1080': [1080, 1080], '854x480': [854, 480]};
 
 let video_job = null;
+const renderHooks = () => (globalThis.__renderHooks || []).filter(h => { try { return !h.available || h.available(); } catch (err) { return false; } });
 
 // o: {camera: group|null, width, height, fps, start, end, quality}
 async function renderVideo(o) {
@@ -6538,6 +6539,7 @@ async function renderVideo(o) {
 	const encoder_config = await pickEncoder(width, height, o.fps, bitrate);
 	if (!encoder_config) { Blockbench.showQuickMessage(tr('vid_no_encoder'), 6000); return; }
 
+	const hooks = o.hooks === false ? [] : renderHooks();
 	const job = video_job = {cancel: false};
 	const was_enabled = enabled;
 	const saved_camera = Project.render_active_camera;
@@ -6595,8 +6597,11 @@ async function renderVideo(o) {
 				Animator.preview();
 			}
 			scene.updateMatrixWorld(true);
+			hooks.forEach(h => { if (h.frame) h.frame(time); });   // other plugins (soft bodies) put their shapes in the frame
+			scene.updateMatrixWorld(true);
 			place();
 		};
+		hooks.forEach(h => { if (h.start) h.start(o); });
 		// one frame before the first, so the motion blur of the first picture is right too
 		if (o.start > 0) { at(Math.max(0, o.start - 1 / o.fps)); renderWithEffects.call(preview); }
 
@@ -6641,6 +6646,7 @@ async function renderVideo(o) {
 	} finally {
 		try { if (encoder && encoder.state != 'closed') encoder.close(); } catch (err) { /* closed */ }
 		hidden.forEach(obj => { obj.visible = true; });
+		hooks.forEach(h => { try { if (h.end) h.end(); } catch (err) { console.warn(err); } });
 		if (preview) { const p = pipelines.get(preview); if (p) { disposePipeline(p); pipelines.delete(preview); } }
 		if (rig && renderer) { const sk = rig.skies.get(renderer); if (sk) { if (sk.env) sk.env.dispose(); if (sk.bg) sk.bg.dispose(); rig.skies.delete(renderer); } }
 		if (renderer) renderer.dispose();
@@ -6671,6 +6677,7 @@ function openVideoDialog(preset_camera) {
 			start: {label: tr('vid_start'), type: 'number', value: 0, min: 0, step: 0.1},
 			end: {label: tr('vid_end'), type: 'number', value: Math.round(length * 100) / 100 || 3, min: 0.1, step: 0.1},
 			effects: {label: tr('vid_effects'), type: 'select', options: {all: tr('vid_fx_all'), project: tr('vid_fx_project')}, value: 'all'},
+			...(renderHooks().length ? {hooks: {label: renderHooks().map(h => h.label ? h.label() : h.name).join(', '), type: 'checkbox', value: true}} : {}),
 			quality: {label: tr('vid_quality'), type: 'select', options: {draft: tr('vid_q_draft'), normal: tr('vid_q_normal'), high: tr('vid_q_high'), max: tr('vid_q_max')}, value: 'high'},
 			hint: {type: 'info', text: tr('vid_hint')},
 		},
@@ -6678,7 +6685,7 @@ function openVideoDialog(preset_camera) {
 			const [w, h] = VIDEO_SIZES[v.size] || [1920, 1080];
 			const camera = v.camera ? Group.all.find(g => g.uuid == v.camera) : null;
 			const start = Math.max(0, Number(v.start) || 0), end = Math.max(start + 0.05, Number(v.end) || length);
-			renderVideo({camera, width: w, height: h, fps: parseInt(v.fps) || 30, start, end, quality: v.quality, effects: v.effects});
+			renderVideo({camera, width: w, height: h, fps: parseInt(v.fps) || 30, start, end, quality: v.quality, effects: v.effects, hooks: v.hooks !== false});
 		},
 	}).show();
 }
@@ -6722,7 +6729,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.5.1',
+	version: '0.6.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],

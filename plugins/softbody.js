@@ -540,6 +540,14 @@ function buildBodies(elements, weld) {
 }
 
 /** creates the SoftBody objects (one per connected piece) and a lookup from every mesh vertex to its body and point */
+// the start speed set in the Physics tab (m/s) for an object that has no start speed of its own here
+function physicsVelocity(el) {
+	for (let n = el; n && n != 'root'; n = n.parent) {
+		if (n.physics && n.physics.type == 'dynamic') return (n.physics.velocity || [0, 0, 0]).slice(0, 3);
+	}
+	return null;
+}
+
 function makeBodies(elements, weld) {
 	const scene = buildBodies(elements, weld);
 	const bodies = [], lookup = new Map();
@@ -552,6 +560,10 @@ function makeBodies(elements, weld) {
 		const owners = scene.entries.filter(e => local.has(e.node)).map(e => e.el);
 		const first = owners[0], params = softOf(first);
 		params.mass = [...new Set(owners)].reduce((sum, el) => sum + softOf(el).mass, 0);
+		if (!(params.velocity || [0, 0, 0]).some(v => v)) {
+			// a car set going in the Physics tab drives off at the same speed here
+			for (const el of owners) { const v = physicsVelocity(el); if (v && v.some(x => x)) { params.velocity = v; break; } }
+		}
 		const body = new SoftBody(positions, edges, tris, params, first.uuid);
 		bodies.push(body);
 		scene.entries.forEach(e => { if (local.has(e.node)) lookup.set(e.el.uuid + ':' + e.key, {body, i: local.get(e.node)}); });
@@ -680,7 +692,8 @@ const TEXTS = {
 		rigidity: 'Stiffness', rigidity_tip: 'How strongly the body keeps its shape. Low = jelly, high = a stiff frame',
 		strength: 'Dent resistance', strength_tip: 'How hard a hit must be before the body dents for good. Low = thin sheet metal, high = thick steel',
 		plastic: 'Dents stay', plastic_tip: '0 = springs back like rubber, 1 = stays crushed like metal',
-		velocity: 'Start velocity (m/s)',
+		velocity: 'Start velocity (m/s)', velocity_hint: 'Left at 0, the start speed from the Physics tab is used', video: '🎬 Render video (MP4)…',
+		hook_label: 'Include soft bodies (the crash is simulated frame by frame)', msg_video: 'Video needs the Render view plugin (render.js 0.6 or newer)',
 		detail: 'Detail', detail_hint: 'A mesh can only dent where it has points. A cube has 8; split the polygons into smaller ones first.',
 		detail_size: 'Polygon size (px)', subdivide: 'Split polygons of selected meshes', cubes_to_meshes: 'Cubes → meshes',
 		world: 'World', gravity: 'Gravity (m/s²)', ground: 'Ground', ground_height: 'Ground height (px)', weld: 'Join points closer than (px)',
@@ -700,7 +713,8 @@ const TEXTS = {
 		rigidity: 'Жёсткость', rigidity_tip: 'Как сильно тело держит форму. Мало = желе, много = жёсткий каркас',
 		strength: 'Сопротивление вмятинам', strength_tip: 'Насколько сильным должен быть удар, чтобы тело смялось насовсем. Мало = тонкая жесть, много = толстая сталь',
 		plastic: 'Вмятины остаются', plastic_tip: '0 = пружинит обратно как резина, 1 = остаётся смятым как металл',
-		velocity: 'Начальная скорость (м/с)',
+		velocity: 'Начальная скорость (м/с)', velocity_hint: 'Если 0, берётся начальная скорость из вкладки Физика', video: '🎬 Рендер видео (MP4)…',
+		hook_label: 'Включить мягкие тела (авария считается кадр за кадром)', msg_video: 'Для видео нужен плагин Render view (render.js 0.6 или новее)',
 		detail: 'Детализация', detail_hint: 'Меш мнётся только там, где у него есть точки. У куба их 8: сначала разбейте полигоны на более мелкие.',
 		detail_size: 'Размер полигона (px)', subdivide: 'Разбить полигоны выбранных мешей', cubes_to_meshes: 'Кубы → меши',
 		world: 'Мир', gravity: 'Гравитация (м/с²)', ground: 'Земля', ground_height: 'Высота земли (px)', weld: 'Соединять точки ближе (px)',
@@ -910,7 +924,8 @@ function panelComponent() {
 				else Blockbench.showQuickMessage(tr('msg_convert'), 3000);
 				this.selection_key = null;
 			},
-			play() { play(); },
+			video() { const a = typeof BarItems != 'undefined' && BarItems.render_video; if (a && a.click) a.click(); else Blockbench.showQuickMessage(tr('msg_video'), 3500); },
+				play() { play(); },
 			pause() { pause(); },
 			reset() { reset(); },
 			keep() { keep(); },
@@ -923,6 +938,7 @@ function panelComponent() {
 					<button @click="reset()">{{ t('reset') }}</button>
 					<button @click="keep()" :disabled="state == 'stopped'" class="wide">{{ t('apply') }}</button>
 				</div>
+				<button @click="video()" class="soft_full" style="margin: 0 0 6px;">{{ t('video') }}</button>
 				<div class="soft_dim">{{ t('time') }} {{ time }} {{ t('sec') }} · {{ t(state) }}<template v-if="sim_points"> · {{ sim_points }} {{ t('points') }} · {{ contacts }} {{ t('contacts') }}</template></div>
 
 				<h3>{{ t('selected') }}</h3>
@@ -947,6 +963,7 @@ function panelComponent() {
 						<div class="soft_slider" :title="t('strength_tip')"><span>{{ t('strength') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="strength" @change="saveSoft()"><span class="value">{{ strength }}</span></div>
 						<div class="soft_slider" :title="t('plastic_tip')"><span>{{ t('plastic') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="plastic" @change="saveSoft()"><span class="value">{{ plastic }}</span></div>
 						<div class="soft_cap">{{ t('velocity') }}</div>
+							<div class="soft_dim small" style="margin: 0 0 4px;">{{ t('velocity_hint') }}</div>
 						<div class="soft_grid g3">
 							<input type="number" v-model="vx" @change="saveSoft()" title="X">
 							<input type="number" v-model="vy" @change="saveSoft()" title="Y">
@@ -1020,13 +1037,28 @@ const STYLE = `
 
 const onSelection = () => updatePanel();
 
+// the Render view plugin asks for the soft bodies frame by frame when it renders a video (the soft shape cannot be baked into keyframes)
+const renderHook = {
+	name: 'softbody',
+	label: () => tr('hook_label'),
+	available: () => !!Project && Mesh.all.some(el => isSoft(el) && el.mesh),
+	start() { reset(); sim = createSim(); },
+	frame(time) {
+		if (!sim) return;
+		while (sim.time < time - 1e-6) { sim.world.step(1 / 60); sim.time += 1 / 60; }
+		showSim();
+	},
+	end() { reset(); },
+};
+
+
 Plugin.register('softbody', {
 	title: 'Soft body',
 	author: 'Claude',
 	description: 'Crash test deformation: soft meshes dent when they hit walls and each other, like in BeamNG.',
 	about: 'Open the **Soft body** tab. Mark meshes as **Soft body** (they dent) and meshes or cubes as **Solid obstacle**, split the polygons of the soft meshes into smaller ones (a cube only has 8 points), give the soft body a start velocity and press **Play**. Dents can stay (metal) or spring back (rubber). **Keep result** writes the crushed shape into the meshes. Works on the polygons of the mesh: every vertex is a point mass, every edge a spring, plus a shape matching force; meshes whose points touch are joined into one body (a car made of parts).',
 	icon: 'car_crash',
-	version: '0.1.0',
+	version: '0.2.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -1063,11 +1095,13 @@ Plugin.register('softbody', {
 		if (outliner && outliner.condition && outliner.condition.modes instanceof Array && !outliner.condition.modes.includes('softbody')) {
 			outliner.condition.modes.push('softbody');
 		}
+		globalThis.__renderHooks = (globalThis.__renderHooks || []).filter(h => h.name != 'softbody').concat([renderHook]);
 		Blockbench.on('update_selection', onSelection);
 		Blockbench.on('select_project', onSelection);
 	},
 	onunload() {
 		if (sim) reset();
+		globalThis.__renderHooks = (globalThis.__renderHooks || []).filter(h => h.name != 'softbody');
 		Blockbench.removeListener('update_selection', onSelection);
 		Blockbench.removeListener('select_project', onSelection);
 		if (Modes.softbody) Modes.options.edit.select();
