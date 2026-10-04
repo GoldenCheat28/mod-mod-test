@@ -34,7 +34,7 @@ const TEXTS = {
 		mode: 'Physics', play: '▶ Play', pause: '❚❚ Pause', reset: '⟲ Reset', bake: '● Bake',
 		time: 'Time', sec: 's', stopped: 'stopped', playing: 'playing', paused: 'paused',
 		selected: 'Selected', select_hint: 'Select cubes, meshes or groups.', moves_with: 'Moves together with',
-		ground: 'Ground', ground_desc: 'does not move, things land on it',
+		ground: 'Ground', ground_desc: 'does not move, things land on it', cloth_note: 'This mesh is cloth: the cloth simulation moves it (no Ground / Physics object needed). Pin its top in the Cloth panel (Freeze or Attach) and press Play.',
 		object: 'Physics object', object_desc: 'falls and collides',
 		mixed: 'The selection has different settings.', group_solid: 'A ticked group moves as one solid piece.',
 		mass: 'Mass (kg)', friction: 'Friction', bounciness: 'Bounciness', velocity: 'Start velocity (m/s)', spin: 'Start spin (°/s)',
@@ -89,7 +89,7 @@ const TEXTS = {
 		mode: 'Физика', play: '▶ Пуск', pause: '❚❚ Пауза', reset: '⟲ Сброс', bake: '● Запечь',
 		time: 'Время', sec: 'с', stopped: 'остановлено', playing: 'идёт', paused: 'пауза',
 		selected: 'Выбрано', select_hint: 'Выделите кубы, меши или группы.', moves_with: 'Двигается вместе с',
-		ground: 'Земля', ground_desc: 'не двигается, на неё всё падает',
+		ground: 'Земля', ground_desc: 'не двигается, на неё всё падает', cloth_note: 'Этот меш — ткань: его двигает симуляция ткани (Земля / Физический объект не нужны). Закрепите верх в панели «Ткань» (Заморозить или Прикрепить) и нажмите Пуск.',
 		object: 'Физический объект', object_desc: 'падает и сталкивается',
 		mixed: 'У выделенных объектов разные настройки.', group_solid: 'Отмеченная группа движется как одно целое.',
 		mass: 'Масса (кг)', friction: 'Трение', bounciness: 'Упругость', velocity: 'Начальная скорость (м/с)', spin: 'Начальное вращение (°/с)',
@@ -148,7 +148,9 @@ const tr = key => {
 
 const isPart = e => e instanceof Cube || e instanceof Mesh;
 const bodyOf = node => Object.assign({}, DEFAULT_BODY, node.physics || {});
-const typeOf = node => (node.physics && node.physics.type) || 'none';
+// a mesh made cloth (cloth.js) is moved by the cloth simulation, never as a solid body
+const isClothNode = node => node instanceof Mesh && !!node.cloth && node.cloth.enabled !== false;
+const typeOf = node => isClothNode(node) ? 'none' : (node.physics && node.physics.type) || 'none';
 const worldOf = () => Object.assign({}, DEFAULT_WORLD, (Project && Project.physics_world) || {});
 
 // ---------------------------------------------------------------------------
@@ -2042,6 +2044,7 @@ function updatePanel() {
 		vue.selection_key = key;
 		vue.count = nodes.length;
 		vue.has_group = nodes.some(n => n instanceof Group);
+		vue.is_cloth = nodes.length > 0 && nodes.every(isClothNode);
 		vue.label = nodes.length == 1 ? nodes[0].name : `${nodes.length} selected`;
 		const types = new Set(nodes.map(typeOf));
 		vue.type = types.size == 1 ? [...types][0] : 'mixed';
@@ -2088,7 +2091,7 @@ function panelComponent() {
 		data() {
 			return {
 				tab: 'object',
-				selection_key: null, count: 0, has_group: false, label: '', owner: '', type: 'none', world_project: '', state: 'stopped', time: '0.00',
+				selection_key: null, count: 0, has_group: false, is_cloth: false, label: '', owner: '', type: 'none', world_project: '', state: 'stopped', time: '0.00',
 				mass: 1, friction: 0.5, restitution: 0.3, impact: false, threshold: 1, shatter: false, scatter: 1, axle: false, axle_axis: 'x', axle_speed: 0, axle_torque: 0, axle_friction: 0, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0,
 				gravity: 9.81, chaos: 0.3, ground: true, ground_y: 0, duration: 3, fps: 24, liquid_view: 'surface', bake_quality: 2,
 				l_available: false, l_enabled: false, l_amount: 1500, l_size: 0.35, l_speed: 6, l_spread: 12,
@@ -2221,6 +2224,8 @@ function panelComponent() {
 					<template v-else>
 						<div class="physics_title"><b>{{ label }}</b></div>
 						<div v-if="owner" class="physics_dim">{{ t('moves_with') }} «{{ owner }}».</div>
+						<div v-if="is_cloth" class="physics_dim">{{ t('cloth_note') }}</div>
+						<template v-else>
 						<label class="physics_check">
 							<input type="checkbox" :checked="type == 'static'" @change="setType('static', $event.target.checked)">
 							<span><b>{{ t('ground') }}</b> — {{ t('ground_desc') }}</span>
@@ -2231,6 +2236,7 @@ function panelComponent() {
 						</label>
 						<div v-if="type == 'mixed'" class="physics_dim">{{ t('mixed') }}</div>
 						<div v-if="has_group && type == 'dynamic'" class="physics_dim">{{ t('group_solid') }}</div>
+						</template>
 
 						<div v-if="type == 'dynamic' || type == 'static'" class="physics_box">
 							<div class="physics_grid g3">
@@ -2476,7 +2482,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.4',
+	version: '0.8.5',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
