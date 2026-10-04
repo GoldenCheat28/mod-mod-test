@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -4299,6 +4299,141 @@ function hasHumanoidParts(bones) {
 let runtimes = [];   // {rt, list: [RagdollRuntime]}
 let current = null;
 
+// ---------------------------------------------------------------------------
+// Following an animation: until something happens to him, the character plays an animation exactly (every bone is moved
+// to where the animation has it, step by step, so he still pushes things around). A shot, a timed hit, a hard bump or a
+// set moment lets him go: from there on he is a ragdoll (the person of the Blood project falls, catches himself, gets up).
+// ---------------------------------------------------------------------------
+
+// a keyframe's value (Blockbench may keep expressions; getArray works them out)
+function keyValue(kf) {
+	if (kf.getArray) { try { return kf.getArray().map(Number); } catch (err) { /* fall back */ } }
+	const d = kf.data_points && kf.data_points[0] || {};
+	return ['x', 'y', 'z'].map(a => num(d[a], 0));
+}
+function channelAt(list, t, fallback) {
+	if (!list || !list.length) return fallback;
+	const keys = list.slice().sort((a, b) => a.time - b.time);
+	if (t <= keys[0].time) return keyValue(keys[0]);
+	for (let i = 1; i < keys.length; i++) {
+		if (keys[i].time >= t) {
+			const a = keys[i - 1], b = keys[i];
+			if (a.interpolation == 'step') return keyValue(a);
+			const f = (t - a.time) / Math.max(1e-6, b.time - a.time), va = keyValue(a), vb = keyValue(b);
+			return va.map((v, k) => v + (vb[k] - v) * f);
+		}
+	}
+	return keyValue(keys[keys.length - 1]);
+}
+// the world matrix (Blockbench pixels) of a group at a time of an animation, as Blockbench would show it
+function animatedGroupWorld(anim, g, t, cache) {
+	if (cache.has(g)) return cache.get(g);
+	const signs = rotationSigns(), order = eulerOrder();
+	const a = anim.animators && anim.animators[g.uuid];
+	const parent = g.parent instanceof Group ? g.parent : null;
+	const base = parent ? animatedGroupWorld(anim, parent, t, cache).clone() : (g.mesh && g.mesh.parent ? g.mesh.parent.matrixWorld.clone() : new THREE.Matrix4());
+	const kp = channelAt(a && a.position, t, [0, 0, 0]), kr = channelAt(a && a.rotation, t, [0, 0, 0]);
+	const p = new THREE.Vector3(...g.origin).sub(parent ? new THREE.Vector3(...parent.origin) : new THREE.Vector3()).add(new THREE.Vector3(...kp));
+	const r = new THREE.Euler(...[0, 1, 2].map(i => (g.rotation[i] + kr[i]) * signs[i] * D2R), order);
+	const m = base.multiply(new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromEuler(r), new THREE.Vector3(1, 1, 1)));
+	cache.set(g, m);
+	return m;
+}
+
+class AnimationFollower {
+	constructor(rt, r, root) {
+		this.rt = rt; this.r = r; this.root = root;
+		const s = ragdollOf(root);
+		this.anim = (typeof Animation != 'undefined' && Animation.all || []).find(a => a.uuid == s.follow_anim) || null;
+		this.release_at = Math.max(0, num(s.follow_release_at, 0));
+		this.bump = s.follow_bump !== false;
+		this.active = !!this.anim;
+		this.time = 0;
+		if (!this.active) return;
+		const bones = bonesOf(root);
+		this.parts = rt.world.entries.filter(e => bones.includes(e.desc.node) && !e.broken).map(e => {
+			const g = e.desc.node;
+			g.mesh.updateMatrixWorld(true);
+			const body = new THREE.Matrix4().compose(bodyPos(e), bodyQuat(e), new THREE.Vector3(1, 1, 1));
+			return {e, g, offset: g.mesh.matrixWorld.clone().invert().multiply(body), aim: null};
+		});
+		// the joint motors of the Blood person's muscles would pull against the animation: slack while it plays (his muscles
+		// set them again at his first step of his own)
+		if (r.parts && r.axes) {
+			try {
+				const AX = r.axes();
+				r.parts.forEach(c => {
+					if (!c.joint) return;
+					c.motor_limit = 0;
+					for (const axis of [AX.rx, AX.ry, AX.rz]) { const ms = c.joint.GetMotorSettings(axis); ms.mMinTorqueLimit = 0; ms.mMaxTorqueLimit = 0; }
+				});
+			} catch (err) { console.warn('[Ragdoll] follow motors', err); }
+		}
+		// he starts in the first pose of the animation
+		const start = this.targets(0);
+		const J = rt.Jolt, world = rt.world;
+		this.parts.forEach((p, i) => {
+			const {pos, quat} = start[i];
+			try {
+				world.bodies.SetPositionAndRotation(p.e.id, new J.RVec3(pos.x, pos.y, pos.z), new J.Quat(quat.x, quat.y, quat.z, quat.w), J.EActivation_Activate);
+			} catch (err) { console.warn('[Ragdoll] follow', err); }
+		});
+	}
+	// where every body is at a time of the animation (metres)
+	targets(t) {
+		const len = Math.max(1e-3, this.anim.length || 1);
+		const at = this.anim.loop == 'loop' ? t % len : Math.min(t, len);
+		const cache = new Map();
+		return this.parts.map(p => {
+			const m = animatedGroupWorld(this.anim, p.g, at, cache).clone().multiply(p.offset);
+			const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), sc = new THREE.Vector3();
+			m.decompose(pos, quat, sc);
+			return {pos: pos.divideScalar(SCALE), quat};
+		});
+	}
+	release(why) {
+		if (!this.active) return;
+		this.active = false;
+		if (this.r.log) this.r.log.push({t: this.r.time, released: why});
+		if (this.r.wake) this.r.wake();
+	}
+	// one step: true while it still plays the animation (the runtime's own step is left out then)
+	step(dt) {
+		if (!this.active) return false;
+		const r = this.r;
+		// something happened to him
+		const hit_due = r.hits && r.next_hit < r.hits.length && r.hits[r.next_hit].t <= r.time + 1e-9;
+		if ((r.pending && r.pending.length) || hit_due) { this.release('hit'); return false; }
+		if (this.release_at > 0 && this.time >= this.release_at) { this.release('time'); return false; }
+		// pushed off his pose by something solid
+		if (this.bump && this.time > 0.1) {
+			let worst = 0;
+			this.parts.forEach(p => { if (p.aim) worst = Math.max(worst, bodyPos(p.e).divideScalar(SCALE).distanceTo(p.aim)); });
+			if (worst > 0.08) { this.release('bump'); return false; }
+		}
+		// every body is sent to where the animation has it one step later (gravity taken off: it is added in the step)
+		const next = this.targets(this.time + dt);
+		const world = this.rt.world, g = world.system.GetGravity();
+		this.parts.forEach((p, i) => {
+			const now = bodyPos(p.e).divideScalar(SCALE), q = bodyQuat(p.e), want = next[i];
+			const v = want.pos.clone().sub(now).divideScalar(dt);
+			world.tmp.Set(v.x - g.GetX() * dt, v.y - g.GetY() * dt, v.z - g.GetZ() * dt);
+			world.bodies.SetLinearVelocity(p.e.id, world.tmp);
+			const dq = want.quat.clone().multiply(q.clone().invert());
+			if (dq.w < 0) { dq.x = -dq.x; dq.y = -dq.y; dq.z = -dq.z; dq.w = -dq.w; }
+			const angle = 2 * Math.acos(Math.min(1, dq.w)), s = Math.sqrt(Math.max(0, 1 - dq.w * dq.w));
+			const w = s > 1e-6 ? new THREE.Vector3(dq.x / s, dq.y / s, dq.z / s).multiplyScalar(angle / dt) : new THREE.Vector3();
+			world.tmp.Set(w.x, w.y, w.z);
+			world.bodies.SetAngularVelocity(p.e.id, world.tmp);
+			p.aim = want.pos.clone();
+		});
+		this.time += dt;
+		r.time += dt;
+		if (r._time !== undefined) r._time += dt;
+		return true;
+	}
+}
+
 const physicsHook = {
 	start(rt) {
 		this.stop();
@@ -4326,13 +4461,19 @@ const physicsHook = {
 				try { sim.view = rt.baking ? new BloodRecorder(sim) : new BloodView(sim, rt); } catch (err) { console.warn('[Ragdoll] blood view', err); }
 			} catch (err) { console.warn('[Ragdoll] blood', err); sim = null; }
 		}
-		current = {rt, list, blood, sim, last_show: null};
+		// the ones that play an animation until something happens to them
+		const followers = new Map();
+		for (const r of list) {
+			if (!r.root || !ragdollOf(r.root).follow_anim) continue;
+			try { const f = new AnimationFollower(rt, r, r.root); if (f.active) followers.set(r, f); } catch (err) { console.warn('[Ragdoll] follow', err); }
+		}
+		current = {rt, list, blood, sim, last_show: null, followers};
 		startMarkers();
 	},
 	step(rt, dt) {
 		if (!current || current.rt !== rt) return;
 		stepMarkers(dt);
-		for (const r of current.list) r.step(dt);
+		for (const r of current.list) { const f = current.followers && current.followers.get(r); if (f && f.step(dt)) continue; r.step(dt); }
 		if (current.blood) current.blood.step(dt);
 		if (current.sim) current.sim.step(dt);
 	},
@@ -4873,6 +5014,8 @@ const TEXTS = {
 		bone: 'Selected bone', joint: 'Joint', j_ball: 'Ball (shoulder, hip, neck)', j_hinge: 'Hinge (elbow, knee)', j_fixed: 'Stiff',
 		swing: 'Swing (°)', twist: 'Twist (±°)', axis: 'Hinge axis', hmin: 'Hinge from (°)', hmax: 'Hinge to (°)', strength: 'Muscle strength', zone: 'Zone',
 		z_auto: 'Automatic', z_head: 'Head', z_torso: 'Torso', z_arms: 'Arms', z_legs: 'Legs', z_any: 'Any',
+		follow: 'Animation, then physics', follow_anim: 'Plays', follow_none: '— nothing (physics at once) —', follow_release_at: 'Let go at (s, 0 = only when hit)', follow_bump: 'A hard bump lets go too', follow_bump_tip: 'Bumping into something solid (a wall, a car) ends the animation as a hit does',
+		follow_hint: 'He plays the animation exactly until he is hit (a shot, a timed hit, a click shot), bumped or the moment comes; then he is a ragdoll: he falls, and the person of the Blood project gets up again.',
 		route: 'Route', route_add: '+ Route (walks along a curve)', route_npc_only: 'Only the person of the Blood project (NPC) can walk: tick "Alive (NPC)" for the character', route_pts: 'points', route_point_add: '+ Point',
 		route_speed: 'Speed (m/s)', route_speed_tip: '1.3 a walk, 2.5 a jog, 4 a run', route_start: 'Sets off at (s)', route_mode: 'At the end', rm_once: 'Stops', rm_loop: 'Goes round (closed loop)', rm_pingpong: 'Turns back',
 		route_hint: 'The points are empty groups: move them with the Move tool (click a green ball to pick it). Shoot him anywhere on the way; knocked down he stops, back up he walks on.',
@@ -4923,6 +5066,8 @@ const TEXTS = {
 		bone: 'Выбранная кость', joint: 'Сустав', j_ball: 'Шаровой (плечо, бедро, шея)', j_hinge: 'Шарнир (локоть, колено)', j_fixed: 'Жёсткий',
 		swing: 'Отклонение (°)', twist: 'Кручение (±°)', axis: 'Ось шарнира', hmin: 'Шарнир от (°)', hmax: 'Шарнир до (°)', strength: 'Сила мышцы', zone: 'Зона',
 		z_auto: 'Автоматически', z_head: 'Голова', z_torso: 'Торс', z_arms: 'Руки', z_legs: 'Ноги', z_any: 'Любая',
+		follow: 'Анимация, потом физика', follow_anim: 'Проигрывает', follow_none: '— ничего (сразу физика) —', follow_release_at: 'Отпустить в (с, 0 — только при попадании)', follow_bump: 'Сильный толчок тоже отпускает', follow_bump_tip: 'Удар о твёрдое (стену, машину) заканчивает анимацию так же, как попадание',
+		follow_hint: 'Он точно проигрывает анимацию, пока в него не попадут (выстрел, удар по времени, выстрел кликом), не толкнут или не наступит заданный момент; дальше он регдолл: падает, а человек из Blood потом встаёт.',
 		route: 'Маршрут', route_add: '+ Маршрут (идёт по кривой)', route_npc_only: 'Ходить умеет только человек из Blood (NPC): включите у персонажа «Живой (NPC)»', route_pts: 'точек', route_point_add: '+ Точка',
 		route_speed: 'Скорость (м/с)', route_speed_tip: '1.3 — шаг, 2.5 — трусца, 4 — бег', route_start: 'Выходит в (с)', route_mode: 'В конце', rm_once: 'Останавливается', rm_loop: 'Идёт по кругу (замкнутый)', rm_pingpong: 'Поворачивает обратно',
 		route_hint: 'Точки — пустые группы: двигайте их «Перемещением» (клик по зелёному шару выбирает точку). Стреляйте в него в любой момент пути; сбитый — останавливается, поднявшись — идёт дальше.',
@@ -5180,6 +5325,12 @@ function updatePanel(force) {
 			where: n.attach.hands == 'both' ? tr('hand_both') : ((bones.find(g => g.uuid == n.attach.bone) || {}).name || '?')}));
 		vue.char_blood = ragdollOf(act).blood !== false;
 		const rs = ragdollOf(act), route = routeOfRoot(act);
+		const anims = (typeof Animation != 'undefined' && Animation.all || []).map(a => ({uuid: a.uuid, name: a.name}));
+		if (JSON.stringify(anims) != JSON.stringify(vue.anim_list)) vue.anim_list = anims;
+		if (force || vue.follow_key != JSON.stringify([rs.follow_anim, rs.follow_release_at, rs.follow_bump])) {
+			vue.follow_key = JSON.stringify([rs.follow_anim, rs.follow_release_at, rs.follow_bump]);
+			Object.assign(vue, {follow_anim: rs.follow_anim || '', follow_release_at: rs.follow_release_at || 0, follow_bump: rs.follow_bump !== false});
+		}
 		vue.char_npc = !!rs.npc && hasHumanoidParts(bonesOf(act));
 		vue.route_name = route ? route.name : '';
 		vue.route_points = route ? routePoints(route).length : 0;
@@ -5203,7 +5354,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -5310,6 +5461,11 @@ function panelComponent() {
 				edit([g], 'Change shot', () => { g.ragdoll_shot = Object.assign({}, g.ragdoll_shot, {t: Math.max(0, num_(sh.t, 0.5)), impulse: Math.max(0.1, num_(sh.impulse, 4))}); });
 			},
 			hand(side) { toHand(activeRoot(), side, this.item_drop, 1); },
+			saveFollow() {
+				const r = activeRoot();
+				if (!r) return;
+				edit([r], 'Follow animation', () => { r.ragdoll = Object.assign(ragdollOf(r), {follow_anim: this.follow_anim, follow_release_at: Math.max(0, num_(this.follow_release_at, 0)), follow_bump: !!this.follow_bump}); });
+			},
 			newRoute() { addRoute(activeRoot()); updatePanel(true); },
 			addPoint() { const r = activeRoot(); addRoutePoint(r && routeOfRoot(r)); updatePanel(true); },
 			dropRoute() { const r = activeRoot(); if (!r) return; edit([r], 'Remove route', () => { r.ragdoll = Object.assign(ragdollOf(r), {route: ''}); }); syncRouteView(true); updatePanel(true); },
@@ -5372,6 +5528,15 @@ function panelComponent() {
 					</div>
 					<button class="rd_full" :class="{rd_on: click_shot}" @click="toggleClickShot()">{{ click_shot ? t('click_shot_on') : t('click_shot') }}</button>
 					<template v-if="char_name">
+						<div class="rd_head">{{ t('follow') }}</div>
+						<label class="rd_row">{{ t('follow_anim') }}
+							<select v-model="follow_anim" @change="saveFollow()"><option value="">{{ t('follow_none') }}</option><option v-for="a in anim_list" :value="a.uuid">{{ a.name }}</option></select>
+						</label>
+						<template v-if="follow_anim">
+							<div class="rd_grid"><rope-num :label="t('follow_release_at')" v-model="follow_release_at" :min="0" :max="600" :step="0.1" :decimals="1" @change="saveFollow()"></rope-num></div>
+							<label class="rd_row" :title="t('follow_bump_tip')">{{ t('follow_bump') }}<input type="checkbox" v-model="follow_bump" @change="saveFollow()"></label>
+							<div class="rd_dim small">{{ t('follow_hint') }}</div>
+						</template>
 						<div class="rd_head">{{ t('route') }}</div>
 						<template v-if="!route_name">
 							<button class="rd_full" @click="newRoute()" :disabled="!char_npc" :title="char_npc ? '' : t('route_npc_only')">{{ t('route_add') }}</button>
@@ -6432,7 +6597,7 @@ function toHand(root, side, drop, mass) {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({getCurrent: () => current, AnimationFollower, animatedGroupWorld, routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -6440,7 +6605,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.9.0',
+	version: '0.9.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
