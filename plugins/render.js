@@ -6175,7 +6175,7 @@ function panelComponent() {
 		template: `
 			<div class="render_panel" style="padding: 4px 8px 10px;">
 				<button @click="materials()" style="width: 100%; margin-bottom: 8px;">{{ t('materials') }}</button>
-				<h3>{{ t('light') }}</h3>
+				<details class="render_sec" open><summary>{{ t('light') }}</summary>
 				<div class="render_slider"><span class="label">{{ t('sun_dir') }}</span><input type="range" min="-180" max="180" step="1" v-model.number="sun_azimuth" @input="save()"><span>{{ sun_azimuth }}°</span></div>
 				<div class="render_slider"><span class="label">{{ t('sun_height') }}</span><input type="range" min="2" max="90" step="1" v-model.number="sun_elevation" @input="save()"><span>{{ sun_elevation }}°</span></div>
 				<div class="render_slider"><span class="label">{{ t('sun_strength') }}</span><input type="range" min="0" max="8" step="0.1" v-model.number="sun_strength" @input="save()"><span>{{ sun_strength }}</span></div>
@@ -6189,7 +6189,8 @@ function panelComponent() {
 				<label class="render_row" v-if="floor">{{ t('floor_reflect') }} <input type="checkbox" v-model="floor_reflect" @change="save()"></label>
 				<label class="render_row">{{ t('hide_grid') }} <input type="checkbox" v-model="hide_grid" @change="save()"></label>
 
-					<h3>{{ t('skybox') }}</h3>
+					</details>
+<details class="render_sec" ><summary>{{ t('skybox') }}</summary>
 					<label class="render_row">{{ t('sky_mode') }}
 						<select v-model="sky_mode" @change="save()">
 							<option value="off">{{ t('sky_off') }}</option>
@@ -6218,7 +6219,8 @@ function panelComponent() {
 						<div class="render_hint">{{ t('sky_hint') }}</div>
 					</template>
 
-				<h3>{{ t('effects') }}</h3>
+				</details>
+<details class="render_sec" open><summary>{{ t('effects') }}</summary>
 				<div class="render_slider"><span class="label">{{ t('exposure') }}</span><input type="range" min="0.2" max="3" step="0.05" v-model.number="exposure" @input="save()"><span>{{ exposure }}</span></div>
 				<label class="render_row">{{ t('ao') }} <input type="checkbox" v-model="ao" @change="save()"></label>
 				<template v-if="ao">
@@ -6241,7 +6243,8 @@ function panelComponent() {
 				<label class="render_row">{{ t('fxaa') }} <input type="checkbox" v-model="fxaa" @change="save()"></label>
 				<div class="render_slider"><span class="label">{{ t('vignette') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="vignette" @input="save()"><span>{{ vignette }}</span></div>
 
-					<h3>{{ t('lights') }}</h3>
+					</details>
+<details class="render_sec" :open="!!light"><summary>{{ t('lights') }}</summary>
 					<button @click="spawn('light')" class="render_btn">{{ t('add_light') }}</button>
 					<div v-if="light" class="render_box">
 						<div class="render_cap">{{ t('light_selected') }}</div>
@@ -6252,7 +6255,8 @@ function panelComponent() {
 					</div>
 					<div v-else class="render_hint">{{ t('light_hint') }}</div>
 
-					<h3>{{ t('cameras') }}</h3>
+					</details>
+<details class="render_sec" :open="!!cam"><summary>{{ t('cameras') }}</summary>
 					<button @click="spawn('camera')" class="render_btn">{{ t('add_camera') }}</button>
 					<div v-if="cam" class="render_box">
 						<div class="render_cap">{{ t('camera_selected') }}</div>
@@ -6272,17 +6276,22 @@ function panelComponent() {
 						<div class="render_slider" v-if="cam.focus"><span class="label">{{ t('cam_focus_blur') }}</span><input type="range" min="0" max="1" step="0.05" v-model.number="cam.focus_blur" @input="liveCamera()" @change="endEdit('Edit camera')"><span>{{ cam.focus_blur }}</span></div>
 					</div>
 					<div v-else class="render_hint">{{ t('cam_hint') }}</div>
-			</div>`,
+			
+</details>
+</div>`,
 	};
 }
 
 const STYLE = `
 	#panel_render_view .render_panel { overflow-y: auto !important; overflow-x: hidden !important; }
 	.render_panel h3, .render_materials h3 { font-size: 1em; text-transform: uppercase; opacity: 0.8; margin: 10px 0 4px; }
-	.render_row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 3px 0; }
+	.render_sec { border-bottom: 1px solid var(--color-border); padding: 2px 0; }
+	.render_sec > summary { cursor: pointer; font-size: 0.95em; text-transform: uppercase; opacity: 0.85; padding: 4px 0; user-select: none; }
+	.render_sec[open] > summary { margin-bottom: 2px; }
+	.render_row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 1px 0; }
 	.render_row input[type=number], .render_row input[type=text], .render_row select { width: 58%; }
 	.render_row input[type=color] { width: 58%; height: 22px; border: 1px solid var(--color-border); background: transparent; padding: 0; }
-	.render_slider { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+	.render_slider { display: flex; align-items: center; gap: 6px; margin: 1px 0; }
 	.render_slider .label { width: 40%; }
 	.render_slider input[type=range] { flex: 1; min-width: 0; }
 	.render_slider > span:last-child { width: 38px; text-align: right; opacity: 0.8; }
@@ -6324,7 +6333,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.2.5',
+	version: '0.2.6',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
