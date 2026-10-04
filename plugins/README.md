@@ -8,7 +8,7 @@ Load a plugin with **File → Plugins → Load Plugin from File**.
 | `render.js` | Render view: materials, skybox, lights, cameras with lens effects |
 | `softbody.js` | Soft body tab: crash deformation of meshes (dents) |
 | `rope.js` | Ropes tab: a physical rope mesh between two objects (segments, sides, thickness, slack...), pulls physics bodies |
-| `ragdoll.js` | Ragdoll tab: character with joints and muscles, shots, flinch and saved reaction poses, falls when hit hard; bakes through the Physics tab |
+| `ragdoll.js` | Ragdoll tab: the Blood-project character (bones and proportions from the Godot project), joints and muscles, shots, per-body-part reactions, skeleton pose editor, held items, NPC mode (blood loss, pain, shock, balance, stumbling, falling, fainting, death) and blood (drops, sprays, arterial jets, pools); bakes through the Physics tab (blood is shown live only) |
 | `pipe.js` | Connect: join faces of two meshes with a pipe (right click → Connect faces…): smoothing, path, waypoints, going around obstacles |
 | `seam.js` | Fillet between intersecting meshes (right click → Seam) |
 

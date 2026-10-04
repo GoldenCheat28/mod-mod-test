@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: []};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -149,7 +149,12 @@ class RagdollRuntime {
 		this.next_hit = 0;
 		this.time = 0;
 		this.log = [];
+		this.rt = rt;
+		this.blood = null;
+		this.wounds = [];
+		this.npc = null;
 		this.build();
+		if (this.s.npc) this.initNpc();
 	}
 
 	build() {
@@ -383,14 +388,147 @@ class RagdollRuntime {
 		const reaction = this.reactionFor(b.zone);
 		if (reaction) this.reactions.push({def: Object.assign({}, DEFAULT_REACTION, reaction), t0: this.time});
 		else if (this.s.auto_react) { const def = this.builtinReaction(b, dir, hit.impulse); if (def) this.reactions.push({def, t0: this.time}); }
-		if (this.s.limp > 0 && hit.impulse >= this.s.limp) {
-			this.limp_since = this.time;
-			this.limp_until = this.s.limp_time > 0 ? this.time + this.s.limp_time : Infinity;
-			if (this.pin) { try { this.world.system.RemoveConstraint(this.pin); } catch (err) { console.warn('[Ragdoll]', err); } this.pin = null; }
-			// what the character holds is dropped (if the item is set to drop)
-			for (const it of this.items) if (it.drop && it.constraint) { try { this.world.system.RemoveConstraint(it.constraint); } catch (err) { console.warn('[Ragdoll]', err); } it.constraint = null; it.entry.body.SetAllowSleeping(true); }
-		}
+		if (this.s.npc || this.s.blood) this.wound(b, dir, point, hit.impulse, hit.local);
+		if (this.s.limp > 0 && hit.impulse >= this.s.limp) this.goLimp(this.s.limp_time > 0 ? this.time + this.s.limp_time : Infinity);
 		this.log.push({t: this.time, bone: b.group.name, impulse: hit.impulse});
+	}
+
+
+	// the muscles switch off: the hips are let go and what the character holds is dropped (if the item is set to drop)
+	goLimp(until) {
+		this.limp_since = this.time;
+		this.limp_until = until;
+		if (this.pin) { try { this.world.system.RemoveConstraint(this.pin); } catch (err) { console.warn('[Ragdoll]', err); } this.pin = null; }
+		for (const it of this.items) if (it.drop && it.constraint) { try { this.world.system.RemoveConstraint(it.constraint); } catch (err) { console.warn('[Ragdoll]', err); } it.constraint = null; it.entry.body.SetAllowSleeping(true); }
+	}
+
+	// ---- the character as a living body (as in the Blood project): blood, pain, shock, legs that give way, balance, falling, death ----
+
+	initNpc() {
+		const by = role => this.bones.find(b => b.role == role);
+		const pelvis = by('pelvis') || this.bones.find(b => !b.parent);
+		const tops = this.bones.filter(b => !b.parent);
+		const g = this.ground();
+		this.npc = {
+			blood: 5000, pain: 0, shock: 0, stagger: 0, push: new THREE.Vector3(), leg: {'1': 1, '-1': 1}, arm: {'1': 1, '-1': 1},
+			state: 'stand', stand: 1, tone: 1, dead: false, faint: false, pelvis,
+			chest: by('chest') || by('abdomen') || pelvis, head: by('head') || by('neck'), feet: this.bones.filter(b => b.role == 'foot'),
+			mass: tops.reduce((m, b) => m + b.load, 0), h0: pelvis ? (bodyPos(pelvis.entry).y - g) : 0, fell_at: null,
+		};
+	}
+
+	ground() {
+		const ws = this.rt.ws || {};
+		if (ws.ground === false) return -1e6;
+		try { return Project.model_3d.localToWorld(new THREE.Vector3(0, ws.ground_y || 0, 0)).y; } catch (err) { return ws.ground_y || 0; }
+	}
+
+	// where a hit makes a wound, and how bad it is
+	wound(b, dir, point, impulse, local) {
+		const dmg = clamp(impulse / 40, 0.1, 6);
+		const n = this.npc, role = b.role, scale = this.s.bleed;
+		const BASE = {head: 18, neck: 30, chest: 26, abdomen: 22, pelvis: 20, upperarm: 14, forearm: 8, hand: 5, thigh: 20, shin: 9, foot: 5};
+		const arterial = ['neck', 'thigh', 'upperarm'].includes(role) && Math.random() < 0.5 + 0.2 * dmg;
+		const rate = (BASE[role] || 12) * (0.6 + 0.4 * Math.min(dmg, 3)) * scale;
+		const M = new THREE.Matrix4().compose(bodyPos(b.entry), bodyQuat(b.entry), new THREE.Vector3(1, 1, 1));
+		const normal = dir.clone().negate().normalize();
+		this.wounds.push({bone: b, local: new THREE.Vector3(...(local || [0, 0, 0])), normal, rate, rate0: rate, arterial, age: 0});
+		if (this.wounds.length > 14) this.wounds.shift();
+		if (this.blood) this.blood.hit(point, dir, dmg, this.s.blood_amount);
+		if (!n) return;
+		const side = b.side || 0;
+		n.pain += 0.35 * dmg + (role == 'abdomen' || role == 'pelvis' ? 0.25 : 0);
+		n.shock += 0.22 * dmg + (role == 'chest' ? 0.15 : 0) + (role == 'abdomen' ? 0.1 : 0);
+		if (dmg > 2) n.shock += 0.35;
+		if (['thigh', 'shin', 'foot'].includes(role)) n.leg[side] = Math.max(0, n.leg[side] - 0.55 * dmg);
+		if (['upperarm', 'forearm', 'hand'].includes(role)) n.arm[side] = Math.max(0, n.arm[side] - 0.5 * dmg);
+		n.stagger = Math.max(n.stagger, clamp(0.35 * dmg, 0, 1));
+		n.push.add(new THREE.Vector3(dir.x, 0, dir.z).multiplyScalar(0.12 * dmg));
+		if (!n.dead && this.s.head_kills && (role == 'head' || role == 'neck') && dmg >= 0.9) this.die('head');
+	}
+
+	die(why) {
+		const n = this.npc;
+		if (!n || n.dead) return;
+		n.dead = true; n.why = why; n.state = 'fallen';
+		this.goLimp(Infinity);
+		this.log.push({t: this.time, died: why});
+	}
+
+	faint() {
+		const n = this.npc;
+		if (!n || n.faint) return;
+		n.faint = true; n.state = 'fallen';
+		this.goLimp(Infinity);
+		this.log.push({t: this.time, fainted: true});
+	}
+
+	npcStep(dt) {
+		const n = this.npc;
+		if (!n || !n.pelvis) return;
+		const {world} = this, g = (this.rt.ws && this.rt.ws.gravity) || 9.81, M = n.mass;
+		n.pain = Math.max(0, n.pain - 0.1 * dt); n.shock = Math.max(0, n.shock - 0.025 * dt);
+		n.stagger = Math.max(0, n.stagger - 1.2 * dt); n.push.multiplyScalar(Math.exp(-3 * dt));
+		// bleeding: the wounds clot slowly (a cut artery much more slowly), blood is lost
+		let bleed = 0;
+		for (const w of this.wounds) { w.age += dt; w.rate *= Math.exp(-dt / (w.arterial ? 70 : 45)); bleed += w.rate; }
+		n.blood -= bleed * dt; n.bleeding = bleed;
+		if (!n.dead) {
+			if (n.blood < 2500) this.die('blood');
+			else if (!n.faint && (n.blood < 3600 || n.shock > 1.3 || n.pain > 2.2)) this.faint();
+		}
+		const legs = Math.min(n.leg['1'], n.leg['-1']);
+		// is it still standing?
+		const pp = bodyPos(n.pelvis.entry), spine = bodyPos(n.chest.entry).sub(pp);
+		const tilt = spine.lengthSq() > 1e-6 && n.chest != n.pelvis ? Math.acos(clamp(spine.y / spine.length(), -1, 1)) : 0;
+		const h = pp.y - this.ground();
+		const com = new THREE.Vector3(); let mc = 0, vcom = new THREE.Vector3();
+		for (const b of this.bones) {
+			const c = b.entry.body.GetCenterOfMassPosition(), v = b.entry.body.GetLinearVelocity(), m = b.entry.desc.settings.mass;
+			com.x += c.GetX() * m; com.y += c.GetY() * m; com.z += c.GetZ() * m; vcom.x += v.GetX() * m; vcom.y += v.GetY() * m; vcom.z += v.GetZ() * m; mc += m;
+		}
+		com.multiplyScalar(1 / mc); vcom.multiplyScalar(1 / mc);
+		let support = null;
+		if (n.feet.length) { support = new THREE.Vector3(); n.feet.forEach(f => support.add(bodyPos(f.entry))); support.multiplyScalar(1 / n.feet.length / SCALE); }
+		else support = new THREE.Vector3(pp.x / SCALE, 0, pp.z / SCALE);
+		const ex = support.x - com.x, ez = support.z - com.z;
+		// a capture point: where the body will be when it has used its speed up; if that is far outside the feet, the character falls
+		const lean = Math.atan2(Math.hypot(ex, ez), Math.max(0.2, com.y - support.y));
+		const cap = Math.hypot(ex - vcom.x * 0.35, ez - vcom.z * 0.35);
+		if (n.state == 'stand' && !n.dead) {
+			const why = legs < 0.15 ? 'legs' : lean > 0.8 ? 'tilt' : h < 0.6 * n.h0 ? 'height' : cap > 0.9 ? 'capture' : '';
+			n.unsteady = why ? (n.unsteady || 0) + dt : 0; n.dbg = {lean, cap, h, ex, ez, vz: vcom.z};
+			if (why && n.unsteady > (why == 'legs' ? 0 : 0.3)) { n.state = 'fallen'; n.fell_at = this.time; this.log.push({t: this.time, fell: why}); }
+		}
+		const target = n.state == 'stand' ? clamp(1 - 0.9 * n.stagger, 0.1, 1) * (0.5 + 0.5 * Math.min(1, legs * 1.5)) * this.s.balance : 0;
+		n.stand += (target - n.stand) * Math.min(1, dt * 8);
+		n.tone = n.dead || n.faint ? 0 : n.state == 'fallen' ? 0.35 : clamp(1 - 0.35 * n.shock - 0.2 * n.pain, 0.3, 1);
+		if (this.pin || n.stand < 0.01) return;
+		// the balance assist (as in the Blood project): the weight is held up, the body is kept over its feet and upright
+		const add = (b, f) => { world.tmp.Set(f.x, f.y, f.z); world.bodies.AddForce(b.entry.id, world.tmp, this.J.EActivation_Activate); };
+		const vy = vcom.y, dh = (n.h0 - h) / SCALE;
+		// the legs carry the weight by themselves while they are healthy; the assist lifts what has sagged and takes the weight of weak legs
+		const dead = v => Math.sign(v) * Math.max(0, Math.abs(v) - 0.06);
+		const fy = clamp(M * (Math.max(0, 70 * dh - 10 * vy) + g * 0.8 * (1 - clamp(legs * 1.2, 0, 1)) + g * 0.3 * n.stagger), 0, M * g * 1.6) * n.stand;
+		const ax = clamp(45 * dead(ex) - 9 * vcom.x, -0.8 * g, 0.8 * g) * M * n.stand + n.push.x * M * 20 * n.stand;
+		const az = clamp(45 * dead(ez) - 9 * vcom.z, -0.8 * g, 0.8 * g) * M * n.stand + n.push.z * M * 20 * n.stand;
+		const split = n.chest != n.pelvis ? [[n.pelvis, 0.62], [n.chest, 0.38]] : [[n.pelvis, 1]];
+		for (const [b, k] of split) add(b, new THREE.Vector3(ax * k, fy * k, az * k));
+		// the same force the other way on the feet: the legs carry it into the ground, so the body is not pushed along by it
+		if (n.feet.length) for (const f of n.feet) add(f, new THREE.Vector3(0, -fy / n.feet.length, 0));
+	}
+
+	// the blood leaves the wounds
+	bleedStep(dt) {
+		if (!this.blood) return;
+		for (const w of this.wounds) {
+			const M = new THREE.Matrix4().compose(bodyPos(w.bone.entry), bodyQuat(w.bone.entry), new THREE.Vector3(1, 1, 1));
+			const pos = w.local.clone().applyMatrix4(M);
+			const q = bodyQuat(w.bone.entry);
+			const nrm = w.normal.clone();
+			const lv = w.bone.entry.body.GetLinearVelocity();
+			this.blood.wound(w, pos, nrm, new THREE.Vector3(lv.GetX(), lv.GetY(), lv.GetZ()), dt, this.s.blood_amount);
+		}
 	}
 
 	// ---- one step ----
@@ -400,6 +538,8 @@ class RagdollRuntime {
 		this.pending.splice(0).forEach(h => this.applyHit(h));
 		while (this.next_hit < this.hits.length && this.hits[this.next_hit].t <= t + 1e-9) this.applyHit(this.hits[this.next_hit++]);
 		this.drive(t);
+		if (this.npc) this.npcStep(dt);
+		this.bleedStep(dt);
 		this.time += dt;
 	}
 
@@ -455,6 +595,13 @@ class RagdollRuntime {
 					tension = Math.max(tension, 0.9 * blend);
 				}
 			}
+			if (this.npc) {
+				const n = this.npc;
+				let k = n.tone;
+				if (['upperarm', 'forearm', 'hand'].includes(b.role) && b.side) k *= clamp(n.arm[b.side], 0.15, 1);
+				if (['thigh', 'shin', 'foot'].includes(b.role) && b.side) k *= clamp(n.leg[b.side], 0.1, 1);
+				tension *= k;
+			}
 			tension = clamp(tension * limp * s.power, 0, 4);
 			this.motor(b, tension, target);
 		}
@@ -490,6 +637,123 @@ class RagdollRuntime {
 	shoot(hit) { this.pending.push(Object.assign({t: this.time}, hit)); }
 }
 
+
+// ---------------------------------------------------------------------------
+// Blood (as in the Blood project): drops that fly and fall, sprays from a hit, a pulsing jet from an artery, pools that spread and dry
+// ---------------------------------------------------------------------------
+
+class BloodFX {
+	constructor(rt) {
+		this.g = ((rt.ws && rt.ws.gravity) || 9.81) * SCALE;
+		this.ground = -1e6;
+		if (!rt.ws || rt.ws.ground !== false) { try { this.ground = Project.model_3d.localToWorld(new THREE.Vector3(0, (rt.ws && rt.ws.ground_y) || 0, 0)).y; } catch (err) { this.ground = (rt.ws && rt.ws.ground_y) || 0; } }
+		this.max_drops = 900; this.max_pools = 240;
+		this.drops = [];   // {x,y,z,vx,vy,vz,ml}
+		this.pools = [];   // {x,z,area,sx,sz,rot,t0,age}
+		this.time = 0;
+		this.group = new THREE.Group();
+		this.group.name = 'ragdoll_blood';
+		this.drop_mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 6, 4), new THREE.MeshBasicMaterial({color: 0xffffff}), this.max_drops);
+		const flat = new THREE.CircleGeometry(1, 20); flat.rotateX(-Math.PI / 2);
+		const mat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2});
+		this.pool_mesh = new THREE.InstancedMesh(flat, mat, this.max_pools);
+		for (const m of [this.drop_mesh, this.pool_mesh]) { m.frustumCulled = false; m.count = 0; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.group.add(m); }
+		for (let i = 0; i < this.max_drops; i++) this.drop_mesh.setColorAt(i, new THREE.Color(0x8a0808));
+		for (let i = 0; i < this.max_pools; i++) this.pool_mesh.setColorAt(i, new THREE.Color(0x600505));
+		if (typeof scene != 'undefined') scene.add(this.group);
+		this.pulse_acc = new Map();
+	}
+
+	// a drop: position and speed in px and px/s
+	drop(pos, vel, ml) {
+		if (this.drops.length >= this.max_drops) this.drops.shift();
+		this.drops.push({x: pos.x, y: pos.y, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, ml});
+	}
+
+	// a spray from a hit: forward (out of the body) wide, back (out of the entrance) narrow
+	hit(point, dir, dmg, amount) {
+		const n = Math.round((14 + 26 * Math.min(dmg, 3)) * amount);
+		const d = dir.clone().normalize(), tmp = new THREE.Vector3();
+		for (let i = 0; i < n; i++) {
+			const fwd = i % 5 != 0, base = fwd ? d : d.clone().negate();
+			tmp.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(fwd ? 1.1 : 0.7).add(base).normalize();
+			const speed = (1.5 + Math.random() * 4.5) * (fwd ? 1 : 0.6) * SCALE;
+			this.drop(point, tmp.clone().multiplyScalar(speed), 0.2 + Math.random() * 0.5);
+		}
+	}
+
+	// a wound: seeps (drops from the skin) or, if it is an artery, a jet that pulses 1.7 times a second
+	wound(w, pos, normal, body_vel, dt, amount) {
+		const share = w.rate0 > 0 ? w.rate / w.rate0 : 0;
+		if (w.rate < 0.15) return;
+		let n;
+		if (w.arterial) {
+			const pulse = Math.pow(Math.max(0, Math.sin(2 * Math.PI * 1.7 * (w.age))), 2);
+			n = 220 * pulse * share * dt * amount;
+		} else n = w.rate * 1.6 * dt * amount;
+		const acc = (this.pulse_acc.get(w) || 0) + n;
+		let k = Math.floor(acc);
+		this.pulse_acc.set(w, acc - k);
+		const dir = new THREE.Vector3();
+		while (k-- > 0) {
+			const spread = w.arterial ? 0.18 : 0.9;
+			dir.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(spread).add(normal).normalize();
+			const speed = (w.arterial ? 3 + Math.random() * 2.5 : 0.1 + Math.random() * 0.6) * share * SCALE + 0.2;
+			this.drop(pos, dir.clone().multiplyScalar(speed).addScaledVector(body_vel, 0.5 * SCALE), w.arterial ? 0.5 : 0.3);
+		}
+	}
+
+	step(dt) {
+		this.time += dt;
+		const g = this.g;
+		for (let i = this.drops.length - 1; i >= 0; i--) {
+			const d = this.drops[i];
+			d.vy -= g * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+			if (d.y <= this.ground + 0.03) { this.land(d); this.drops[i] = this.drops[this.drops.length - 1]; this.drops.pop(); }
+			else if (d.y < this.ground - 200) { this.drops[i] = this.drops[this.drops.length - 1]; this.drops.pop(); }
+		}
+		for (const p of this.pools) p.age += dt;
+	}
+
+	// a drop lands: it makes the nearest pool grow or starts a new one (every landing is a splat: elongated in the direction of flight)
+	land(d) {
+		const area = d.ml * 0.4;
+		let near = null, best = Infinity;
+		for (const p of this.pools) {
+			const dist = Math.hypot(p.x - d.x, p.z - d.z), r = Math.sqrt(p.area / Math.PI);
+			if (dist < r * 0.85 + 0.25 && dist < best) { best = dist; near = p; }
+		}
+		if (near) { near.area = Math.min(near.area + area, 1500); near.age = Math.min(near.age, 20); return; }
+		if (this.pools.length >= this.max_pools) this.pools.shift();
+		const sp = Math.hypot(d.vx, d.vz), rot = sp > 1 ? Math.atan2(d.vx, d.vz) : Math.random() * 6.28;
+		const stretch = 1 + Math.min(sp / (4 * SCALE), 0.8);
+		this.pools.push({x: d.x, z: d.z, area: Math.max(area, 0.12), sx: 1 / Math.sqrt(stretch), sz: Math.sqrt(stretch), rot, age: 0, y: this.ground + 0.03 + this.pools.length * 0.0004});
+	}
+
+	show() {
+		const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+		const dm = this.drop_mesh;
+		dm.count = this.drops.length;
+		this.drops.forEach((d, i) => { pos.set(d.x, d.y, d.z); const r = 0.22 + Math.cbrt(d.ml) * 0.45; sc.set(r, r, r); m.compose(pos, q.identity(), sc); dm.setMatrixAt(i, m); });
+		dm.instanceMatrix.needsUpdate = true;
+		const pm = this.pool_mesh;
+		pm.count = this.pools.length;
+		this.pools.forEach((p, i) => {
+			const r = Math.sqrt(p.area / Math.PI), dry = clamp(p.age / 140, 0, 1);
+			pos.set(p.x, p.y, p.z); q.setFromAxisAngle(up, p.rot); sc.set(r * p.sx, 1, r * p.sz);
+			m.compose(pos, q, sc); pm.setMatrixAt(i, m);
+			c.setRGB(0.5 - 0.3 * dry, 0.02, 0.02); pm.setColorAt(i, c);
+		});
+		pm.instanceMatrix.needsUpdate = true;
+		if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
+	}
+
+	dispose() {
+		if (this.group.parent) this.group.parent.remove(this.group);
+		for (const m of [this.drop_mesh, this.pool_mesh]) { m.geometry.dispose(); m.material.dispose(); if (m.dispose) m.dispose(); }
+	}
+}
+
 // ---------------------------------------------------------------------------
 // The hook into the Physics tab
 // ---------------------------------------------------------------------------
@@ -505,13 +769,21 @@ const physicsHook = {
 		for (const root of roots) {
 			try { list.push(new RagdollRuntime(rt, root)); } catch (err) { console.warn('[Ragdoll]', root.name, err); }
 		}
-		current = {rt, list};
+		let blood = null;
+		if (list.some(r => r.s.blood)) { try { blood = new BloodFX(rt); } catch (err) { console.warn('[Ragdoll] blood', err); } }
+		for (const r of list) r.blood = r.s.blood ? blood : null;
+		current = {rt, list, blood};
 	},
 	step(rt, dt) {
 		if (!current || current.rt !== rt) return;
 		for (const r of current.list) r.step(dt);
+		if (current.blood) current.blood.step(dt);
 	},
-	stop() { current = null; },
+	show() { if (current && current.blood) current.blood.show(); },
+	stop() {
+		if (current && current.blood) { try { current.blood.dispose(); } catch (err) { /* scene is gone */ } }
+		current = null;
+	},
 };
 
 // ---------------------------------------------------------------------------
@@ -721,7 +993,7 @@ function createCharacter(o = {}) {
 	}
 	const bones = bonesOf(root);
 	buildRagdoll(root, o.mass || 70);
-	root.ragdoll = Object.assign(ragdollOf(root), {pin: 'until_limp', limp: 120});
+	root.ragdoll = Object.assign(ragdollOf(root), spec.model == 'npc' ? {npc: true, pin: 'none', limp: 0} : {pin: 'until_limp', limp: 120});
 	bones.forEach(g => { const b = boneOf(g), role = roleOfName(g.name); g.bone = Object.assign(b, {role, rest: g.rotation.slice()}); });
 	Undo.finishEdit('Add character', {outliner: true, elements, groups, selection: true});
 	if (typeof Canvas != 'undefined') { Canvas.updateAllBones(); Canvas.updateAllPositions(); }
@@ -847,6 +1119,10 @@ const TEXTS = {
 		bone: 'Selected bone', joint: 'Joint', j_ball: 'Ball (shoulder, hip, neck)', j_hinge: 'Hinge (elbow, knee)', j_fixed: 'Stiff',
 		swing: 'Swing (°)', twist: 'Twist (±°)', axis: 'Hinge axis', hmin: 'Hinge from (°)', hmax: 'Hinge to (°)', strength: 'Muscle strength', zone: 'Zone',
 		z_auto: 'Automatic', z_head: 'Head', z_torso: 'Torso', z_arms: 'Arms', z_legs: 'Legs', z_any: 'Any',
+		model: 'Model', model_npc: 'Blood NPC (from the Godot project)', model_mannequin: 'Plain mannequin',
+		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
+		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
+		blood: 'Blood', blood_amount: 'Amount ×', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
 		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting, hands on knees', height: 'Height (px)', add_character_btn: 'Add the default character',
 		auto_bones: 'Place bones automatically on the selected model', auto_bones_hint: 'Select the cubes (or the group) of a standing person: they are sorted into head, spine, arms and legs, the joints are put in and the ragdoll is built.',
 		auto_react: 'Every part of the body reacts by itself', react_scale: 'Reaction strength', facing: 'The character looks toward', facing_north: 'North (−Z, the front in Blockbench)', facing_south: 'South (+Z)',
@@ -877,6 +1153,10 @@ const TEXTS = {
 		bone: 'Выбранная кость', joint: 'Сустав', j_ball: 'Шаровой (плечо, бедро, шея)', j_hinge: 'Шарнир (локоть, колено)', j_fixed: 'Жёсткий',
 		swing: 'Отклонение (°)', twist: 'Кручение (±°)', axis: 'Ось шарнира', hmin: 'Шарнир от (°)', hmax: 'Шарнир до (°)', strength: 'Сила мышцы', zone: 'Зона',
 		z_auto: 'Автоматически', z_head: 'Голова', z_torso: 'Торс', z_arms: 'Руки', z_legs: 'Ноги', z_any: 'Любая',
+		model: 'Модель', model_npc: 'NPC из Blood (Godot-проект)', model_mannequin: 'Простой манекен',
+		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
+		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
+		blood: 'Кровь', blood_amount: 'Количество ×', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
 		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит, руки на коленях', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
 		auto_bones: 'Расставить кости автоматически на выбранной модели', auto_bones_hint: 'Выделите кубы (или группу) стоящего человека: они разложатся по голове, позвоночнику, рукам и ногам, суставы встанут на места и регдолл будет создан.',
 		auto_react: 'Каждая часть тела реагирует по-своему', react_scale: 'Сила реакции', facing: 'Персонаж смотрит на', facing_north: 'Север (−Z, перед в Blockbench)', facing_south: 'Юг (+Z)',
@@ -989,7 +1269,7 @@ function updatePanel(force) {
 		vue.sel_name = sel ? sel.name : '';
 		if (root) {
 			const s = ragdollOf(root);
-			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time,
+			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, blood: s.blood, blood_amount: s.blood_amount, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance,
 				bone_list: bonesOf(root).map(g => ({uuid: g.uuid, name: g.name})), poses: s.poses.map(p => ({name: p.name})), items: itemsOf(root).map(n => ({uuid: n.uuid, name: n.name, bone_name: ((bonesOf(root).find(g => g.uuid == n.attach.bone)) || {}).name || '?', drop: n.attach.drop !== false})),
 				root_name: root.name, bone_count: bonesOf(root).length, hits: s.hits.map(h => Object.assign({}, h)), reactions: s.reactions.map(r => Object.assign({name: '', zone: 'any', hold: 0.8, tension: 1}, r, {pose_count: Object.keys(r.pose || {}).length}))});
 			vue.is_bone = !!(sel && sel.bone && sel.bone.joint);
@@ -1010,7 +1290,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_height: 28.6,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, npc: false, blood: false, blood_amount: 1, bleed: 1, head_kills: true, balance: 1,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -1024,7 +1304,8 @@ function panelComponent() {
 				edit([root], 'Change ragdoll', () => {
 					root.ragdoll = Object.assign(ragdollOf(root), {total_mass: clamp(num_(this.total_mass, 70), 1, 5000), tone: clamp(num_(this.tone, 0.6), 0, 1.5), power: clamp(num_(this.power, 1), 0, 4),
 						flinch: clamp(num_(this.flinch, 0.7), 0, 1), radius: clamp(num_(this.radius, 32), 0, 400), pin: this.pin, limp: Math.max(0, num_(this.limp, 0)), limp_time: Math.max(0, num_(this.limp_time, 0)), shot: clamp(num_(this.shot, 40), 1, 2000), auto_react: !!this.auto_react, react_scale: clamp(num_(this.react_scale, 1), 0, 3), facing: this.facing,
-						shot_part: this.shot_part, shot_yaw: clamp(num_(this.shot_yaw, 0), -360, 360), shot_pitch: clamp(num_(this.shot_pitch, 8), -85, 85), shot_time: Math.max(0, num_(this.shot_time, 0.5))});
+						shot_part: this.shot_part, shot_yaw: clamp(num_(this.shot_yaw, 0), -360, 360), shot_pitch: clamp(num_(this.shot_pitch, 8), -85, 85), shot_time: Math.max(0, num_(this.shot_time, 0.5)),
+						npc: !!this.npc, blood: !!this.blood, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2)});
 				});
 				updatePanel(true);
 			},
@@ -1062,7 +1343,7 @@ function panelComponent() {
 				attachItem(root, this.item_bone || (this.bone_list[0] && this.bone_list[0].uuid), this.item_drop, num_(this.item_mass, 1));
 			},
 			detach(uuid) { detachItem(uuid); },
-			addCharacter() { addCharacter(this.new_pose, num_(this.new_height, 28.6)); },
+			addCharacter() { addCharacter(this.new_pose, num_(this.new_height, 28.6), this.new_model); },
 			autoBones() { autoBonesFromSelection(); },
 			setYaw(v) { this.shot_yaw = v; this.saveRoot(); },
 			fire() { fireShot(false); },
@@ -1096,6 +1377,9 @@ function panelComponent() {
 
 				<details class="rd_box" :open="!has_root">
 					<summary>{{ t('add_character') }}</summary>
+					<label class="rd_row">{{ t('model') }}
+						<select v-model="new_model"><option value="npc">{{ t('model_npc') }}</option><option value="mannequin">{{ t('model_mannequin') }}</option></select>
+					</label>
 					<label class="rd_row">{{ t('pose') }}
 						<select v-model="new_pose"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option></select>
 					</label>
@@ -1135,6 +1419,21 @@ function panelComponent() {
 						</label>
 						<button class="rd_full" @click="setRest()">{{ t('set_rest') }}</button>
 						<button class="rd_full" @click="remove()">{{ t('remove') }}</button>
+					</details>
+
+					<details class="rd_box" open>
+						<summary>{{ t('living') }}</summary>
+						<label class="rd_row" :title="t('npc_tip')">{{ t('npc') }}<input type="checkbox" v-model="npc" @change="saveRoot()"></label>
+						<template v-if="npc">
+							<label class="rd_row">{{ t('head_kills') }}<input type="checkbox" v-model="head_kills" @change="saveRoot()"></label>
+							<div class="rd_grid">
+								${num('balance', 'balance', 0, 2, 0.05, 2, 'balance_tip', 'saveRoot()')}
+								${num('bleed', 'bleed', 0, 20, 0.1, 1, 'bleed_tip', 'saveRoot()')}
+							</div>
+						</template>
+						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="blood" @change="saveRoot()"></label>
+						<div class="rd_grid" v-if="blood">${num('blood_amount', 'blood_amount', 0, 5, 0.1, 1, null, 'saveRoot()')}</div>
+						<div class="rd_dim" v-if="blood">{{ t('blood_note') }}</div>
 					</details>
 
 					<details class="rd_box" v-if="is_bone" open>
@@ -1708,9 +2007,9 @@ function syncArrow() {
 	shot_arrow.setLength(length, 3, 2);
 }
 
-function addCharacter(pose, height) {
+function addCharacter(pose, height, model) {
 	if (!Project) return;
-	const res = createCharacter({pose, height});
+	const res = createCharacter({pose, height, model});
 	Blockbench.showQuickMessage(tr('msg_char'), 1800);
 	updatePanel(true);
 	return res;
@@ -1743,7 +2042,7 @@ function addHitFromView() {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -1751,7 +2050,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.3.0',
+	version: '0.4.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
