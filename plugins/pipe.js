@@ -343,7 +343,18 @@ const position2 = (M, v) => new THREE.Vector3(...v).applyMatrix4(M);
 // The window
 // ---------------------------------------------------------------------------
 
-let action = null, add_action = null, clear_action = null, open_dialog = null, session = null;
+let action = null, add_action = null, clear_action = null, open_dialog = null, session = null, style_node = null;
+
+const STYLE = `
+	.pipe_dialog { padding: 2px 0 4px; }
+	.pipe_dialog .pipe_row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 7px 0; cursor: pointer; }
+	.pipe_dialog .pipe_row select, .pipe_dialog .pipe_row input[type=number] { width: 52%; box-sizing: border-box; background: var(--color-back); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 3px; padding: 3px 6px; }
+	.pipe_dialog .pipe_slider { display: flex; align-items: center; gap: 10px; width: 52%; }
+	.pipe_dialog .pipe_slider input[type=range] { flex: 1; min-width: 0; width: 100%; }
+	.pipe_dialog .pipe_value { width: 34px; text-align: right; opacity: 0.8; }
+	.pipe_dialog .pipe_buttons { display: flex; gap: 8px; margin-top: 12px; }
+	.pipe_dialog .pipe_buttons button { flex: 1; padding: 6px 8px; }
+`;
 
 const centerOf = element => new THREE.Box3().setFromObject(element.mesh).getCenter(new THREE.Vector3());
 
@@ -414,24 +425,45 @@ function openConnect() {
 		open_dialog = null; session = null;
 	}
 
-	const form = {
-		path: {label: tr('path'), type: 'select', options: {curve: tr('path_curve'), straight: tr('path_straight'), elbow: tr('path_elbow')}, value: 'curve'},
-		smoothing: {label: tr('smoothing'), type: 'range', value: 0.5, min: 0, max: 1, step: 0.05},
-		segments: {label: tr('segments'), type: 'number', value: 16, min: 2, max: 128, step: 1},
-		sides: {label: tr('sides'), type: 'number', value: sidesGuess, min: 3, max: 96, step: 1},
-		avoid: {label: tr('avoid'), type: 'checkbox', value: false},
-		shading: {label: tr('shading'), type: 'checkbox', value: true},
-		remove_faces: {label: tr('remove_faces'), type: 'checkbox', value: true},
-		flip_a: {label: tr('flip_a'), type: 'checkbox', value: false},
-		flip_b: {label: tr('flip_b'), type: 'checkbox', value: false},
-		twist: {label: tr('twist'), type: 'number', value: 0, step: 1},
-		waypoints_info: {type: 'info', text: tr('waypoint_hint')},
-		waypoint_buttons: {type: 'buttons', buttons: [tr('add_waypoint'), tr('clear_waypoints')], click(index) { if (index == 0) addMarker(); else clearMarkers(); }},
-	};
+	// the window is our own small component: a form row of Blockbench would show the smoothing without a slider track
+	const state = {path: 'curve', smoothing: 0.5, segments: 16, sides: sidesGuess, avoid: false, shading: true, remove_faces: true, flip_a: false, flip_b: false};
+	const getValues = () => Object.assign({twist: 0}, dialog && dialog.content_vue ? dialog.content_vue.f : state);
 	const options = {
-		id: 'pipe_connect_dialog', title: tr('title'), width: 460, darken: false, form,
-		onFormChange(values) { rebuild(values); },
-		onConfirm(values) {
+		id: 'pipe_connect_dialog', title: tr('title'), width: 460, darken: false,
+		component: {
+			data() { return {f: Object.assign({}, state)}; },
+			methods: {
+				t(key) { return tr(key); },
+				add() { addMarker(); },
+				clear() { clearMarkers(); },
+			},
+			template: `
+				<div class="pipe_dialog">
+					<label class="pipe_row">{{ t('path') }}
+						<select v-model="f.path">
+							<option value="curve">{{ t('path_curve') }}</option>
+							<option value="straight">{{ t('path_straight') }}</option>
+							<option value="elbow">{{ t('path_elbow') }}</option>
+						</select>
+					</label>
+					<label class="pipe_row" :title="t('smoothing_tip')">{{ t('smoothing') }}
+						<span class="pipe_slider"><input type="range" min="0" max="1" step="0.05" v-model.number="f.smoothing"><span class="pipe_value">{{ f.smoothing }}</span></span>
+					</label>
+					<label class="pipe_row">{{ t('segments') }} <input type="number" min="2" max="128" step="1" v-model.number="f.segments"></label>
+					<label class="pipe_row">{{ t('sides') }} <input type="number" min="3" max="96" step="1" v-model.number="f.sides"></label>
+					<label class="pipe_row">{{ t('avoid') }} <input type="checkbox" v-model="f.avoid"></label>
+					<label class="pipe_row">{{ t('shading') }} <input type="checkbox" v-model="f.shading"></label>
+					<label class="pipe_row">{{ t('remove_faces') }} <input type="checkbox" v-model="f.remove_faces"></label>
+					<label class="pipe_row">{{ t('flip_a') }} <input type="checkbox" v-model="f.flip_a"></label>
+					<label class="pipe_row">{{ t('flip_b') }} <input type="checkbox" v-model="f.flip_b"></label>
+					<div class="pipe_buttons">
+						<button @click="add()">{{ t('add_waypoint') }}</button>
+						<button @click="clear()">{{ t('clear_waypoints') }}</button>
+					</div>
+				</div>`,
+		},
+		onConfirm() {
+			const values = getValues();
 			rebuild(values);
 			const result = current;
 			cleanup();
@@ -451,23 +483,16 @@ function openConnect() {
 			if (typeof updateSelection == 'function') updateSelection();
 		},
 	};
-	let dialog;
-	try {
-		dialog = new Dialog(options);
-	} catch (err) {
-		// this Blockbench has no button rows in forms: the same window without them (waypoints through the Edit menu / selecting objects)
-		delete form.waypoint_buttons;
-		dialog = new Dialog(options);
-	}
+	const dialog = new Dialog(options);
 	open_dialog = dialog;
 	session = {poll: null, addMarker, clearMarkers};
 	dialog.show();
-	rebuild(dialog.getFormResult());
+	rebuild(getValues());
 	session.poll = setInterval(() => {
 		if (!open_dialog) return;
-		const values = dialog.getFormResult(), sig = signature(values);
+		const values = getValues(), sig = signature(values);
 		if (sig != last_signature) { last_signature = sig; rebuild(values); }
-	}, 150);
+	}, 120);
 }
 
 // the mesh of the pipe: rings of points joined by quads
@@ -506,6 +531,7 @@ Plugin.register('pipe', {
 	min_version: '4.8.0',
 	tags: ['Modeling'],
 	onload() {
+		style_node = Blockbench.addCSS(STYLE);
 		action = new Action('pipe_connect', {
 			name: tr('connect'),
 			description: tr('connect_desc'),
@@ -533,6 +559,7 @@ Plugin.register('pipe', {
 		try { MenuBar.removeAction('edit.pipe_add_waypoint'); MenuBar.removeAction('edit.pipe_clear_waypoints'); } catch (err) { /* not there */ }
 		[action, add_action, clear_action].forEach(a => a && a.delete());
 		action = add_action = clear_action = null;
+		if (style_node) style_node.delete();
 	},
 });
 
