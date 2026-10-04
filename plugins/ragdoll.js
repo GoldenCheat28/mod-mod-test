@@ -828,6 +828,7 @@ const NumberField = {
 };
 
 let mode = null, panel = null, properties = [], style_node = null;
+const tool_patches = [];
 let shoot_mode = false;
 const api = () => (typeof window != 'undefined' && window.PhysicsPlugin) || null;
 const simNow = () => { const a = api(); return a && a.sim ? a.sim() : null; };
@@ -1334,7 +1335,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.2.0',
+	version: '0.2.1',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -1363,12 +1364,20 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		});
 		const outliner = Interface.Panels.outliner;
 		if (outliner && outliner.condition && outliner.condition.modes instanceof Array && !outliner.condition.modes.includes('ragdoll')) outliner.condition.modes.push('ragdoll');
-		// moving and rotating bones in the ragdoll tab (to pose a reaction)
+		// moving and rotating bones in the ragdoll tab (to pose a reaction): the same way the Physics tab allows its tools
 		for (const tool of [BarItems.move_tool, BarItems.rotate_tool]) {
-			if (!tool) continue;
-			const c = tool.condition;
-			tool.__ragdoll_condition = c;
-			tool.condition = (...args) => (Modes.ragdoll && Project && Format && Format.id != 'image') || c(...args);
+			try {
+				if (!tool) continue;
+				const c = tool.condition;
+				if (c && typeof c == 'object' && c.modes instanceof Array) {
+					if (c.modes.includes('ragdoll')) continue;
+					c.modes.push('ragdoll');
+					tool_patches.push(() => c.modes.remove('ragdoll'));
+				} else if (typeof c == 'function') {
+					tool.condition = (...args) => (Modes.ragdoll && Project && Format && Format.id != 'image') || c(...args);
+					tool_patches.push(() => { tool.condition = c; });
+				}
+			} catch (err) { console.warn('[Ragdoll] tool', err); }
 		}
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook).concat([physicsHook]);
 		document.addEventListener('pointerdown', onClick, true);
@@ -1381,7 +1390,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		removeArrow();
 		document.removeEventListener('pointerdown', onClick, true);
 		globalThis.__physicsHooks = (globalThis.__physicsHooks || []).filter(h => h !== physicsHook);
-		for (const tool of [BarItems.move_tool, BarItems.rotate_tool]) if (tool && tool.__ragdoll_condition !== undefined) { tool.condition = tool.__ragdoll_condition; delete tool.__ragdoll_condition; }
+		tool_patches.splice(0).forEach(undo => { try { undo(); } catch (err) { /* already gone */ } });
 		Blockbench.removeListener('update_selection', onSelection);
 		Blockbench.removeListener('select_project', onSelection);
 		if (Modes.ragdoll) Modes.options.edit.select();
