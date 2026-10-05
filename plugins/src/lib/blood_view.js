@@ -36,6 +36,24 @@ float bnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 
 	return mix(mix(bh(i), bh(i + vec2(1.0, 0.0)), f.x), mix(bh(i + vec2(0.0, 1.0)), bh(i + vec2(1.0, 1.0)), f.x), f.y); }
 `;
 
+// blood lies on a surface and takes the light that surface gets: the Render view's sky visibility (how much of the sky a
+// point sees: indoors little of the ambient and environment light reaches it) is read from the surface's own geometry
+const BV_SKY_V = ['#include <common>', '#include <common>\nattribute float skyocc;\nvarying float vBSky;'];
+const BV_SKY_V2 = ['#include <begin_vertex>', '#include <begin_vertex>\nvBSky = 1.0 - skyocc;'];
+const BV_SKY_F = ['#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+	{
+		float bsv = clamp(vBSky, 0.0, 1.0);
+		irradiance *= bsv;
+		iblIrradiance *= bsv;
+		#if defined( RE_IndirectSpecular )
+			radiance *= mix(0.12, 1.0, bsv);
+		#endif
+	}`];
+const bvSky = shader => {
+	shader.vertexShader = shader.vertexShader.replace(...BV_SKY_V).replace(...BV_SKY_V2);
+	shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vBSky;').replace(...BV_SKY_F);
+};
+
 // blood.gdshaderinc: blood_sample + blood_apply, for a surface at wpos (metres) with world normal wnrm.
 // In: the view-space position and geometric normal. Out: coverage, albedo, roughness, the view-space normal.
 const BV_SURFACE = `
@@ -277,6 +295,7 @@ class BloodView {
 						roughnessFactor = b_rough;
 						normal = b_n;
 					}`);
+			bvSky(shader);
 		};
 		m.customProgramCacheKey = () => 'ragdoll_blood_surface';
 		return m;
@@ -856,6 +875,7 @@ class BloodView {
 					}`)
 				// added on top of the stained cloth: its share of the light, weighted by how much of it there is
 				.replace('#include <output_fragment>', 'gl_FragColor = vec4(outgoingLight * diffuseColor.a, 1.0);');
+			bvSky(shader);
 		};
 		m.customProgramCacheKey = () => 'ragdoll_body_blood';
 		m.userData.u = u;
@@ -892,6 +912,7 @@ class BloodView {
 						const m = new THREE.Mesh(el.mesh.geometry, this.bodyMaterial(o.bot, rest, pass));
 						m.renderOrder = 4 + pass;
 						m.frustumCulled = false;
+						m.receiveShadow = pass == 1;   // (lit like him: in his shadow and in the shadows on him)
 						el.mesh.add(m);
 						return m;
 					});

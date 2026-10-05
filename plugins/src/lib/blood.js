@@ -1103,7 +1103,9 @@ class BodyBlood {
 		this.dirty = false;
 		this.version = 0;
 		this.blooms = [];   // stains still soaking outwards from a fresh wound
-		this.clock = 0;
+		// (the blood's clock: made at the first wound, it starts at the time of that wound - a recorded stain is put on at
+		// the time it was made, not at the start of the animation)
+		this.clock = bot.blood && isFinite(bot.blood._time) ? bot.blood._time : 0;
 	}
 
 	// where a point of `part` (world) is in the rest pose

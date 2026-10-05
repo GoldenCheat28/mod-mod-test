@@ -223,7 +223,7 @@ class Humanoid {
 			}
 		}
 		const n = this.parts.length;
-		const filter = new J.GroupFilterTable(n + this.items.length);
+		const filter = new J.GroupFilterTable(n + this.items.length + GORE_SLOTS);
 		const off = (a, b) => filter.DisableCollision(this.part_index[a], this.part_index[b]);
 		for (const p of this.parts) if (p.parent >= 0) filter.DisableCollision(this.parts.indexOf(p), p.parent);
 		for (const side of ['r', 'l']) {
@@ -232,6 +232,13 @@ class Humanoid {
 			off('shin_' + side, 'pelvis');
 		}
 		const group_id = Math.floor(Math.random() * 1e6) + 1;
+		// (room for the pieces of a broken head: they do not catch on what is left of it, nor on each other)
+		this.group_id = group_id;
+		this.gore_base = n + this.items.length;
+		for (let a = 0; a < GORE_SLOTS; a++) {
+			filter.DisableCollision(this.gore_base + a, this.part_index.head);
+			for (let b = a + 1; b < GORE_SLOTS; b++) filter.DisableCollision(this.gore_base + a, this.gore_base + b);
+		}
 		this.parts.forEach((p, i) => {
 			const cg = p.body.GetCollisionGroup();
 			cg.SetGroupFilter(filter); cg.SetGroupID(group_id); cg.SetSubGroupID(i);
@@ -465,6 +472,7 @@ class Humanoid {
 		while (this.next_hit < this.hits.length && this.hits[this.next_hit].t <= this.time + 1e-9) this.applyHit(this.hits[this.next_hit++]);
 		this._time += dt;
 		this._update_health(dt);
+		if (this.gore) this.gore.step(dt);
 		this._update_state(dt);
 		this._follow_route(dt);
 		this._compose_pose(dt);
@@ -1218,6 +1226,10 @@ class Humanoid {
 				wound_kind = 'head';
 				this._head_wound = local.clone();
 				this._die('headshot');
+				// Extra head: a shot hard enough breaks the head open
+				if (this.s.extra_head && !this.gore && impulse >= (+this.s.extra_head_min || 6)) {
+					try { this.gore = new HeadGore(this, point, dir, impulse); this.log.push({t: this.time, gore: this.gore.params.mode}); } catch (err) { console.warn('[Ragdoll] extra head', err); }
+				}
 				if (this.blood) {
 					// the smashed skull: torn vessels of the scalp and brain pour out of the exit hole with every beat the heart has left
 					const hd = dir.clone().normalize();

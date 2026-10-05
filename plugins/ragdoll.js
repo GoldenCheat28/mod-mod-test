@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, spasm_torso: 0.5, spasm_legs: 0.5, chaos: 0.3, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, spasm_torso: 0.5, spasm_legs: 0.5, chaos: 0.3, extra_head: false, extra_head_min: 6, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -979,7 +979,7 @@ class Humanoid {
 			}
 		}
 		const n = this.parts.length;
-		const filter = new J.GroupFilterTable(n + this.items.length);
+		const filter = new J.GroupFilterTable(n + this.items.length + GORE_SLOTS);
 		const off = (a, b) => filter.DisableCollision(this.part_index[a], this.part_index[b]);
 		for (const p of this.parts) if (p.parent >= 0) filter.DisableCollision(this.parts.indexOf(p), p.parent);
 		for (const side of ['r', 'l']) {
@@ -988,6 +988,13 @@ class Humanoid {
 			off('shin_' + side, 'pelvis');
 		}
 		const group_id = Math.floor(Math.random() * 1e6) + 1;
+		// (room for the pieces of a broken head: they do not catch on what is left of it, nor on each other)
+		this.group_id = group_id;
+		this.gore_base = n + this.items.length;
+		for (let a = 0; a < GORE_SLOTS; a++) {
+			filter.DisableCollision(this.gore_base + a, this.part_index.head);
+			for (let b = a + 1; b < GORE_SLOTS; b++) filter.DisableCollision(this.gore_base + a, this.gore_base + b);
+		}
 		this.parts.forEach((p, i) => {
 			const cg = p.body.GetCollisionGroup();
 			cg.SetGroupFilter(filter); cg.SetGroupID(group_id); cg.SetSubGroupID(i);
@@ -1221,6 +1228,7 @@ class Humanoid {
 		while (this.next_hit < this.hits.length && this.hits[this.next_hit].t <= this.time + 1e-9) this.applyHit(this.hits[this.next_hit++]);
 		this._time += dt;
 		this._update_health(dt);
+		if (this.gore) this.gore.step(dt);
 		this._update_state(dt);
 		this._follow_route(dt);
 		this._compose_pose(dt);
@@ -1974,6 +1982,10 @@ class Humanoid {
 				wound_kind = 'head';
 				this._head_wound = local.clone();
 				this._die('headshot');
+				// Extra head: a shot hard enough breaks the head open
+				if (this.s.extra_head && !this.gore && impulse >= (+this.s.extra_head_min || 6)) {
+					try { this.gore = new HeadGore(this, point, dir, impulse); this.log.push({t: this.time, gore: this.gore.params.mode}); } catch (err) { console.warn('[Ragdoll] extra head', err); }
+				}
 				if (this.blood) {
 					// the smashed skull: torn vessels of the scalp and brain pour out of the exit hole with every beat the heart has left
 					const hd = dir.clone().normalize();
@@ -3871,7 +3883,9 @@ class BodyBlood {
 		this.dirty = false;
 		this.version = 0;
 		this.blooms = [];   // stains still soaking outwards from a fresh wound
-		this.clock = 0;
+		// (the blood's clock: made at the first wound, it starts at the time of that wound - a recorded stain is put on at
+		// the time it was made, not at the start of the animation)
+		this.clock = bot.blood && isFinite(bot.blood._time) ? bot.blood._time : 0;
 	}
 
 	// where a point of `part` (world) is in the rest pose
@@ -4266,6 +4280,24 @@ float bnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 
 	return mix(mix(bh(i), bh(i + vec2(1.0, 0.0)), f.x), mix(bh(i + vec2(0.0, 1.0)), bh(i + vec2(1.0, 1.0)), f.x), f.y); }
 `;
 
+// blood lies on a surface and takes the light that surface gets: the Render view's sky visibility (how much of the sky a
+// point sees: indoors little of the ambient and environment light reaches it) is read from the surface's own geometry
+const BV_SKY_V = ['#include <common>', '#include <common>\nattribute float skyocc;\nvarying float vBSky;'];
+const BV_SKY_V2 = ['#include <begin_vertex>', '#include <begin_vertex>\nvBSky = 1.0 - skyocc;'];
+const BV_SKY_F = ['#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+	{
+		float bsv = clamp(vBSky, 0.0, 1.0);
+		irradiance *= bsv;
+		iblIrradiance *= bsv;
+		#if defined( RE_IndirectSpecular )
+			radiance *= mix(0.12, 1.0, bsv);
+		#endif
+	}`];
+const bvSky = shader => {
+	shader.vertexShader = shader.vertexShader.replace(...BV_SKY_V).replace(...BV_SKY_V2);
+	shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vBSky;').replace(...BV_SKY_F);
+};
+
 // blood.gdshaderinc: blood_sample + blood_apply, for a surface at wpos (metres) with world normal wnrm.
 // In: the view-space position and geometric normal. Out: coverage, albedo, roughness, the view-space normal.
 const BV_SURFACE = `
@@ -4507,6 +4539,7 @@ class BloodView {
 						roughnessFactor = b_rough;
 						normal = b_n;
 					}`);
+			bvSky(shader);
 		};
 		m.customProgramCacheKey = () => 'ragdoll_blood_surface';
 		return m;
@@ -5086,6 +5119,7 @@ class BloodView {
 					}`)
 				// added on top of the stained cloth: its share of the light, weighted by how much of it there is
 				.replace('#include <output_fragment>', 'gl_FragColor = vec4(outgoingLight * diffuseColor.a, 1.0);');
+			bvSky(shader);
 		};
 		m.customProgramCacheKey = () => 'ragdoll_body_blood';
 		m.userData.u = u;
@@ -5122,6 +5156,7 @@ class BloodView {
 						const m = new THREE.Mesh(el.mesh.geometry, this.bodyMaterial(o.bot, rest, pass));
 						m.renderOrder = 4 + pass;
 						m.frustumCulled = false;
+						m.receiveShadow = pass == 1;   // (lit like him: in his shadow and in the shadows on him)
 						el.mesh.add(m);
 						return m;
 					});
@@ -5379,6 +5414,358 @@ function updateBloodPlayback() {
 	} catch (err) { console.warn('[Ragdoll] blood playback', err); stopBloodPlayback(); }
 }
 
+// ---------------------------------------------------------------------------
+// Extra head: a hard shot to the head breaks it open. The head's own meshes are cut along planes into pieces; a piece is
+// a body of its own (it falls, swings, lands), and one still hanging on by skin and flesh is held to the rest of the head
+// at a point: its vertices follow the piece more the farther they are from that point (a weight map), so near it the
+// flesh stretches instead of breaking off clean. The inside of the head shows through the cut as wet flesh.
+//   face  - the face is torn off and hangs from the chin
+//   split - the head comes apart in two halves that peel away to the sides and hang
+//   burst - the top of the skull is blown off in pieces, the face hangs from the jaw
+// While baking, where each piece is is written down at every frame; the Animate tab draws it again at the timeline's time.
+// ---------------------------------------------------------------------------
+
+const GORE_SLOTS = 8;   // collision sub groups kept free for the pieces of a head
+const gore_bakes = new Map();   // animation uuid -> [recording of a head]
+
+// the meshes of the head: its own elements (not a held thing, not another bone)
+function goreElements(group) {
+	return (group.children || []).filter(el => (el instanceof Mesh || el instanceof Cube) && el.mesh && el.mesh.geometry && el.mesh.geometry.attributes.position);
+}
+
+// which piece a point of the head (the head group's own space, pixels) belongs to: 0 = what stays on the neck
+function goreRegion(params, p) {
+	const side = params.planes.map(pl => (pl.n[0] * p.x + pl.n[1] * p.y + pl.n[2] * p.z - pl.d) >= 0 ? 1 : -1);
+	for (let k = 0; k < params.regions.length; k++) if (params.regions[k].every(([i, s]) => side[i] == s)) return k + 1;
+	return 0;
+}
+
+// cuts the head's meshes along the planes. For every element: a geometry of its own with every triangle wholly in one
+// piece (the ones across a cut are split there), the piece of each vertex and its weight (how much it follows the piece)
+function goreCut(els, params) {
+	const out = [];
+	for (const el of els) {
+		el.mesh.updateMatrix();
+		const M = el.mesh.matrix.clone();
+		const src0 = el.mesh.geometry, src = src0.index ? src0.toNonIndexed() : src0;
+		const names = Object.keys(src.attributes).filter(n => src.attributes[n].itemSize && !src.attributes[n].isInterleavedBufferAttribute);
+		const sizes = names.map(n => src.attributes[n].itemSize), stride = sizes.reduce((a, b) => a + b, 0);
+		const pi = names.indexOf('position');
+		const vert = i => { const v = new Float32Array(stride); let o = 0; names.forEach((n, k) => { const a = src.attributes[n]; for (let c = 0; c < sizes[k]; c++) v[o + c] = a.array[i * sizes[k] + c]; o += sizes[k]; }); return v; };
+		let po = 0; for (let k = 0; k < pi; k++) po += sizes[k];
+		const gpos = v => new THREE.Vector3(v[po], v[po + 1], v[po + 2]).applyMatrix4(M);
+		const dist = (v, pl) => { const p = gpos(v); return pl.n[0] * p.x + pl.n[1] * p.y + pl.n[2] * p.z - pl.d; };
+		const lerpV = (a, b, t) => { const v = new Float32Array(stride); for (let c = 0; c < stride; c++) v[c] = a[c] + (b[c] - a[c]) * t; return v; };
+		// a polygon cut by a plane into its two sides
+		const clip = (poly, pl) => {
+			const front = [], back = [];
+			for (let i = 0; i < poly.length; i++) {
+				const a = poly[i], b = poly[(i + 1) % poly.length], da = dist(a, pl), db = dist(b, pl);
+				if (da >= 0) front.push(a); else back.push(a);
+				if ((da >= 0) != (db >= 0)) { const x = lerpV(a, b, da / (da - db)); front.push(x); back.push(x); }
+			}
+			return [front, back].filter(p => p.length >= 3);
+		};
+		const groups = src.groups && src.groups.length ? src.groups : [{start: 0, count: src.attributes.position.count, materialIndex: 0}];
+		const tris = [], new_groups = [];
+		for (const g of groups) {
+			const start = tris.length;
+			for (let t = g.start; t + 2 < g.start + g.count; t += 3) {
+				let polys = [[vert(t), vert(t + 1), vert(t + 2)]];
+				for (const pl of params.planes) polys = polys.flatMap(p => clip(p, pl));
+				for (const p of polys) {
+					const c = p.reduce((s, v) => s.add(gpos(v)), new THREE.Vector3()).divideScalar(p.length);
+					const region = goreRegion(params, c);
+					for (let i = 1; i + 1 < p.length; i++) tris.push({v: [p[0], p[i], p[i + 1]], region});
+				}
+			}
+			new_groups.push({start: start * 3, count: (tris.length - start) * 3, materialIndex: g.materialIndex});
+		}
+		const n = tris.length * 3, geo = new THREE.BufferGeometry();
+		const arrays = names.map((name, k) => new Float32Array(n * sizes[k]));
+		const region = new Uint8Array(n), weight = new Float32Array(n), base = new Float32Array(n * 3);
+		let vi = 0;
+		for (const tri of tris) for (const v of tri.v) {
+			let o = 0;
+			names.forEach((name, k) => { for (let c = 0; c < sizes[k]; c++) arrays[k][vi * sizes[k] + c] = v[o + c]; o += sizes[k]; });
+			const p = gpos(v);
+			base.set([p.x, p.y, p.z], vi * 3);
+			region[vi] = tri.region;
+			const h = tri.region ? params.hinges[tri.region - 1] : null;
+			// (the weight map: by the skin, at the point it hangs from, it stays with the head; farther out it is the piece's)
+			weight[vi] = !tri.region ? 0 : !h ? 1 : gsmooth(params.R * 0.12, params.R * 0.85, p.distanceTo(new THREE.Vector3(...h)));
+			vi++;
+		}
+		names.forEach((name, k) => geo.setAttribute(name, new THREE.BufferAttribute(arrays[k], sizes[k])));
+		new_groups.forEach(g => geo.addGroup(g.start, g.count, g.materialIndex));
+		geo.computeBoundingSphere();
+		if (src !== src0) src.dispose();
+		const nrm = geo.attributes.normal;
+		out.push({el, M, Minv: M.clone().invert(), geo, region, weight, base, base_n: nrm ? new Float32Array(nrm.array) : null, orig: null, inner: null});
+	}
+	return out;
+}
+
+// the flesh inside, seen through the cut (the back faces of the head's own surfaces)
+let gore_flesh_mat = null;
+function goreFleshMaterial() {
+	if (gore_flesh_mat) return gore_flesh_mat;
+	gore_flesh_mat = new THREE.MeshStandardMaterial({color: 0x4a0606, roughness: 0.32, metalness: 0, side: THREE.BackSide, envMapIntensity: 0.6});
+	gore_flesh_mat.onBeforeCompile = shader => {
+		shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+			{
+				vec3 q = floor(vViewPosition * 3.0);
+				float h = fract(sin(dot(q, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+				diffuseColor.rgb *= 0.7 + 0.5 * h;
+			}`);
+	};
+	gore_flesh_mat.customProgramCacheKey = () => 'ragdoll_gore_flesh';
+	return gore_flesh_mat;
+}
+
+// puts the cut meshes in place of the head's own; `Q(k)` is where piece k is moved to (the head group's space), or null
+function goreApply(cut, Q) {
+	const mats = [null], rots = [null];
+	for (const c of cut) {
+		const el = c.el;
+		if (!el.mesh) continue;
+		// (Blockbench may have rebuilt the element's mesh: the cut goes back on)
+		if (el.mesh.geometry !== c.geo) {
+			c.orig = el.mesh.geometry;
+			el.mesh.geometry = c.geo;
+			if (c.orig && c.orig.attributes.skyocc && !c.geo.attributes.skyocc) c.geo.setAttribute('skyocc', new THREE.Float32BufferAttribute(new Float32Array(c.geo.attributes.position.count), 1));
+		}
+		// (what is drawn over the head's own surfaces - the blood on him - goes with the cut too)
+		for (const ch of el.mesh.children) if (ch !== c.inner && ch.geometry && c.orig && ch.geometry === c.orig) { ch.geometry = c.geo; (c.over || (c.over = [])).push(ch); }
+		if (!c.inner || c.inner.parent !== el.mesh) {
+			c.inner = new THREE.Mesh(c.geo, goreFleshMaterial());
+			c.inner.renderOrder = 1;
+			el.mesh.add(c.inner);
+		}
+		const pos = c.geo.attributes.position, nrm = c.geo.attributes.normal, p = new THREE.Vector3(), q = new THREE.Vector3(), nv = new THREE.Vector3();
+		for (let i = 0; i < c.region.length; i++) {
+			const k = c.region[i];
+			p.fromArray(c.base, i * 3);
+			let w = 0;
+			if (k) {
+				if (mats[k] === undefined) { mats[k] = Q(k); rots[k] = mats[k] ? new THREE.Matrix3().setFromMatrix4(mats[k]) : null; }
+				if (mats[k]) { w = c.weight[i]; q.copy(p).applyMatrix4(mats[k]); p.lerp(q, w); }
+			}
+			p.applyMatrix4(c.Minv);
+			pos.setXYZ(i, p.x, p.y, p.z);
+			if (nrm && c.base_n) {
+				nv.fromArray(c.base_n, i * 3);
+				if (k && rots[k] && w > 0) { q.copy(nv).applyMatrix3(new THREE.Matrix3().setFromMatrix4(c.M)).applyMatrix3(rots[k]).applyMatrix3(new THREE.Matrix3().setFromMatrix4(c.Minv)); nv.lerp(q, w).normalize(); }
+				nrm.setXYZ(i, nv.x, nv.y, nv.z);
+			}
+		}
+		pos.needsUpdate = true;
+		if (nrm) nrm.needsUpdate = true;
+		c.geo.computeBoundingSphere();
+	}
+}
+
+function goreRestore(cut) {
+	for (const c of cut) {
+		const el = c.el;
+		if (c.inner && c.inner.parent) c.inner.parent.remove(c.inner);
+		for (const ch of c.over || []) if (ch.geometry === c.geo && c.orig) ch.geometry = c.orig;
+		if (el.mesh && el.mesh.geometry === c.geo && c.orig) el.mesh.geometry = c.orig;
+		c.geo.dispose();
+	}
+}
+
+// how a head breaks: the planes, the pieces and where each one hangs from, in the head group's space (pixels)
+function goreParams(bot, point, dir, impulse) {
+	const g = bot.head.group;
+	g.mesh.updateMatrixWorld(true);
+	const inv = g.mesh.matrixWorld.clone().invert(), rot = new THREE.Matrix3().setFromMatrix4(inv);
+	const els = goreElements(g);
+	const box = new THREE.Box3();
+	for (const el of els) { el.mesh.updateMatrix(); el.mesh.geometry.computeBoundingBox(); box.union(el.mesh.geometry.boundingBox.clone().applyMatrix4(el.mesh.matrix)); }
+	const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()), R = Math.max(size.x, size.y, size.z) * 0.5;
+	// the head's own axes: up, and the way the face looks (its rest pose: the character faces north, -Z, or south)
+	const u = new THREE.Vector3(0, 1, 0), f = new THREE.Vector3(0, 0, bot.s.facing == 'south' ? 1 : -1);
+	const sd = dir.clone().applyMatrix3(rot).normalize();
+	let side = sd.clone().cross(u);
+	if (side.length() < 0.3) side = f.clone().cross(u);
+	side.normalize();
+	const plane = (n, at) => ({n: n.toArray(), d: n.dot(at)});
+	const P = v => c.clone().add(v);
+	const k = impulse / Math.max(bot.s.extra_head_min || 6, 0.1), r = Math.random();
+	let mode = k >= 1.6 ? (r < 0.5 ? 'burst' : r < 0.75 ? 'split' : 'face') : (r < 0.55 ? 'face' : 'split');
+	if (globalThis.__GORE_MODE) mode = globalThis.__GORE_MODE;   // (tests)
+	const jit = () => (Math.random() - 0.5) * 0.2 * R;
+	const params = {mode, R, planes: [], regions: [], hinges: []};
+	if (mode == 'face') {
+		params.planes.push(plane(f, P(f.clone().multiplyScalar(0.2 * R + jit()))));
+		params.regions.push([[0, 1]]);
+		params.hinges.push(P(f.clone().multiplyScalar(0.55 * R).addScaledVector(u, -0.8 * R)).toArray());
+	} else if (mode == 'split') {
+		const tilt = side.clone().applyAxisAngle(f, (Math.random() - 0.5) * 0.5);
+		params.planes.push(plane(tilt, P(sd.clone().multiplyScalar(jit()))));
+		params.planes.push(plane(u, P(u.clone().multiplyScalar(-0.45 * R + jit()))));
+		params.regions.push([[1, 1], [0, 1]], [[1, 1], [0, -1]]);
+		params.hinges.push(P(u.clone().multiplyScalar(-0.45 * R).addScaledVector(tilt, 0.55 * R)).toArray(), P(u.clone().multiplyScalar(-0.45 * R).addScaledVector(tilt, -0.55 * R)).toArray());
+	} else {
+		const a1 = side.clone().applyAxisAngle(u, (Math.random() - 0.5) * 0.8), a2 = a1.clone().applyAxisAngle(u, Math.PI / 2 + (Math.random() - 0.5) * 0.6);
+		params.planes.push(plane(u, P(u.clone().multiplyScalar(-0.05 * R + jit()))));
+		params.planes.push(plane(a1, P(new THREE.Vector3(jit(), 0, jit()))));
+		params.planes.push(plane(a2, P(new THREE.Vector3(jit(), 0, jit()))));
+		params.planes.push(plane(f, P(f.clone().multiplyScalar(0.25 * R))));
+		params.regions.push([[0, 1], [1, 1], [2, 1]], [[0, 1], [1, 1], [2, -1]], [[0, 1], [1, -1], [2, 1]], [[0, 1], [1, -1], [2, -1]], [[0, -1], [3, 1]]);
+		params.hinges.push(null, null, null, null, P(f.clone().multiplyScalar(0.5 * R).addScaledVector(u, -0.8 * R)).toArray());
+	}
+	return {params, els};
+}
+
+// a head broken open in the simulation
+class HeadGore {
+	constructor(bot, point, dir, impulse) {
+		this.bot = bot;
+		const J = this.J = bot.J, w = bot.world;
+		const {params, els} = goreParams(bot, point, dir, impulse);
+		this.params = params;
+		this.cut = goreCut(els, params);
+		this.t = bot._time;
+		const g = bot.head.group;
+		g.mesh.updateMatrixWorld(true);
+		this.Hg0 = g.mesh.matrixWorld.clone();
+		// pixels of the scene <-> metres of the physics
+		const Spx = bot.modelMatrix().multiply(new THREE.Matrix4().makeScale(SCALE, SCALE, SCALE));
+		this.Hb0 = this.bodyMatrix(bot.head.body);
+		this.G = this.Hg0.clone().invert().multiply(Spx).multiply(this.Hb0);
+		this.Ginv = this.G.clone().invert();
+		const toWorld = Spx.clone().invert().multiply(this.Hg0);   // head group space -> metres
+		const head_mass = 1 / Math.max(bot.head.body.GetMotionProperties().GetInverseMass(), 1e-6);
+		const head_v = bot.lin(bot.head);
+		this.pieces = [];
+		const total = this.cut.reduce((s, c) => s + c.region.length, 0) || 1;
+		for (let k = 1; k <= params.regions.length; k++) {
+			const pts = [];
+			for (const c of this.cut) for (let i = 0; i < c.region.length; i++) if (c.region[i] == k) pts.push(new THREE.Vector3().fromArray(c.base, i * 3).applyMatrix4(toWorld));
+			if (pts.length < 4) { this.pieces.push(null); continue; }
+			const com = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).divideScalar(pts.length);
+			const hull = new J.ConvexHullShapeSettings();
+			// (a piece no thinner than a centimetre: a flap of skin still has some body to it)
+			for (const p of pts) { const d = p.clone().sub(com); hull.mPoints.push_back(new J.Vec3(d.x, d.y, d.z)); }
+			hull.mPoints.push_back(new J.Vec3(0.005, 0.005, 0.005)); hull.mPoints.push_back(new J.Vec3(-0.005, -0.005, -0.005));
+			const res = hull.Create();
+			if (res.HasError()) { this.pieces.push(null); continue; }
+			const jp = new J.RVec3(com.x, com.y, com.z), jq = new J.Quat(0, 0, 0, 1);
+			const bcs = new J.BodyCreationSettings(res.Get(), jp, jq, J.EMotionType_Dynamic, 1);
+			const share = pts.length / total;
+			bcs.mOverrideMassProperties = J.EOverrideMassProperties_CalculateInertia;
+			bcs.mMassPropertiesOverride.mMass = Math.max(0.05, head_mass * share);
+			bcs.mFriction = 0.8; bcs.mRestitution = 0.02;
+			bcs.mLinearDamping = 0.3; bcs.mAngularDamping = 1.5;   // (soft, wet: it does not bounce or spin for long)
+			bcs.mMotionQuality = J.EMotionQuality_LinearCast;
+			bcs.mCollisionGroup.SetGroupFilter(bot.filter);
+			bcs.mCollisionGroup.SetGroupID(bot.group_id);
+			bcs.mCollisionGroup.SetSubGroupID(bot.gore_base + Math.min(k - 1, GORE_SLOTS - 1));
+			const hinge = params.hinges[k - 1];
+			// thrown the way the bullet goes; a free piece hard, a hanging one only so far as the flesh lets it
+			const out = com.clone().sub(bot.pos(bot.head)).normalize();
+			const v = head_v.clone().addScaledVector(dir, hinge ? 1.5 : Math.min(impulse / Math.max(head_mass * share, 0.2) * 0.35, 14)).addScaledVector(out, hinge ? 1.2 : 2.5 + Math.random() * 2);
+			bcs.mLinearVelocity = new J.Vec3(v.x, v.y, v.z);
+			const sp = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(hinge ? 4 : 25);
+			bcs.mAngularVelocity = new J.Vec3(sp.x, sp.y, sp.z);
+			const body = w.bodies.CreateBody(bcs);
+			J.destroy(bcs); J.destroy(jp); J.destroy(jq);
+			w.bodies.AddBody(body.GetID(), J.EActivation_Activate);
+			const piece = {k, body, id: body.GetID(), P0inv: null, hinge: hinge ? new THREE.Vector3(...hinge).applyMatrix4(toWorld) : null, constraint: null, drip: Math.random() * 0.3, mass: head_mass * share};
+			piece.P0inv = this.bodyMatrix(body).invert();
+			if (piece.hinge) {
+				try {
+					const st = new J.PointConstraintSettings();
+					st.mSpace = J.EConstraintSpace_WorldSpace;
+					st.mPoint1 = new J.RVec3(piece.hinge.x, piece.hinge.y, piece.hinge.z);
+					st.mPoint2 = new J.RVec3(piece.hinge.x, piece.hinge.y, piece.hinge.z);
+					piece.constraint = J.castObject(st.Create(bot.head.body, body), J.PointConstraint);
+					w.system.AddConstraint(piece.constraint);
+				} catch (err) { console.warn('[Ragdoll] gore hinge', err); }
+			}
+			this.pieces.push(piece);
+		}
+		addPeopleToRays(bot.rt, this.pieces.filter(Boolean).map(p => p.id));
+		// the blood: a burst from the open head, and from every piece as it comes away
+		if (bot.blood) {
+			try {
+				bot.blood.exit_splatter(bot.pos(bot.head), dir, 1.4, null);
+				for (const p of this.pieces) if (p) {
+					const at = this.bodyPos(p.body);
+					for (let i = 0; i < 14; i++) bot.blood.spawn_drop(at.clone().add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.05)),
+						this.bodyVel(p.body).add(new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).multiplyScalar(3)), 0.05 + Math.random() * 0.4);
+				}
+			} catch (err) { console.warn('[Ragdoll] gore blood', err); }
+		}
+		this.rec = {t: this.t, head: g.uuid, els: els.map(e => e.uuid), params, frames: []};
+	}
+	bodyMatrix(b) {
+		const p = b.GetPosition(), q = b.GetRotation();
+		return new THREE.Matrix4().compose(new THREE.Vector3(p.GetX(), p.GetY(), p.GetZ()), new THREE.Quaternion(q.GetX(), q.GetY(), q.GetZ(), q.GetW()), new THREE.Vector3(1, 1, 1));
+	}
+	bodyPos(b) { const p = b.GetPosition(); return new THREE.Vector3(p.GetX(), p.GetY(), p.GetZ()); }
+	bodyVel(b) { const v = b.GetLinearVelocity(); return new THREE.Vector3(v.GetX(), v.GetY(), v.GetZ()); }
+	// where piece k is now, in the head group's space: G [Hb(t)^-1 P(t)] [P0^-1 Hb0] G^-1
+	Q(k) {
+		const p = this.pieces[k - 1];
+		if (!p) return null;
+		const A = this.bodyMatrix(this.bot.head.body).invert().multiply(this.bodyMatrix(p.body)).multiply(p.P0inv).multiply(this.Hb0);
+		return this.G.clone().multiply(A).multiply(this.Ginv);
+	}
+	// what hangs and lies about drips
+	step(dt) {
+		const blood = this.bot.blood;
+		if (!blood) return;
+		for (const p of this.pieces) {
+			if (!p) continue;
+			p.drip -= dt;
+			if (p.drip > 0) continue;
+			const age = this.bot._time - this.t;
+			p.drip = 0.08 + age * 0.12 + Math.random() * 0.2;
+			if (age > 20) continue;
+			const at = this.bodyPos(p.body).add(new THREE.Vector3(0, -0.03, 0));
+			try { blood.spawn_drop(at, this.bodyVel(p.body), 0.03 + Math.random() * 0.12 / (1 + age), null, 0, true); } catch (err) { /* blood gone */ }
+		}
+	}
+	show() { goreApply(this.cut, k => this.Q(k)); }
+	record(time) { this.rec.frames.push({t: time, q: this.pieces.map((p, i) => { const m = this.Q(i + 1); return m ? Array.from(m.elements) : null; })}); }
+	dispose() { goreRestore(this.cut); }
+}
+
+// the Animate tab: the broken heads of the selected animation at the time of the timeline
+class GorePlayer {
+	constructor(recs) { this.recs = recs; this.live = []; }
+	show(t) {
+		this.recs.forEach((rec, i) => {
+			let live = this.live[i];
+			if (t < rec.t - 1e-6) { if (live) { goreRestore(live.cut); this.live[i] = null; } return; }
+			if (!live) {
+				const els = rec.els.map(u => (Mesh.all.find(e => e.uuid == u) || Cube.all.find(e => e.uuid == u))).filter(Boolean);
+				live = this.live[i] = {cut: goreCut(els, rec.params)};
+			}
+			let f = 0;
+			while (f + 1 < rec.frames.length && rec.frames[f + 1].t <= t + 1e-6) f++;
+			const fr = rec.frames[f];
+			goreApply(live.cut, k => fr && fr.q[k - 1] ? new THREE.Matrix4().fromArray(fr.q[k - 1]) : null);
+		});
+	}
+	dispose() { for (const l of this.live) if (l) goreRestore(l.cut); this.live = []; }
+}
+
+let gore_player = null, gore_player_anim = null;
+function stopGorePlayback() { if (gore_player) gore_player.dispose(); gore_player = null; gore_player_anim = null; }
+function updateGorePlayback() {
+	try {
+		const animation = Project && typeof Modes != 'undefined' && Modes.animate && typeof Animation != 'undefined' && Animation.selected;
+		const recs = animation && gore_bakes.get(animation.uuid);
+		if (!recs || !recs.length) { stopGorePlayback(); return; }
+		if (gore_player_anim !== animation.uuid) { stopGorePlayback(); gore_player = new GorePlayer(recs); gore_player_anim = animation.uuid; }
+		gore_player.show(Timeline.time);
+	} catch (err) { console.warn('[Ragdoll] gore playback', err); stopGorePlayback(); }
+}
+
 
 function hasHumanoidParts(bones) {
 	const need = humanoidPartsList().map(d => humanoidRole(d.name));
@@ -5570,13 +5957,21 @@ const physicsHook = {
 		if (current.blood) current.blood.step(dt);
 		if (current.sim) current.sim.step(dt);
 	},
-	bake_frame(rt, time) { if (current && current.rt === rt && current.sim && current.sim.view instanceof BloodRecorder) current.sim.view.frame(time); },
+	bake_frame(rt, time) {
+		if (!current || current.rt !== rt) return;
+		if (current.sim && current.sim.view instanceof BloodRecorder) current.sim.view.frame(time);
+		for (const r of current.list) if (r.gore) r.gore.record(time);
+	},
 	baked(rt, animation) {
-		if (!current || current.rt !== rt || !current.sim || !(current.sim.view instanceof BloodRecorder) || !animation) return;
+		if (!current || current.rt !== rt || !animation) return;
+		const gores = current.list.filter(r => r.gore).map(r => r.gore.rec);
+		if (gores.length) gore_bakes.set(animation.uuid, gores); else gore_bakes.delete(animation.uuid);
+		if (!current.sim || !(current.sim.view instanceof BloodRecorder)) return;
 		blood_bakes.set(animation.uuid, current.sim.view.rec);
 	},
 	show() {
 		if (!current) return;
+		for (const r of current.list) if (r.gore) { try { r.gore.show(); } catch (err) { console.warn('[Ragdoll] extra head', err); r.gore = null; } }
 		if (current.blood) current.blood.show();
 		if (current.sim && current.sim.view) {
 			// (the simulation's own time: the blood moves with the physics, however fast that plays)
@@ -5586,6 +5981,7 @@ const physicsHook = {
 		}
 	},
 	stop() {
+		if (current) for (const r of current.list) if (r.gore) { try { r.gore.dispose(); } catch (err) { /* gone */ } r.gore = null; }
 		if (current && current.blood) { try { current.blood.dispose(); } catch (err) { /* scene is gone */ } }
 		if (current && current.sim) { try { if (current.sim.view) current.sim.view.dispose(); current.sim.dispose(); } catch (err) { /* scene is gone */ } }
 		current = null;
@@ -6119,7 +6515,8 @@ const TEXTS = {
 		save_model_name: 'Name of the model', delete_model: 'Delete the saved model', delete_model_q: 'Delete the saved model "%"?', cancel: 'Cancel', pose_saved: 'As saved',
 		msg_save_none: 'Select a character first', msg_saved_model: 'Saved: %', msg_save_big: 'The model is too big to keep (the storage is full); it is kept until Blockbench closes', msg_save_gone: 'This saved model is gone',
 		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
-		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', chaos: 'Chaos of the fall', chaos_tip: 'How differently he goes down each time: the hit lands a little off, the muscles give way unevenly, one knee before the other. 0 = the same fall every time',
+		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', extra_head: 'Extra head', extra_head_min: 'From a shot of (N*s)', extra_head_tip: 'A shot to the head at least this hard breaks it open: the face torn off and hanging, the head split in two halves that hang, or the top of the skull blown off. The pieces fall and swing with physics; what still hangs on, hangs by the flesh. A pistol is 2-6 N*s',
+		chaos: 'Chaos of the fall', chaos_tip: 'How differently he goes down each time: the hit lands a little off, the muscles give way unevenly, one knee before the other. 0 = the same fall every time',
 		spasm_head: 'Muscle contraction at death', spasm_hint: 'How hard the muscles draw in after a fatal shot to the head. 0 = they just go limp, 1 = hard', spasm_torso: 'Above the pelvis', spasm_arms: 'Arms', spasm_legs: 'Below the pelvis', spasm: 'Arm spasm', spasm_tip: 'How hard the arms draw in to the head after a head shot. 0 = they just go limp, 1 = as in the game', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
 		blood: 'Blood', blood_high: 'High (every drop physical)', blood_high_tip: 'Every drop of blood flies on its own with physics and leaves its own stain where it lands: nothing is thinned out or skipped, a head shot is real drops too. Slower, much more blood on the walls.', blood_amount: 'Amount ×', blood_dry: 'Dries in (s)', blood_dry_tip: 'How long the blood takes to go dark brown and matt. The game: 150 s; short clips want less', blood_density: 'Thickness', blood_density_tip: 'How thick the blood lies: 1 = as in the game (dark, glossy, clotted), less = a thinner, lighter, see-through film', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
 		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting on a chair', pose_kneel: 'Kneeling', pose_squat: 'Squatting', pose_crouch: 'Crouching', pose_hands_up: 'Hands up', pose_cover_head: 'Covering the head', pose_aim: 'Aiming',
@@ -6172,7 +6569,8 @@ const TEXTS = {
 		save_model_name: 'Имя модели', delete_model: 'Удалить сохранённую модель', delete_model_q: 'Удалить сохранённую модель «%»?', cancel: 'Отмена', pose_saved: 'Как сохранён',
 		msg_save_none: 'Сначала выделите персонажа', msg_saved_model: 'Сохранено: %', msg_save_big: 'Модель слишком большая для хранилища; она сохранена до закрытия Blockbench', msg_save_gone: 'Эта сохранённая модель удалена',
 		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
-		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', chaos: 'Хаос падения', chaos_tip: 'Насколько по-разному он падает каждый раз: удар приходится чуть иначе, мышцы отказывают неравномерно, одно колено раньше другого. 0 — каждый раз одинаково',
+		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', extra_head: 'Extra head', extra_head_min: 'От выстрела силой (Н·с)', extra_head_tip: 'Выстрел в голову не слабее этого разрывает её: лицо срывается и повисает, голова раскалывается на две половины, которые свисают, или сносит верх черепа. Куски падают и качаются по физике, а то, что ещё держится, висит на мягких тканях. Пистолет — 2–6 Н·с',
+		chaos: 'Хаос падения', chaos_tip: 'Насколько по-разному он падает каждый раз: удар приходится чуть иначе, мышцы отказывают неравномерно, одно колено раньше другого. 0 — каждый раз одинаково',
 		spasm_head: 'Сокращение мышц при смерти', spasm_hint: 'Насколько сильно сжимаются мышцы после смертельного выстрела в голову. 0 — просто обмякают, 1 — сильно', spasm_torso: 'Выше таза', spasm_arms: 'Руки', spasm_legs: 'Ниже таза', spasm: 'Сжатие рук', spasm_tip: 'Насколько сильно руки поджимаются к голове после выстрела в голову. 0 — просто обмякают, 1 — как в игре', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
 		blood: 'Кровь', blood_high: 'High (каждая капля физическая)', blood_high_tip: 'Каждая капля крови летит сама по физике и оставляет своё пятно там, куда упала: ничего не прореживается и не пропускается, выстрел в голову — тоже настоящие капли. Медленнее, крови на стенах намного больше.', blood_amount: 'Количество ×', blood_dry: 'Высыхает за (с)', blood_dry_tip: 'За сколько кровь темнеет до бурой и становится матовой. В игре 150 с; для коротких роликов меньше', blood_density: 'Густота', blood_density_tip: 'Насколько толстым слоем лежит кровь: 1 — как в игре (тёмная, блестящая, со сгустками), меньше — тоньше, светлее, полупрозрачнее', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
 		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит на стуле', pose_kneel: 'На коленях', pose_squat: 'На корточках', pose_crouch: 'Пригнулся', pose_hands_up: 'Руки вверх', pose_cover_head: 'Закрывает голову', pose_aim: 'Целится',
@@ -6435,9 +6833,9 @@ function updatePanel(force) {
 			Object.assign(vue, {route_speed: rs.route_speed, route_mode: rs.route_mode, route_start: rs.route_start, kill_at: rs.kill_at, kill_kind: rs.kill_kind});
 		}
 		vue.char_rec_blood = ragdollOf(act).record_blood !== false;
-		if (force || vue.char_key != JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs, rs.chaos])) {
-			vue.char_key = JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs, rs.chaos]);
-			Object.assign(vue, {char_chaos: rs.chaos ?? 0.3, char_blood_dry: rs.blood_dry ?? 30, char_blood_density: rs.blood_density ?? 0.6, char_spasm_arms: rs.spasm ?? 0.5, char_spasm_torso: rs.spasm_torso ?? 0.5, char_spasm_legs: rs.spasm_legs ?? 0.5});
+		if (force || vue.char_key != JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs, rs.chaos, rs.extra_head, rs.extra_head_min])) {
+			vue.char_key = JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs, rs.chaos, rs.extra_head, rs.extra_head_min]);
+			Object.assign(vue, {char_chaos: rs.chaos ?? 0.3, char_extra_head: !!rs.extra_head, char_extra_head_min: rs.extra_head_min ?? 6, char_blood_dry: rs.blood_dry ?? 30, char_blood_density: rs.blood_density ?? 0.6, char_spasm_arms: rs.spasm ?? 0.5, char_spasm_torso: rs.spasm_torso ?? 0.5, char_spasm_legs: rs.spasm_legs ?? 0.5});
 		}
 	}
 	if (Project) { const w = Project.physics_world || {}; vue.rec_time = w.duration || 3; vue.rec_fps = w.fps || 24; }
@@ -6453,7 +6851,7 @@ function panelComponent() {
 	return {
 		components: {'rope-num': NumberField},
 		data() {
-			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, char_blood_dry: 30, char_blood_density: 0.6, char_spasm_arms: 0.5, char_spasm_torso: 0.5, char_spasm_legs: 0.5, char_chaos: 0.3, char_key: '', click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
+			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, char_blood_dry: 30, char_blood_density: 0.6, char_spasm_arms: 0.5, char_spasm_torso: 0.5, char_spasm_legs: 0.5, char_chaos: 0.3, char_extra_head: false, char_extra_head_min: 6, char_key: '', click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
 				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
@@ -6579,7 +6977,7 @@ function panelComponent() {
 			},
 			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood, blood_high: !!this.char_blood_high,
 				blood_dry: clamp(num_(this.char_blood_dry, 30), 1, 600), blood_density: clamp(num_(this.char_blood_density, 0.6), 0.05, 1),
-				spasm: clamp(num_(this.char_spasm_arms, 0.5), 0, 1), spasm_torso: clamp(num_(this.char_spasm_torso, 0.5), 0, 1), spasm_legs: clamp(num_(this.char_spasm_legs, 0.5), 0, 1), chaos: clamp(num_(this.char_chaos, 0.3), 0, 1)}); }); },
+				spasm: clamp(num_(this.char_spasm_arms, 0.5), 0, 1), spasm_torso: clamp(num_(this.char_spasm_torso, 0.5), 0, 1), spasm_legs: clamp(num_(this.char_spasm_legs, 0.5), 0, 1), chaos: clamp(num_(this.char_chaos, 0.3), 0, 1), extra_head: !!this.char_extra_head, extra_head_min: clamp(num_(this.char_extra_head_min, 6), 0.5, 200)}); }); },
 			// how long the bake records, and how many frames a second (the Physics tab's world settings)
 			saveRecTime() {
 				if (!Project) return;
@@ -6707,6 +7105,9 @@ function panelComponent() {
 							<rope-num :label="t('spasm_arms')" v-model="char_spasm_arms" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
 							<rope-num :label="t('spasm_legs')" v-model="char_spasm_legs" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
 						</div>
+						<label class="rd_row" :title="t('extra_head_tip')">{{ t('extra_head') }}<input type="checkbox" v-model="char_extra_head" @change="saveBlood()"></label>
+						<div class="rd_grid rd_one" v-if="char_extra_head"><rope-num :label="t('extra_head_min')" :title="t('extra_head_tip')" v-model="char_extra_head_min" :min="0.5" :max="200" :step="0.5" :decimals="1" @change="saveBlood()"></rope-num></div>
+						<div class="rd_dim small" v-if="char_extra_head">{{ t('extra_head_tip') }}</div>
 						<div class="rd_grid rd_one"><rope-num :label="t('chaos')" :title="t('chaos_tip')" v-model="char_chaos" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num></div>
 						<div class="rd_dim small">{{ t('chaos_tip') }}</div>
 					</template>
@@ -7535,7 +7936,7 @@ function toHand(root, side, drop, mass) {
 const onSelection = () => updatePanel();
 let poll = null;
 
-if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({skeletonEditing: {down: e => onSkeletonDown(e), move: e => onSkeletonMove(e), up: e => onSkeletonUp(e), set: v => { pose_edit = v; syncSkeletonView(true); }, get: () => ({skeleton, drag})}, getCurrent: () => current, AnimationFollower, animatedGroupWorld, routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
+if (typeof __RAGDOLL_EXPORT !== 'undefined') __RAGDOLL_EXPORT({skeletonEditing: {down: e => onSkeletonDown(e), move: e => onSkeletonMove(e), up: e => onSkeletonUp(e), set: v => { pose_edit = v; syncSkeletonView(true); }, get: () => ({skeleton, drag})}, getCurrent: () => current, AnimationFollower, animatedGroupWorld, routeFor, addRoute, addRoutePoint, routePoints, isRoute, characterData, saveCharacterModel, createSavedCharacter, savedModels, deleteSavedModel, panelComponent, npcSpec, skeletonOf, dragSkeleton, aimBone, reachWith, attachItem, itemsOf, shotDirection, createCharacter, characterSpec, autoRig, classifyParts, roleOfName, roleOf, zoneOfRole, rotationSigns, bbOfThree, quatOfThree, POSES, RagdollRuntime, physicsHook, BloodFX, Humanoid, castRay, BloodSim, BloodView, BodyBlood, bloodShape, splashAtlas, smokePuff, humanoidSpec, blood_bakes, BloodPlayer, BloodRecorder, gore_bakes, GorePlayer, HeadGore, buildRagdoll, bonesOf, envelope, flinchEnvelope, zoneOfName, hingeByName, ragdollOf, boneOf, DEFAULT_RAGDOLL, DEFAULT_BONE, DEFAULT_REACTION, NumberField, panelComponent, STYLE, getCurrent: () => current});
 
 if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.register('ragdoll', {
 	title: 'Ragdoll',
@@ -7543,7 +7944,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.10.9',
+	version: '0.11.0',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
@@ -7597,6 +7998,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		poll = setInterval(() => { updatePanel(); syncShotLines(); syncRouteView(); if (!drag) syncSkeletonView(); }, 250);
 		Blockbench.on('update_selection', onSelection);
 		Blockbench.on('display_animation_frame', updateBloodPlayback);
+		Blockbench.on('display_animation_frame', updateGorePlayback);
 		Blockbench.on('select_project', onSelection);
 	},
 	onunload() {
@@ -7617,7 +8019,9 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 		tool_patches.splice(0).forEach(undo => { try { undo(); } catch (err) { /* already gone */ } });
 		Blockbench.removeListener('update_selection', onSelection);
 		Blockbench.removeListener('display_animation_frame', updateBloodPlayback);
+		Blockbench.removeListener('display_animation_frame', updateGorePlayback);
 		stopBloodPlayback();
+		stopGorePlayback();
 		Blockbench.removeListener('select_project', onSelection);
 		if (Modes.ragdoll) Modes.options.edit.select();
 		const outliner = Interface.Panels.outliner;
