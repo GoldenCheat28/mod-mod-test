@@ -110,7 +110,8 @@ float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec
 	bv_shape = cov;
 	cov *= mix(0.1, 1.0, smoothstep(0.12, 0.55, thick));
 	if (cov <= 0.0) return 0.0;
-	float deep = smoothstep(0.08, 0.45, thick);
+	// (how dark: from how much has built up there - a lone splash is lighter, blood run over blood darker and darker)
+	float deep = smoothstep(0.12, 0.92, b.y);
 	float clot = bnoise(ep * 9.0) * 0.6 + bnoise(ep * 31.0) * 0.4;
 	float grain = bnoise(ep * 140.0);
 	float edge = 1.0 - smoothstep(0.25, 0.85, thick);
@@ -123,8 +124,8 @@ float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec
 	float crust = smoothstep(0.1, 0.5, b.z) * edge * smoothstep(0.02, 0.2, thick);
 	dry_col = mix(dry_col, vec3(0.018, 0.006, 0.005), crust * 0.7);
 	albedo = bv_col(mix(wet_col, dry_col, dry));
-	vec3 t_wet = mix(vec3(0.62, 0.1, 0.075), vec3(0.16, 0.008, 0.006), smoothstep(0.0, 0.45, thick));
-	vec3 t_dry = mix(vec3(0.5, 0.22, 0.16), vec3(0.14, 0.04, 0.03), smoothstep(0.0, 0.45, thick));
+	vec3 t_wet = mix(vec3(0.62, 0.1, 0.075), vec3(0.16, 0.008, 0.006), smoothstep(0.05, 0.85, b.y));
+	vec3 t_dry = mix(vec3(0.5, 0.22, 0.16), vec3(0.14, 0.04, 0.03), smoothstep(0.05, 0.85, b.y));
 	bv_tint = bv_col(mix(t_wet, t_dry, dry));
 	float gloss = film * smoothstep(0.35, 0.8, cov);
 	float sheen = smoothstep(0.35, 0.75, bnoise(ep * 5.0 + 3.1) * 0.7 + clot * 0.3);
@@ -852,7 +853,7 @@ class BloodView {
 						if (b.x <= 0.0) discard;
 						gl_FragColor = vec4(tint * (1.0 - b.x), 1.0);
 					}`,
-				transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+				transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
 				blending: THREE.MultiplyBlending, premultipliedAlpha: true,
 			});
 		}

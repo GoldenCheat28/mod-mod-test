@@ -914,8 +914,8 @@ class BloodSim {
 		const C = 0.03, mi = bloodMapFor(n);
 		const key = q => mi + ':' + Math.round(q.x / C) + ',' + Math.round(q.y / C) + ',' + Math.round(q.z / C);
 		const had = this._film.get(key(p)) || 0;
-		const own = amount * clamp(Math.sqrt(w * l) / 0.07, 0.4, 1);
-		const t = clamp(Math.max(had, own) + (had > 0 ? 0.45 * own + 0.1 * amount : 0), 0, 1);
+		const own = amount * clamp(Math.sqrt(w * l) / 0.07, 0.4, 1) * 0.55;
+		const t = clamp(Math.max(had, own) + (had > 0 ? 0.8 * own + 0.2 * amount : 0), 0, 1);
 		// the footprint gets at least this much
 		const a = along.clone().addScaledVector(n, -n.dot(along)), b = n.clone().cross(a);
 		if (a.lengthSq() < 1e-6) { this._film.set(key(p), Math.max(had, t)); return t; }

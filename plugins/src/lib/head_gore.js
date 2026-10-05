@@ -1,12 +1,16 @@
 // ---------------------------------------------------------------------------
-// Extra head: a hard shot to the head breaks it open. The head's own meshes are cut along planes into pieces; a piece is
-// a body of its own (it falls, swings, lands), and one still hanging on by skin and flesh is held to the rest of the head
-// at a point: its vertices follow the piece more the farther they are from that point (a weight map), so near it the
-// flesh stretches instead of breaking off clean. The inside of the head shows through the cut as wet flesh.
+// Extra head: a hard shot to the head breaks it open. The head's own meshes are torn along ragged surfaces (planes
+// made jagged by noise at several scales; the mesh is made finer along them first) into pieces; a piece is a body of
+// its own (it falls, swings, lands), and one still hanging on by skin and flesh is held to the rest of the head at a
+// point. Its vertices follow the piece more the farther they are from that point (a weight map, its border uneven), and
+// each is a particle on a spring to that place - flesh that sags, lags and wobbles, stretched thin in the torn band.
+// Strands of flesh stay stretched across the tear (Verlet chains) and snap when pulled too far. The inside of the head
+// shows through as wet flesh, and the torn edges are soaked.
 //   face  - the face is torn off and hangs from the chin
 //   split - the head comes apart in two halves that peel away to the sides and hang
 //   burst - the top of the skull is blown off in pieces, the face hangs from the jaw
-// While baking, where each piece is is written down at every frame; the Animate tab draws it again at the timeline's time.
+// While baking, where each piece is is written down at every frame; the Animate tab draws it again at the timeline's
+// time (the tear is the same: it comes from a recorded seed; the soft flesh is simulated again along the timeline).
 // ---------------------------------------------------------------------------
 
 const GORE_SLOTS = 8;   // collision sub groups kept free for the pieces of a head
@@ -17,34 +21,89 @@ function goreElements(group) {
 	return (group.children || []).filter(el => (el instanceof Mesh || el instanceof Cube) && el.mesh && el.mesh.geometry && el.mesh.geometry.attributes.position);
 }
 
-// which piece a point of the head (the head group's own space, pixels) belongs to: 0 = what stays on the neck
+// a seeded value noise in 3D (0..1): the same head breaks the same way in the bake and in its playback
+function goreNoise(seed) {
+	const h = (x, y, z) => { let n = (x * 374761393 + y * 668265263 + z * 2147483647 + seed * 1442695041) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+	const s = t => t * t * (3 - 2 * t);
+	return (x, y, z) => {
+		const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = s(x - xi), yf = s(y - yi), zf = s(z - zi);
+		const l = (a, b, t) => a + (b - a) * t;
+		return l(l(l(h(xi, yi, zi), h(xi + 1, yi, zi), xf), l(h(xi, yi + 1, zi), h(xi + 1, yi + 1, zi), xf), yf),
+			l(l(h(xi, yi, zi + 1), h(xi + 1, yi, zi + 1), xf), l(h(xi, yi + 1, zi + 1), h(xi + 1, yi + 1, zi + 1), xf), yf), zf);
+	};
+}
+
+// the tears: each one a plane made ragged - torn flesh and bone do not part along a straight line, the edge wanders
+// and is jagged at every scale (the planes of the head group's own space, pixels)
+function goreFields(params) {
+	if (params._fields) return params._fields;
+	const nz = goreNoise(params.seed || 1), R = params.R, A = (params.rag ?? 0.14) * R;
+	const f1 = 2.3 / R, f2 = 6.5 / R, f3 = 15 / R;
+	const field = (i, p) => {
+		const pl = params.planes[i], o = i * 17.3;
+		const d = pl.n[0] * p.x + pl.n[1] * p.y + pl.n[2] * p.z - pl.d;
+		// big wander, then smaller tears, then a sharp ragged fringe (the |..| makes it jag rather than wave)
+		const r = (nz(p.x * f1 + o, p.y * f1, p.z * f1) - 0.5) * 1.3 + (nz(p.x * f2, p.y * f2 + o, p.z * f2) - 0.5) * 0.6
+			+ (Math.abs(nz(p.x * f3, p.y * f3, p.z * f3 + o) - 0.5) - 0.25) * 0.8;
+		return d + A * r;
+	};
+	return (params._fields = {field, A, nz});
+}
+
+// which piece a point of the head belongs to: 0 = what stays on the neck
 function goreRegion(params, p) {
-	const side = params.planes.map(pl => (pl.n[0] * p.x + pl.n[1] * p.y + pl.n[2] * p.z - pl.d) >= 0 ? 1 : -1);
+	const {field} = goreFields(params);
+	const side = params.planes.map((pl, i) => field(i, p) >= 0 ? 1 : -1);
 	for (let k = 0; k < params.regions.length; k++) if (params.regions[k].every(([i, s]) => side[i] == s)) return k + 1;
 	return 0;
 }
 
-// cuts the head's meshes along the planes. For every element: a geometry of its own with every triangle wholly in one
-// piece (the ones across a cut are split there), the piece of each vertex and its weight (how much it follows the piece)
+// cuts the head's meshes along the tears. Near a tear the surface is first made finer (so the edge can be ragged: the
+// edges of the mesh are halved where a tear runs close by, the same way on both faces that share an edge - no cracks),
+// then every triangle across a tear is split there. For every element: a geometry of its own, the piece of each
+// vertex, its weight (how much it follows the piece: the weight map) and how far it is from the nearest tear
 function goreCut(els, params) {
+	const {field, A, nz} = goreFields(params), R = params.R, L = R * 0.085, np = params.planes.length;
 	const out = [];
 	for (const el of els) {
 		el.mesh.updateMatrix();
 		const M = el.mesh.matrix.clone();
 		const src0 = el.mesh.geometry, src = src0.index ? src0.toNonIndexed() : src0;
-		const names = Object.keys(src.attributes).filter(n => src.attributes[n].itemSize && !src.attributes[n].isInterleavedBufferAttribute);
+		const names = Object.keys(src.attributes).filter(n => src.attributes[n].itemSize && !src.attributes[n].isInterleavedBufferAttribute && n != 'skyocc');
 		const sizes = names.map(n => src.attributes[n].itemSize), stride = sizes.reduce((a, b) => a + b, 0);
 		const pi = names.indexOf('position');
 		const vert = i => { const v = new Float32Array(stride); let o = 0; names.forEach((n, k) => { const a = src.attributes[n]; for (let c = 0; c < sizes[k]; c++) v[o + c] = a.array[i * sizes[k] + c]; o += sizes[k]; }); return v; };
 		let po = 0; for (let k = 0; k < pi; k++) po += sizes[k];
 		const gpos = v => new THREE.Vector3(v[po], v[po + 1], v[po + 2]).applyMatrix4(M);
-		const dist = (v, pl) => { const p = gpos(v); return pl.n[0] * p.x + pl.n[1] * p.y + pl.n[2] * p.z - pl.d; };
 		const lerpV = (a, b, t) => { const v = new Float32Array(stride); for (let c = 0; c < stride; c++) v[c] = a[c] + (b[c] - a[c]) * t; return v; };
-		// a polygon cut by a plane into its two sides
-		const clip = (poly, pl) => {
+		// (an edge is halved when it is long and a tear runs across it or close by)
+		const near = (a, b) => {
+			const pa = gpos(a), pb = gpos(b), len = pa.distanceTo(pb);
+			if (len <= L) return false;
+			for (let i = 0; i < np; i++) { const fa = field(i, pa), fb = field(i, pb); if ((fa >= 0) != (fb >= 0) || Math.min(Math.abs(fa), Math.abs(fb)) < A * 1.3 + len * 0.6) return true; }
+			return false;
+		};
+		const refine = (t, depth, outl) => {
+			const [a, b, c] = t;
+			if (depth >= 6) { outl.push(t); return; }
+			const s0 = near(a, b), s1 = near(b, c), s2 = near(c, a), n = s0 + s1 + s2;
+			if (!n) { outl.push(t); return; }
+			const m0 = s0 ? lerpV(a, b, 0.5) : null, m1 = s1 ? lerpV(b, c, 0.5) : null, m2 = s2 ? lerpV(c, a, 0.5) : null;
+			const go = x => refine(x, depth + 1, outl);
+			if (n == 3) { go([a, m0, m2]); go([m0, b, m1]); go([m2, m1, c]); go([m0, m1, m2]); return; }
+			if (n == 1) {
+				if (s0) { go([a, m0, c]); go([m0, b, c]); } else if (s1) { go([b, m1, a]); go([m1, c, a]); } else { go([c, m2, b]); go([m2, a, b]); }
+				return;
+			}
+			// two: turned so that the one left whole is the last edge
+			if (!s2) { go([m0, b, m1]); go([a, m0, m1]); go([a, m1, c]); }
+			else if (!s0) { go([m1, c, m2]); go([b, m1, m2]); go([b, m2, a]); }
+			else { go([m2, a, m0]); go([c, m2, m0]); go([c, m0, b]); }
+		};
+		const clip = (poly, i) => {
 			const front = [], back = [];
-			for (let i = 0; i < poly.length; i++) {
-				const a = poly[i], b = poly[(i + 1) % poly.length], da = dist(a, pl), db = dist(b, pl);
+			for (let k = 0; k < poly.length; k++) {
+				const a = poly[k], b = poly[(k + 1) % poly.length], da = field(i, gpos(a)), db = field(i, gpos(b));
 				if (da >= 0) front.push(a); else back.push(a);
 				if ((da >= 0) != (db >= 0)) { const x = lerpV(a, b, da / (da - db)); front.push(x); back.push(x); }
 			}
@@ -55,19 +114,23 @@ function goreCut(els, params) {
 		for (const g of groups) {
 			const start = tris.length;
 			for (let t = g.start; t + 2 < g.start + g.count; t += 3) {
-				let polys = [[vert(t), vert(t + 1), vert(t + 2)]];
-				for (const pl of params.planes) polys = polys.flatMap(p => clip(p, pl));
-				for (const p of polys) {
-					const c = p.reduce((s, v) => s.add(gpos(v)), new THREE.Vector3()).divideScalar(p.length);
-					const region = goreRegion(params, c);
-					for (let i = 1; i + 1 < p.length; i++) tris.push({v: [p[0], p[i], p[i + 1]], region});
+				const fine = [];
+				refine([vert(t), vert(t + 1), vert(t + 2)], 0, fine);
+				for (const f of fine) {
+					let polys = [f];
+					for (let i = 0; i < np; i++) polys = polys.flatMap(p => clip(p, i));
+					for (const p of polys) {
+						const c = p.reduce((s, v) => s.add(gpos(v)), new THREE.Vector3()).divideScalar(p.length);
+						const region = goreRegion(params, c);
+						for (let i = 1; i + 1 < p.length; i++) tris.push({v: [p[0], p[i], p[i + 1]], region});
+					}
 				}
 			}
 			new_groups.push({start: start * 3, count: (tris.length - start) * 3, materialIndex: g.materialIndex});
 		}
 		const n = tris.length * 3, geo = new THREE.BufferGeometry();
 		const arrays = names.map((name, k) => new Float32Array(n * sizes[k]));
-		const region = new Uint8Array(n), weight = new Float32Array(n), base = new Float32Array(n * 3);
+		const region = new Uint8Array(n), weight = new Float32Array(n), base = new Float32Array(n * 3), tear = new Float32Array(n);
 		let vi = 0;
 		for (const tri of tris) for (const v of tri.v) {
 			let o = 0;
@@ -75,9 +138,14 @@ function goreCut(els, params) {
 			const p = gpos(v);
 			base.set([p.x, p.y, p.z], vi * 3);
 			region[vi] = tri.region;
+			let fm = Infinity;
+			for (let i = 0; i < np; i++) fm = Math.min(fm, Math.abs(field(i, p)));
+			tear[vi] = fm;
 			const h = tri.region ? params.hinges[tri.region - 1] : null;
-			// (the weight map: by the skin, at the point it hangs from, it stays with the head; farther out it is the piece's)
-			weight[vi] = !tri.region ? 0 : !h ? 1 : gsmooth(params.R * 0.12, params.R * 0.85, p.distanceTo(new THREE.Vector3(...h)));
+			// (the weight map: by the skin it hangs from it stays with the head, farther out it is the piece's - an
+			// uneven border, as flesh tears unevenly)
+			const wob = (nz(p.x * 3 / R + 40, p.y * 3 / R, p.z * 3 / R) - 0.5) * 0.4 * R;
+			weight[vi] = !tri.region ? 0 : !h ? 1 : gsmooth(R * 0.1, R * 0.9, p.distanceTo(new THREE.Vector3(...h)) + wob);
 			vi++;
 		}
 		names.forEach((name, k) => geo.setAttribute(name, new THREE.BufferAttribute(arrays[k], sizes[k])));
@@ -85,7 +153,7 @@ function goreCut(els, params) {
 		geo.computeBoundingSphere();
 		if (src !== src0) src.dispose();
 		const nrm = geo.attributes.normal;
-		out.push({el, M, Minv: M.clone().invert(), geo, region, weight, base, base_n: nrm ? new Float32Array(nrm.array) : null, orig: null, inner: null});
+		out.push({el, M, Minv: M.clone().invert(), geo, region, weight, base, tear, base_n: nrm ? new Float32Array(nrm.array) : null, orig: null, inner: null});
 	}
 	return out;
 }
@@ -107,9 +175,205 @@ function goreFleshMaterial() {
 	return gore_flesh_mat;
 }
 
-// puts the cut meshes in place of the head's own; `Q(k)` is where piece k is moved to (the head group's space), or null
-function goreApply(cut, Q) {
-	const mats = [null], rots = [null];
+// The soft part. What hangs on is flesh, not a board: every vertex of a hanging piece is a particle on a spring to where
+// the piece's bones would put it - stiff in the piece, slack in the torn, stretched band of the weight map - so it sags
+// under its weight, lags, wobbles and settles. Strands of flesh are left stretched across a tear: chains of particles
+// (Verlet) pinned to both sides that sag, swing and snap when pulled too far, then hang from the head.
+// Everything here runs in the scene's space (pixels), on the head as it is drawn: the same in the simulation and in the
+// playback of a bake.
+class GoreSoft {
+	constructor(cut, params) {
+		this.cut = cut;
+		this.params = params;
+		const R = params.R, keys = new Map(), soft = [];
+		this.n = 0;
+		for (const c of cut) {
+			c.pidx = new Int32Array(c.region.length).fill(-1);
+			for (let i = 0; i < c.region.length; i++) {
+				const k = c.region[i];
+				if (!k || !params.hinges[k - 1] || c.weight[i] <= 0) continue;
+				const key = k + ':' + Math.round(c.base[i * 3] * 200) + ',' + Math.round(c.base[i * 3 + 1] * 200) + ',' + Math.round(c.base[i * 3 + 2] * 200);
+				let j = keys.get(key);
+				if (j === undefined) { j = this.n++; keys.set(key, j); const w = c.weight[i]; soft.push(Math.min(1, 0.2 + 3.2 * w * (1 - w))); }
+				c.pidx[i] = j;
+			}
+		}
+		this.soft = Float32Array.from(soft);
+		this.x = new Float32Array(this.n * 3); this.v = new Float32Array(this.n * 3);
+		this.tgt = new Float32Array(this.n * 3); this.tgt0 = new Float32Array(this.n * 3);
+		this.started = false;
+		// the strands: from the edge of the tear on the head to the edge of the tear on a piece
+		const nz = goreNoise((params.seed || 1) + 7);
+		let rnd_i = 0;
+		const rnd = () => nz(rnd_i++ * 1.37 + 0.5, 3.1, 7.7);
+		const edge = k => { const o = []; for (const c of cut) for (let i = 0; i < c.region.length; i += 3) if (c.region[i] == k && c.tear[i] < R * 0.12) o.push([c, i]); return o; };
+		const stump = edge(0);
+		this.strands = [];
+		for (let k = 1; k <= params.regions.length && stump.length; k++) {
+			const mine = edge(k);
+			if (!mine.length) continue;
+			const count = params.hinges[k - 1] ? 5 : 3;
+			for (let s = 0; s < count; s++) {
+				const b = mine[Math.floor(rnd() * mine.length)];
+				const pb = new THREE.Vector3().fromArray(b[0].base, b[1] * 3);
+				let best = null, bd = Infinity;
+				for (let t = 0; t < 24; t++) { const a = stump[Math.floor(rnd() * stump.length)], d = new THREE.Vector3().fromArray(a[0].base, a[1] * 3).distanceTo(pb); if (d < bd) { bd = d; best = a; } }
+				if (!best || bd > R * 0.9) continue;
+				// (its length is the gap across the tear as the head was whole, a little slack; a piece thrown off tears it soon)
+				const free_piece = !params.hinges[k - 1];
+				this.strands.push({a: best, b, n: 7, r: R * (0.025 + 0.04 * rnd()), rest: Math.max(bd, R * 0.08) * (1.05 + rnd() * 0.25) / 6,
+					snap: free_piece ? 1.6 + rnd() * 1.4 : 2.2 + rnd() * 2.5, free: false, p: null, q: null, mesh: null});
+			}
+		}
+	}
+	reset() { this.started = false; for (const s of this.strands) { s.p = null; s.free = false; } }
+	// world positions where the rigid weight-mapped head puts every vertex (Q(k): where piece k is, the head group's space)
+	targets(Q) {
+		const mats = [null];
+		const out = [];
+		const p = new THREE.Vector3(), q = new THREE.Vector3();
+		for (const c of this.cut) {
+			const G = c.el.mesh.parent ? c.el.mesh.parent.matrixWorld : new THREE.Matrix4();
+			const t = c.tw || (c.tw = new Float32Array(c.region.length * 3));
+			for (let i = 0; i < c.region.length; i++) {
+				const k = c.region[i];
+				p.fromArray(c.base, i * 3);
+				if (k) {
+					if (mats[k] === undefined) mats[k] = Q(k);
+					if (mats[k]) { q.copy(p).applyMatrix4(mats[k]); p.lerp(q, c.weight[i]); }
+				}
+				p.applyMatrix4(G);
+				t[i * 3] = p.x; t[i * 3 + 1] = p.y; t[i * 3 + 2] = p.z;
+				const j = c.pidx[i];
+				if (j >= 0) { this.tgt[j * 3] = p.x; this.tgt[j * 3 + 1] = p.y; this.tgt[j * 3 + 2] = p.z; }
+			}
+			out.push(t);
+		}
+		return mats;
+	}
+	step(dt) {
+		const R = this.params.R, g = 9.81 * SCALE, K = g / (0.13 * R);
+		// (at the start, or after a jump along the timeline: everything is put back where it hangs at rest)
+		if (!this.started || dt > 0.3) { this.x.set(this.tgt); this.v.fill(0); this.tgt0.set(this.tgt); this.started = true; dt = 0; for (const st of this.strands) st.p = null; }
+		const steps = Math.ceil(dt / (1 / 120)), h = steps ? dt / steps : 0, maxd = 0.6 * R;
+		for (let s = 0; s < steps; s++) {
+			const f = (s + 1) / steps;
+			for (let j = 0; j < this.n; j++) {
+				const sj = this.soft[j], k = K * (1 - 0.8 * sj), c = 2 * Math.sqrt(k) * 0.22;
+				for (let a = 0; a < 3; a++) {
+					const ia = j * 3 + a, tg = this.tgt0[ia] + (this.tgt[ia] - this.tgt0[ia]) * f, tv = dt > 0 ? (this.tgt[ia] - this.tgt0[ia]) / dt : 0;
+					let acc = k * (tg - this.x[ia]) - c * (this.v[ia] - tv);
+					if (a == 1) acc -= g * sj * sj;
+					this.v[ia] += acc * h;
+					this.x[ia] += this.v[ia] * h;
+				}
+				// (flesh stretches, but only so far)
+				const dx = this.x[j * 3] - this.tgt[j * 3], dy = this.x[j * 3 + 1] - this.tgt[j * 3 + 1], dz = this.x[j * 3 + 2] - this.tgt[j * 3 + 2], d = Math.hypot(dx, dy, dz);
+				if (d > maxd) { const m = maxd / d; this.x[j * 3] = this.tgt[j * 3] + dx * m; this.x[j * 3 + 1] = this.tgt[j * 3 + 1] + dy * m; this.x[j * 3 + 2] = this.tgt[j * 3 + 2] + dz * m; }
+			}
+		}
+		this.tgt0.set(this.tgt);
+		this.stepStrands(dt);
+	}
+	// where a vertex is drawn now (scene space)
+	at(c, i, out) {
+		const j = c.pidx[i];
+		return j >= 0 ? out.set(this.x[j * 3], this.x[j * 3 + 1], this.x[j * 3 + 2]) : out.fromArray(c.tw, i * 3);
+	}
+	stepStrands(dt) {
+		const g = 9.81 * SCALE, A = new THREE.Vector3(), B = new THREE.Vector3();
+		for (const s of this.strands) {
+			this.at(s.a[0], s.a[1], A); this.at(s.b[0], s.b[1], B);
+			if (!s.free && A.distanceTo(B) > s.rest * (s.n - 1) * s.snap) s.free = true;
+			if (!s.p) {
+				// (laid from the head towards the piece; torn already, it hangs from the head)
+				const dir = B.clone().sub(A), d = dir.length();
+				dir.divideScalar(d || 1);
+				if (s.free) dir.set(dir.x * 0.3, -1, dir.z * 0.3).normalize();
+				const len = s.free ? s.rest * (s.n - 1) : d;
+				s.p = []; s.q = [];
+				for (let i = 0; i < s.n; i++) { const pt = A.clone().addScaledVector(dir, len * i / (s.n - 1)); s.p.push(pt); s.q.push(pt.clone()); }
+				continue;
+			}
+			const steps = Math.min(Math.ceil(dt / (1 / 120)), 40), h = steps ? dt / steps : 0;
+			for (let st = 0; st < steps; st++) {
+				for (let i = 0; i < s.n; i++) {
+					const p = s.p[i], q = s.q[i], nx = p.x + (p.x - q.x) * 0.985, ny = p.y + (p.y - q.y) * 0.985 - g * h * h, nz = p.z + (p.z - q.z) * 0.985;
+					q.copy(p); p.set(nx, ny, nz);
+				}
+				for (let it = 0; it < 6; it++) {
+					s.p[0].copy(A);
+					if (!s.free) s.p[s.n - 1].copy(B);
+					for (let i = 0; i + 1 < s.n; i++) {
+						const p = s.p[i], q = s.p[i + 1], d = p.distanceTo(q);
+						if (d < 1e-6) continue;
+						// (stretches a little before it pulls)
+						const want = d > s.rest ? s.rest + (d - s.rest) * 0.15 : d;
+						const corr = (d - want) / d * 0.5;
+						const dx = (q.x - p.x) * corr, dy = (q.y - p.y) * corr, dz = (q.z - p.z) * corr;
+						if (i > 0) { p.x += dx; p.y += dy; p.z += dz; }
+						if (i + 1 < s.n - 1 || s.free) { q.x -= dx; q.y -= dy; q.z -= dz; }
+					}
+				}
+			}
+			s.p[0].copy(A);
+			if (!s.free) s.p[s.n - 1].copy(B);
+		}
+	}
+	// the strands as thin tubes of flesh
+	drawStrands(root) {
+		const rings = 5;
+		for (const s of this.strands) {
+			if (!s.p) continue;
+			if (!s.mesh) {
+				const geo = new THREE.BufferGeometry();
+				geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(s.n * rings * 3), 3));
+				geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(s.n * rings * 3), 3));
+				const idx = [];
+				for (let i = 0; i + 1 < s.n; i++) for (let r = 0; r < rings; r++) {
+					const a = i * rings + r, b = i * rings + (r + 1) % rings, c2 = a + rings, d = b + rings;
+					idx.push(a, c2, b, b, c2, d);
+				}
+				geo.setIndex(idx);
+				s.mesh = new THREE.Mesh(geo, goreStrandMaterial());
+				s.mesh.frustumCulled = false;
+				s.mesh.userData.render_no_fx = true;
+				root.add(s.mesh);
+			}
+			const pos = s.mesh.geometry.attributes.position, nrm = s.mesh.geometry.attributes.normal;
+			const t = new THREE.Vector3(), u = new THREE.Vector3(), w = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+			for (let i = 0; i < s.n; i++) {
+				const a = s.p[Math.max(i - 1, 0)], b = s.p[Math.min(i + 1, s.n - 1)];
+				t.subVectors(b, a).normalize();
+				u.crossVectors(t, Math.abs(t.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : up).normalize();
+				w.crossVectors(t, u);
+				// (thinner where it is pulled thin, thicker at the ends)
+				const k = i / (s.n - 1), r = s.r * (0.55 + 0.45 * Math.abs(k - 0.5) * 2) * (s.free && i == s.n - 1 ? 0.6 : 1);
+				for (let j = 0; j < rings; j++) {
+					const an = j / rings * Math.PI * 2, cx = Math.cos(an), cy = Math.sin(an);
+					const nx = u.x * cx + w.x * cy, ny = u.y * cx + w.y * cy, nzz = u.z * cx + w.z * cy;
+					pos.setXYZ(i * rings + j, s.p[i].x + nx * r, s.p[i].y + ny * r, s.p[i].z + nzz * r);
+					nrm.setXYZ(i * rings + j, nx, ny, nzz);
+				}
+			}
+			pos.needsUpdate = true; nrm.needsUpdate = true;
+			s.mesh.geometry.computeBoundingSphere();
+		}
+	}
+	dispose() { for (const s of this.strands) if (s.mesh) { if (s.mesh.parent) s.mesh.parent.remove(s.mesh); s.mesh.geometry.dispose(); s.mesh = null; } }
+}
+
+let gore_strand_mat = null;
+function goreStrandMaterial() {
+	return gore_strand_mat || (gore_strand_mat = new THREE.MeshStandardMaterial({color: 0x6a0c0a, roughness: 0.3, metalness: 0, envMapIntensity: 0.6}));
+}
+
+// where to hang the strands (they are drawn in the scene's own space)
+function goreSceneRoot() { return typeof scene != 'undefined' && scene ? scene : (typeof Canvas != 'undefined' && Canvas.scene) || null; }
+
+// puts the cut meshes in place of the head's own, drawn where the soft head is now; `Q(k)` is where piece k is moved to
+// (the head group's space), or null
+function goreApply(cut, Q, soft, dt) {
 	for (const c of cut) {
 		const el = c.el;
 		if (!el.mesh) continue;
@@ -126,20 +390,24 @@ function goreApply(cut, Q) {
 			c.inner.renderOrder = 1;
 			el.mesh.add(c.inner);
 		}
-		const pos = c.geo.attributes.position, nrm = c.geo.attributes.normal, p = new THREE.Vector3(), q = new THREE.Vector3(), nv = new THREE.Vector3();
+		el.mesh.updateMatrixWorld(true);
+	}
+	const mats = soft.targets(Q);
+	soft.step(dt);
+	const p = new THREE.Vector3(), q = new THREE.Vector3(), nv = new THREE.Vector3();
+	for (const c of cut) {
+		const el = c.el;
+		if (!el.mesh) continue;
+		const inv = el.mesh.matrixWorld.clone().invert();
+		const pos = c.geo.attributes.position, nrm = c.geo.attributes.normal;
+		const mR = new THREE.Matrix3().setFromMatrix4(c.M), mRi = new THREE.Matrix3().setFromMatrix4(c.Minv);
 		for (let i = 0; i < c.region.length; i++) {
-			const k = c.region[i];
-			p.fromArray(c.base, i * 3);
-			let w = 0;
-			if (k) {
-				if (mats[k] === undefined) { mats[k] = Q(k); rots[k] = mats[k] ? new THREE.Matrix3().setFromMatrix4(mats[k]) : null; }
-				if (mats[k]) { w = c.weight[i]; q.copy(p).applyMatrix4(mats[k]); p.lerp(q, w); }
-			}
-			p.applyMatrix4(c.Minv);
+			soft.at(c, i, p).applyMatrix4(inv);
 			pos.setXYZ(i, p.x, p.y, p.z);
+			const k = c.region[i], w = c.weight[i];
 			if (nrm && c.base_n) {
 				nv.fromArray(c.base_n, i * 3);
-				if (k && rots[k] && w > 0) { q.copy(nv).applyMatrix3(new THREE.Matrix3().setFromMatrix4(c.M)).applyMatrix3(rots[k]).applyMatrix3(new THREE.Matrix3().setFromMatrix4(c.Minv)); nv.lerp(q, w).normalize(); }
+				if (k && mats[k] && w > 0) { q.copy(nv).applyMatrix3(mR).applyMatrix3(new THREE.Matrix3().setFromMatrix4(mats[k])).applyMatrix3(mRi); nv.lerp(q, w).normalize(); }
 				nrm.setXYZ(i, nv.x, nv.y, nv.z);
 			}
 		}
@@ -147,9 +415,12 @@ function goreApply(cut, Q) {
 		if (nrm) nrm.needsUpdate = true;
 		c.geo.computeBoundingSphere();
 	}
+	const root = goreSceneRoot();
+	if (root) soft.drawStrands(root);
 }
 
-function goreRestore(cut) {
+function goreRestore(cut, soft) {
+	if (soft) soft.dispose();
 	for (const c of cut) {
 		const el = c.el;
 		if (c.inner && c.inner.parent) c.inner.parent.remove(c.inner);
@@ -180,7 +451,7 @@ function goreParams(bot, point, dir, impulse) {
 	let mode = k >= 1.6 ? (r < 0.5 ? 'burst' : r < 0.75 ? 'split' : 'face') : (r < 0.55 ? 'face' : 'split');
 	if (globalThis.__GORE_MODE) mode = globalThis.__GORE_MODE;   // (tests)
 	const jit = () => (Math.random() - 0.5) * 0.2 * R;
-	const params = {mode, R, planes: [], regions: [], hinges: []};
+	const params = {mode, R, planes: [], regions: [], hinges: [], seed: 1 + Math.floor(Math.random() * 1e6), rag: 0.14};
 	if (mode == 'face') {
 		params.planes.push(plane(f, P(f.clone().multiplyScalar(0.2 * R + jit()))));
 		params.regions.push([[0, 1]]);
@@ -211,6 +482,8 @@ class HeadGore {
 		const {params, els} = goreParams(bot, point, dir, impulse);
 		this.params = params;
 		this.cut = goreCut(els, params);
+		this.soft = new GoreSoft(this.cut, params);
+		this.last_show = null;
 		this.t = bot._time;
 		const g = bot.head.group;
 		g.mesh.updateMatrixWorld(true);
@@ -283,6 +556,14 @@ class HeadGore {
 				}
 			} catch (err) { console.warn('[Ragdoll] gore blood', err); }
 		}
+		// the torn edges are soaked: the blood on him there at once
+		try {
+			let n = 0;
+			for (const c of this.cut) for (let i = 0; i < c.region.length && n < 60; i += 7) if (c.tear[i] < params.R * 0.08) {
+				bot.paint_blood(bot.head, new THREE.Vector3().fromArray(c.base, i * 3).applyMatrix4(toWorld), 0.025 * bot.scale_factor, 0.9);
+				n++;
+			}
+		} catch (err) { console.warn('[Ragdoll] gore blood', err); }
 		this.rec = {t: this.t, head: g.uuid, els: els.map(e => e.uuid), params, frames: []};
 	}
 	bodyMatrix(b) {
@@ -313,9 +594,13 @@ class HeadGore {
 			try { blood.spawn_drop(at, this.bodyVel(p.body), 0.03 + Math.random() * 0.12 / (1 + age), null, 0, true); } catch (err) { /* blood gone */ }
 		}
 	}
-	show() { goreApply(this.cut, k => this.Q(k)); }
+	show() {
+		const now = this.bot._time, dt = this.last_show === null ? 0 : Math.max(0, now - this.last_show);
+		this.last_show = now;
+		goreApply(this.cut, k => this.Q(k), this.soft, dt);
+	}
 	record(time) { this.rec.frames.push({t: time, q: this.pieces.map((p, i) => { const m = this.Q(i + 1); return m ? Array.from(m.elements) : null; })}); }
-	dispose() { goreRestore(this.cut); }
+	dispose() { goreRestore(this.cut, this.soft); }
 }
 
 // the Animate tab: the broken heads of the selected animation at the time of the timeline
@@ -324,18 +609,23 @@ class GorePlayer {
 	show(t) {
 		this.recs.forEach((rec, i) => {
 			let live = this.live[i];
-			if (t < rec.t - 1e-6) { if (live) { goreRestore(live.cut); this.live[i] = null; } return; }
+			if (t < rec.t - 1e-6) { if (live) { goreRestore(live.cut, live.soft); this.live[i] = null; } return; }
 			if (!live) {
 				const els = rec.els.map(u => (Mesh.all.find(e => e.uuid == u) || Cube.all.find(e => e.uuid == u))).filter(Boolean);
-				live = this.live[i] = {cut: goreCut(els, rec.params)};
+				const cut = goreCut(els, rec.params);
+				live = this.live[i] = {cut, soft: new GoreSoft(cut, rec.params), last: rec.t};
 			}
+			// (the soft flesh is simulated along the timeline: played back from the start when the time goes back)
+			if (t < live.last - 1e-6) live.soft.reset();
+			const dt = Math.max(0, t - live.last);
+			live.last = t;
 			let f = 0;
 			while (f + 1 < rec.frames.length && rec.frames[f + 1].t <= t + 1e-6) f++;
 			const fr = rec.frames[f];
-			goreApply(live.cut, k => fr && fr.q[k - 1] ? new THREE.Matrix4().fromArray(fr.q[k - 1]) : null);
+			goreApply(live.cut, k => fr && fr.q[k - 1] ? new THREE.Matrix4().fromArray(fr.q[k - 1]) : null, live.soft, dt);
 		});
 	}
-	dispose() { for (const l of this.live) if (l) goreRestore(l.cut); this.live = []; }
+	dispose() { for (const l of this.live) if (l) goreRestore(l.cut, l.soft); this.live = []; }
 }
 
 let gore_player = null, gore_player_anim = null;
