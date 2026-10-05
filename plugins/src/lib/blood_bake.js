@@ -13,7 +13,7 @@ class BloodRecorder {
 		this.sim = sim;
 		const p = sim.people[0];
 		this.rec = {
-			fps: 24, events: [], frames: [], ground: sim.ground, max_drops: sim.max_drops,
+			fps: 24, events: [], frames: [], ground: sim.ground, max_drops: sim.max_drops, settings: sim.settings,
 			centre: p ? p.pos(p.pelvis).toArray() : [0, 0, 0],
 			people: sim.people.map(bot => ({parts: bot.parts.map(pt => pt.group.uuid), rest_offset: bot.rest_offset.toArray(), scale: bot.scale_factor, paints: []})),
 		};
@@ -87,7 +87,7 @@ class BloodPlayer {
 			bot.body_blood = new BodyBlood(bot);
 			return bot;
 		});
-		this.sim = {_time: 0, _since_sim: 0, _drops: [], people: this.people, ground: rec.ground, max_drops: rec.max_drops || B_MAX_DROPS};
+		this.sim = {_time: 0, _since_sim: 0, _drops: [], people: this.people, ground: rec.ground, max_drops: rec.max_drops || B_MAX_DROPS, settings: rec.settings || {dry: 150, density: 1}};
 		this.view = new BloodView(this.sim, null);
 	}
 	dispose() { if (this.view) this.view.dispose(); this.view = null; }

@@ -41,7 +41,7 @@ float bnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 
 const BV_SURFACE = `
 uniform sampler2D bv_floor; uniform sampler2D bv_wall_x; uniform sampler2D bv_wall_z; uniform sampler2D bv_ceil;
 uniform vec2 bv_min; uniform float bv_size; uniform vec2 bv_wall; uniform float bv_time;
-uniform float bv_gamma;
+uniform float bv_gamma; uniform float bv_dry; uniform float bv_density;
 ${BV_COMMON}
 // Blockbench draws in display space (no sRGB output): the game's linear colours are put into it
 vec3 bv_col(vec3 c) { return bv_gamma > 0.5 ? pow(max(c, vec3(0.0)), vec3(0.4545)) : c; }
@@ -57,7 +57,7 @@ vec3 blood_sample(vec3 p, vec3 n) {
 	float d = v.g * ${BV_DEPTH_RANGE.toFixed(1)} + ${BV_DEPTH_MIN.toFixed(1)};
 	if (abs(d - depth) > tol) return vec3(0.0);
 	float age = mod(bv_time - v.b * ${BV_TIME_SPAN.toFixed(1)} + ${BV_TIME_SPAN.toFixed(1)}, ${BV_TIME_SPAN.toFixed(1)});
-	return vec3(s.a, v.r, clamp(age / 150.0, 0.0, 1.0));
+	return vec3(s.a, v.r, clamp(age / bv_dry, 0.0, 1.0));
 }
 float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec3 albedo, inout float roughness, inout vec3 n_view) {
 	vec3 b = blood_sample(wpos, wnrm);
@@ -78,7 +78,7 @@ float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec
 	if (n_ok > 0.0) b.yz = b.y > 0.0 ? (b.yz + yz) / (1.0 + n_ok) : yz / n_ok;
 	vec2 ep = wnrm.y > 0.55 ? wpos.xz : (abs(wnrm.x) > abs(wnrm.z) ? wpos.zy : wpos.xy);
 	float detail = bnoise(ep * 300.0);
-	float thick = clamp(b.y, 0.0, 1.0);
+	float thick = clamp(b.y * bv_density, 0.0, 1.0);
 	float film = smoothstep(0.03, 0.09, thick);
 	float ragged = bnoise(ep * 70.0) * 0.6 + bnoise(ep * 190.0) * 0.4;
 	float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
@@ -161,6 +161,10 @@ class BloodView {
 		return !(this.renderer && THREE.sRGBEncoding && this.renderer.outputEncoding === THREE.sRGBEncoding);
 	}
 
+	// how long the blood takes to dry (s; the game: 150) and how thick it lies (1 = as in the game): the character's settings
+	dryTime() { const v = this.sim.settings && this.sim.settings.dry; return Math.max(1, +v || 150); }
+	density() { const v = this.sim.settings && this.sim.settings.density; return clamp(v === undefined || v === null ? 1 : +v, 0.05, 1); }
+
 	findRenderer() {
 		try { if (typeof Preview != 'undefined') { const p = Preview.selected || (Preview.all || []).find(x => x.renderer); if (p && p.renderer) return p.renderer; } } catch (err) { /* none */ }
 		return null;
@@ -222,7 +226,7 @@ class BloodView {
 		this.u = {
 			bv_floor: {value: this.maps[0] ? this.maps[0].target.texture : blank}, bv_wall_x: {value: this.maps[1] ? this.maps[1].target.texture : blank}, bv_wall_z: {value: this.maps[2] ? this.maps[2].target.texture : blank}, bv_ceil: {value: this.maps[3] ? this.maps[3].target.texture : blank},
 			bv_min: {value: new THREE.Vector2(this.area_min.x, this.area_min.z)}, bv_size: {value: BV_AREA}, bv_wall: {value: new THREE.Vector2(this.wall_y0, BV_WALL_H)}, bv_time: {value: 0},
-			bv_gamma: {value: this.gamma() ? 1 : 0},
+			bv_gamma: {value: this.gamma() ? 1 : 0}, bv_dry: {value: this.dryTime()}, bv_density: {value: this.density()},
 		};
 		this.surface_mat = this.surfaceMaterial();
 		// the ground of the Physics tab (it may have no element of its own): a sheet that reads the floor map
@@ -434,7 +438,7 @@ class BloodView {
 		mat.map = this.tex(kind, variant, 'albedo');
 		mat.normalMap = this.tex(kind, variant, 'normal');
 		mat.roughness = 0.07;
-		mat.opacity = alpha;
+		mat.opacity = alpha * (0.45 + 0.55 * this.density());
 		mat.color.set(0xffffff);
 		mat.needsUpdate = true;
 		d.birth = birth; d.prio = w * l; d.dry = false;
@@ -688,10 +692,10 @@ class BloodView {
 	// into it (pass 0), then the blood itself, lit, on top (pass 1)
 	bodyMaterial(bot, rest, pass) {
 		const bb = bot.body_blood;
-		const u = {vol: {value: null}, vol_min: {value: bb.box_min.clone()}, vol_size: {value: gv(bb.dims[0], bb.dims[1], bb.dims[2]).multiplyScalar(bb.cell)}, time: {value: 0}, rest: {value: rest}, bv_gamma: this.u.bv_gamma};
+		const u = {vol: {value: null}, vol_min: {value: bb.box_min.clone()}, vol_size: {value: gv(bb.dims[0], bb.dims[1], bb.dims[2]).multiplyScalar(bb.cell)}, time: {value: 0}, rest: {value: rest}, bv_gamma: this.u.bv_gamma, bv_dry: this.u.bv_dry, bv_density: this.u.bv_density};
 		const head = `
 			precision highp sampler3D;
-			uniform float bv_gamma;
+			uniform float bv_gamma; uniform float bv_dry; uniform float bv_density;
 			uniform sampler3D vol; uniform vec3 vol_min; uniform vec3 vol_size; uniform float time; varying vec3 rp;
 			float h3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
 			float n3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -704,10 +708,10 @@ class BloodView {
 				if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) return vec4(0.0);
 				vec2 s = texture(vol, uvw).rg;
 				float nz = n3(rp * 60.0) * 0.6 + n3(rp * 170.0) * 0.4;
-				float amt = s.r + (nz - 0.5) * 0.12 * (1.0 - s.r);
+				float amt = (s.r + (nz - 0.5) * 0.12 * (1.0 - s.r)) * bv_density;
 				if (amt < 0.03) return vec4(0.0);
 				float age = mod(time - s.g * 255.0, 256.0);
-				float dry = clamp(age / 140.0, 0.0, 1.0);
+				float dry = clamp(age / (bv_dry * 0.93), 0.0, 1.0);
 				float film = smoothstep(0.03, 0.3, amt);
 				float solid = smoothstep(0.3, 0.7, amt);
 				vec3 wet_col = mix(vec3(0.2, 0.012, 0.01), vec3(0.09, 0.004, 0.003), solid);
@@ -821,7 +825,7 @@ class BloodView {
 		for (let k = 0; k < budget; k++) {
 			this.dry_cursor = ((this.dry_cursor || 0) + 1) % this.decals.length;
 			const d = this.decals[this.dry_cursor];
-			const k_dry = clamp((this.sim._time - d.birth) / B_DRY_TIME, 0, 1);
+			const k_dry = clamp((this.sim._time - d.birth) / (this.dryTime() * 0.93), 0, 1);
 			d.mesh.material.color.setRGB(1, 1, 1).lerp(this.dry_color || (this.dry_color = new THREE.Color(...BV_DRY_COLOR)), Math.pow(k_dry, 0.7));
 			const dry = k_dry > 0.6;
 			if (dry != d.dry) { d.dry = dry; d.mesh.material.roughness = dry ? 0.62 : 0.07; }

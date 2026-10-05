@@ -42,6 +42,9 @@ class BloodSim {
 		// High: every drop of it flies on its own and lands where its flight takes it (nothing is thinned out, no drop
 		// is dropped for want of room, a burst is drops and not rays painted at once)
 		this.high = people.some(r => r.s && r.s.blood_high);
+		// how the blood looks as it lies (the view reads it; a bake keeps it)
+		const s0 = (people.find(r => r.s) || {}).s || {};
+		this.settings = {dry: s0.blood_dry ?? 30, density: s0.blood_density ?? 1};
 		this.max_drops = this.high ? B_MAX_DROPS_HIGH : B_MAX_DROPS;
 		this.ground = groundLevel(rt);
 		// rays: what is "world" (the level: static bodies and the ground) and "props" (moving things that are not people)
