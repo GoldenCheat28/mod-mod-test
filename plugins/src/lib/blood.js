@@ -38,6 +38,7 @@ class BloodSim {
 		this._soak = new Map(); this._soak_stamp = new Map(); this._dead_since = new Map(); this._feet = new Map();
 		this._wounds = new Map();        // bot -> wounds
 		this._splat_grid = new Set();
+		this._film = new Map();   // how thick the blood already lies on the level, per 3 cm cell (0..1)
 		this._time = 0; this._tick = 0; this._smear_t = 0; this._since_sim = 0;
 		this._timers = [];
 		this.view = null;
@@ -287,7 +288,7 @@ class BloodSim {
 		let d;
 		if (this._drops.length >= this.max_drops) d = this._drops[brandi(this._drops.length)];
 		else { d = {}; this._drops.push(d); }
-		Object.assign(d, {pos: pos.clone(), vel: vel.clone(), vol: Math.min(vol, 12), age: 0, drip, ignore, ignore_t, streak});
+		Object.assign(d, {pos: pos.clone(), vel: vel.clone(), vol: Math.min(vol, 12), age: 0, drip, ignore, ignore_t, streak, seed: Math.random()});
 	}
 
 	// blood leaving a body: if the ground is right there (a body lying on it) it goes straight into the pool
@@ -899,11 +900,32 @@ class BloodSim {
 		// (slanted faces, outside the maps) and moving things get a decal
 		if (!col && bloodMapFor(n) >= 0) {
 			this._splat_grid.add(cellKey(p));
+			thick = this._film_add(p, n, along, w, l, thick * alpha);
 			if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, null);
 			this._wrap_edges(p, n, along, w, l, kind, variant, thick, alpha, null);
 			return;
 		}
 		if (this.view) this.view.decal(col && col.entry, p, n, along, w, l, kind, variant, alpha, this._time);
+	}
+
+	// as in life the more blood lies in a place the less of the surface shows through it: a lone small drop is a thin
+	// see-through film, drops landing on drops and big splats build it up until it is opaque. Returns the thickness to paint
+	_film_add(p, n, along, w, l, amount) {
+		const C = 0.03, mi = bloodMapFor(n);
+		const key = q => mi + ':' + Math.round(q.x / C) + ',' + Math.round(q.y / C) + ',' + Math.round(q.z / C);
+		const had = this._film.get(key(p)) || 0;
+		const own = amount * clamp(Math.sqrt(w * l) / 0.07, 0.4, 1);
+		const t = clamp(Math.max(had, own) + (had > 0 ? 0.45 * own + 0.1 * amount : 0), 0, 1);
+		// the footprint gets at least this much
+		const a = along.clone().addScaledVector(n, -n.dot(along)), b = n.clone().cross(a);
+		if (a.lengthSq() < 1e-6) { this._film.set(key(p), Math.max(had, t)); return t; }
+		a.normalize(); b.normalize();
+		const nu = Math.min(Math.ceil(w * 0.4 / C), 8), nv = Math.min(Math.ceil(l * 0.4 / C), 8);
+		for (let i = -nu; i <= nu; i++) for (let j = -nv; j <= nv; j++) {
+			const k = key(p.clone().addScaledVector(b, i * C).addScaledVector(a, j * C));
+			this._film.set(k, Math.max(this._film.get(k) || 0, t * (i || j ? 0.85 : 1)));
+		}
+		return t;
 	}
 
 	_body_stamp(bot, part, p, n, along, w, l, kind, variant) {

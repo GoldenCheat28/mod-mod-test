@@ -7,7 +7,7 @@
 //    lit material (blood_apply): dark wet blood with a sharp sheen, clots, a raised rim, drying to matt brown.
 //  - Moving things and faces the maps cannot hold (slanted): decals projected onto the object, with a normal map,
 //    wet and glossy, drying darker and matt. They go where the object goes.
-//  - Drops: flat lit beads turned to the eye about their line of flight and stretched along it.
+//  - Drops: uneven lit blobs with tapered tails (threads with beads just off a spray) and a faint motion smear.
 //  - The splash at a hit: an 8-frame sprite. The mist: a puff of fine spray.
 //  - On the person: his blood volume (body_blood.gd) stains his clothes and skin and lies on them, lit.
 // ---------------------------------------------------------------------------
@@ -59,7 +59,10 @@ vec3 blood_sample(vec3 p, vec3 n) {
 	float age = mod(bv_time - v.b * ${BV_TIME_SPAN.toFixed(1)} + ${BV_TIME_SPAN.toFixed(1)}, ${BV_TIME_SPAN.toFixed(1)});
 	return vec3(s.a, v.r, clamp(age / bv_dry, 0.0, 1.0));
 }
+// what the blood lets through: the shape of the stain and the colour the light under it is filtered to (bv_tint)
+float bv_shape; vec3 bv_tint;
 float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec3 albedo, inout float roughness, inout vec3 n_view) {
+	bv_shape = 0.0; bv_tint = vec3(1.0);
 	vec3 b = blood_sample(wpos, wnrm);
 	vec3 t1 = abs(wnrm.y) > 0.55 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
 	vec3 t2 = normalize(cross(wnrm, t1));
@@ -79,26 +82,32 @@ float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec
 	vec2 ep = wnrm.y > 0.55 ? wpos.xz : (abs(wnrm.x) > abs(wnrm.z) ? wpos.zy : wpos.xy);
 	float detail = bnoise(ep * 300.0);
 	float thick = clamp(b.y * bv_density, 0.0, 1.0);
-	float film = smoothstep(0.03, 0.09, thick);
+	float film = smoothstep(0.01, 0.05, thick);
 	float ragged = bnoise(ep * 70.0) * 0.6 + bnoise(ep * 190.0) * 0.4;
 	float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
 	float soft = smoothstep(0.08, 0.8, b.x + (detail - 0.5) * 0.3) * (0.3 + 0.35 * detail);
 	float cov = mix(soft, crisp, film);
-	// a thin film lets the surface show through; only a pool covers it fully
-	cov *= mix(0.55, 1.0, smoothstep(0.06, 0.5, thick));
+	// blood is a red filter: a thin film tints what is under it (drawn by the filter pass from bv_tint), the more of it
+	// lies there the darker and the less of the surface shows, and where it builds up it covers it
+	bv_shape = cov;
+	cov *= mix(0.1, 1.0, smoothstep(0.12, 0.55, thick));
 	if (cov <= 0.0) return 0.0;
 	float deep = smoothstep(0.08, 0.45, thick);
 	float clot = bnoise(ep * 9.0) * 0.6 + bnoise(ep * 31.0) * 0.4;
 	float grain = bnoise(ep * 140.0);
 	float edge = 1.0 - smoothstep(0.25, 0.85, thick);
 	float dry = pow(clamp(b.z * (0.75 + 0.5 * clot) + edge * b.z * 0.8, 0.0, 1.0), 0.7);
-	vec3 wet_col = mix(vec3(0.075, 0.004, 0.003), vec3(0.02, 0.0009, 0.0007), deep);
+	// a thin film is a lighter, clearer red (the light goes through it); a deep one nearly black-red
+	vec3 wet_col = mix(vec3(0.16, 0.008, 0.005), vec3(0.02, 0.0009, 0.0007), deep);
 	wet_col *= mix(1.0, 0.5 + 1.0 * clot, deep);
 	vec3 dry_col = mix(vec3(0.055, 0.017, 0.012), vec3(0.026, 0.009, 0.007), deep);
 	dry_col *= 0.8 + 0.45 * clot;
 	float crust = smoothstep(0.1, 0.5, b.z) * edge * smoothstep(0.02, 0.2, thick);
 	dry_col = mix(dry_col, vec3(0.018, 0.006, 0.005), crust * 0.7);
 	albedo = bv_col(mix(wet_col, dry_col, dry));
+	vec3 t_wet = mix(vec3(0.62, 0.1, 0.075), vec3(0.16, 0.008, 0.006), smoothstep(0.0, 0.45, thick));
+	vec3 t_dry = mix(vec3(0.5, 0.22, 0.16), vec3(0.14, 0.04, 0.03), smoothstep(0.0, 0.45, thick));
+	bv_tint = bv_col(mix(t_wet, t_dry, dry));
 	float gloss = film * smoothstep(0.35, 0.8, cov);
 	float sheen = smoothstep(0.35, 0.75, bnoise(ep * 5.0 + 3.1) * 0.7 + clot * 0.3);
 	roughness = mix(mix(0.5, mix(0.05, 0.12, sheen), gloss), 0.88, smoothstep(0.35, 0.55, dry));
@@ -231,6 +240,7 @@ class BloodView {
 			bv_gamma: {value: this.gamma() ? 1 : 0}, bv_dry: {value: this.dryTime()}, bv_density: {value: this.density()},
 		};
 		this.surface_mat = this.surfaceMaterial();
+		this.filter_mat = this.filterMaterial();
 		// the ground of the Physics tab (it may have no element of its own): a sheet that reads the floor map
 		const geo = new THREE.PlaneGeometry(BV_AREA * SCALE, BV_AREA * SCALE);
 		geo.rotateX(-Math.PI / 2);
@@ -239,6 +249,7 @@ class BloodView {
 		this.floor.renderOrder = 2;
 		this.floor.frustumCulled = false;
 		this.floor.receiveShadow = true;
+		this.withFilter(this.floor);
 		this.surface_group.add(this.floor);
 	}
 
@@ -271,6 +282,40 @@ class BloodView {
 		return m;
 	}
 
+	// the filter under the lit blood: what lies on the surface tints it (dst * (1 - a + a * tint))
+	filterMaterial() {
+		const m = new THREE.ShaderMaterial({
+			uniforms: this.u,
+			vertexShader: `varying vec3 vBW; varying vec3 vBN; varying vec3 vView;
+				void main() { vec4 w = modelMatrix * vec4(position, 1.0); vBW = w.xyz / ${SCALE.toFixed(1)}; vBN = normalize(mat3(modelMatrix) * normal);
+					vec4 mv = viewMatrix * w; vView = mv.xyz; gl_Position = projectionMatrix * mv; }`,
+			fragmentShader: `varying vec3 vBW; varying vec3 vBN; varying vec3 vView;
+				${BV_SURFACE}
+				void main() {
+					vec3 gn = normalize(cross(dFdx(vView), dFdy(vView)));
+					vec3 alb = vec3(0.0); float rough = 0.5; vec3 n = gn;
+					blood_apply(vBW, normalize(vBN), vView, gn, alb, rough, n);
+					if (bv_shape <= 0.002) discard;
+					gl_FragColor = vec4(bv_shape * bv_tint, bv_shape);
+				}`,
+			transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+			blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+			blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+		});
+		m.extensions = {derivatives: true};
+		return m;
+	}
+
+	// a surface overlay: the filter first, the lit blood over it
+	withFilter(ov) {
+		const f = new THREE.Mesh(ov.geometry, this.filter_mat);
+		f.renderOrder = 1;
+		f.frustumCulled = false;
+		f.userData.render_no_fx = true;
+		ov.add(f);
+		return ov;
+	}
+
 	// the elements of the model that do not move: they get the blood of the maps on their faces
 	worldMeshes() {
 		const out = [];
@@ -298,6 +343,7 @@ class BloodView {
 				ov.renderOrder = 2;
 				ov.receiveShadow = true;
 				ov.frustumCulled = false;
+				this.withFilter(ov);
 				this.surface_group.add(ov);
 				this.surfaces.set(mesh, ov);
 			}
@@ -509,63 +555,115 @@ class BloodView {
 		if (grown) { d.birth = this.sim._time; d.prio = w * l * 10; }
 	}
 
-	// ---- drops: flat beads turned to the eye about their line of flight, stretched along it (blood.gd DROP_SHADER) ----
+	// ---- drops in the air, as high-speed footage shows them: no balls, no sticks. Fresh off a wound the blood is a
+	// stretched thread with beads along it that breaks up; a drop is an uneven blob that wobbles, drags a short tapered
+	// tail behind it the faster it goes, and leaves a faint see-through smear (the eye's / a camera's blur) ----
 	makeDrops() {
 		const geo = new THREE.PlaneGeometry(1, 1);
-		const mat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.12, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 1});
+		this.drop_cap = this.sim.max_drops || B_MAX_DROPS;
+		// per drop: seed, tail length, blur length (both in radii), thread (0..1)
+		this.drop_aux = new THREE.InstancedBufferAttribute(new Float32Array(this.drop_cap * 4), 4);
+		this.drop_aux.setUsage(THREE.DynamicDrawUsage);
+		geo.setAttribute('daux', this.drop_aux);
+		const mat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.06, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 1.2,
+			transparent: true, depthWrite: false});
 		const gamma = this.u.bv_gamma;
 		mat.onBeforeCompile = shader => {
 			shader.uniforms.bv_gamma = gamma;
 			shader.vertexShader = shader.vertexShader
-				.replace('#include <common>', '#include <common>\nvarying vec2 vBUv;')
+				.replace('#include <common>', '#include <common>\nattribute vec4 daux; varying vec2 vQ; varying vec4 vAux; varying float vE;')
 				.replace('#include <project_vertex>', `
 					mat4 M = modelMatrix * instanceMatrix;
-					vec3 centre = M[3].xyz; vec3 axis_v = M[1].xyz; float len = length(axis_v); float r = length(M[0].xyz);
-					vec3 axis = axis_v / max(len, 1e-5);
+					vec3 centre = M[3].xyz; float r = length(M[0].xyz);
+					vec3 axis = normalize(M[1].xyz);
+					vE = length(M[2].xyz) / max(r, 1e-6) - 1.0;   // the wobble: + flat across, - long
 					vec3 to_eye = normalize(cameraPosition - centre);
 					vec3 side = cross(axis, to_eye);
 					side = length(side) > 1e-3 ? normalize(side) : normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
-					vec3 w = centre + side * position.x * 2.0 * r + axis * position.y * 2.0 * max(len, r);
-					vBUv = uv;
+					// the quad, in radii: the head round the middle, the tail / thread / smear behind it
+					float back = max(max(daux.y, daux.z), 0.0) + 1.4;
+					vQ = vec2(position.x * 2.0 * 1.45, mix(-back, 1.45, position.y + 0.5));
+					vAux = daux;
+					vec3 w = centre + side * vQ.x * r + axis * vQ.y * r;
 					vec4 mvPosition = viewMatrix * vec4(w, 1.0);
 					gl_Position = projectionMatrix * mvPosition;`);
 			shader.fragmentShader = shader.fragmentShader
-				.replace('#include <common>', '#include <common>\nvarying vec2 vBUv; uniform float bv_gamma;')
+				.replace('#include <common>', `#include <common>
+					varying vec2 vQ; varying vec4 vAux; varying float vE; uniform float bv_gamma;
+					float dhash(float n) { return fract(sin(n) * 43758.5453); }
+					float dnoise(float x) { float i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(dhash(i), dhash(i + 1.0), f); }`)
 				.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 					{
-						vec2 d = vBUv * 2.0 - 1.0; float q = dot(d, d);
-						if (q > 1.0) discard;
-						// lit like anything else: a round wet bead, the normal bulging towards the eye, glossy
-						diffuseColor.rgb = vec3(0.14, 0.006, 0.005) * (1.0 - 0.4 * q);
+						float seed = vAux.x * 100.0, tail = vAux.y, smear = vAux.z, thread = vAux.w;
+						vec2 q = vQ;
+						// the head: an uneven blob (a few lobes of its own), squashed and stretched by its wobble
+						vec2 h = vec2(q.x / (1.0 + vE), q.y / (1.0 - vE));
+						float ang = atan(h.x, h.y);
+						float R = 1.0 + 0.09 * (dnoise(ang * 1.6 + seed) - 0.5) * 2.0 + 0.05 * sin(ang * 3.0 + seed * 1.7);
+						float hd = length(h) / R;
+						float a = 1.0 - smoothstep(0.9, 1.0, hd);
+						vec3 nrm = vec3(h.x, -h.y, sqrt(max(1.0 - hd * hd, 0.0)));
+						float body = 1.0 - min(hd, 1.0);
+						// behind it: a tail that tapers off (a thread with beads on it while it is still breaking up)
+						if (q.y < 0.0 && tail > 0.05) {
+							float t = -q.y / tail;
+							if (t < 1.0) {
+								float rad = mix(0.85, 0.0, pow(t, 0.55 + 0.6 * thread)) * (1.0 - 0.5 * thread);
+								float bead = abs(sin(t * (3.0 + floor(dhash(seed) * 4.0)) * 3.14159 + seed));
+								rad *= mix(1.0, 0.35 + 1.1 * bead * bead, thread);
+								rad *= 1.0 + 0.25 * (dnoise(t * 6.0 + seed * 3.1) - 0.5);
+								float ad = abs(q.x) / max(rad, 1e-3);
+								float ta = (1.0 - smoothstep(0.75, 1.0, ad)) * step(1e-3, rad) * (1.0 - smoothstep(0.7, 1.0, t) * 0.6);
+								if (ta > a) { a = ta; nrm = vec3(q.x / max(rad, 1e-3), 0.0, sqrt(max(1.0 - ad * ad, 0.0))); body = rad * (1.0 - ad); }
+							}
+						}
+						// the smear of its motion: faint, the fainter the longer it is
+						if (q.y < 0.0 && smear > 0.3) {
+							float t = -q.y / smear;
+							float sa = (1.0 - smoothstep(0.75, 1.0, abs(q.x))) * (1.0 - smoothstep(0.0, 1.0, t)) * clamp(1.6 / (smear + 1.6), 0.06, 0.45);
+							if (sa > a) { a = sa; nrm = vec3(q.x, 0.0, 1.0); body = 0.3; }
+						}
+						if (a < 0.02) discard;
+						nrm = normalize(nrm);
+						// thin blood lets the light through (a clearer red at the rim and in the thread), thick is near black-red
+						diffuseColor.rgb = mix(vec3(0.11, 0.005, 0.0035), vec3(0.03, 0.0012, 0.001), smoothstep(0.0, 0.5, body));
 						if (bv_gamma > 0.5) diffuseColor.rgb = pow(diffuseColor.rgb, vec3(0.4545));
-						normal = normalize(vec3(d.x, -d.y, sqrt(max(1.0 - q, 0.0)) + 0.3));
+						diffuseColor.a = a;
+						normal = nrm;
 					}`);
 		};
-		mat.customProgramCacheKey = () => 'ragdoll_blood_drop';
+		mat.customProgramCacheKey = () => 'ragdoll_blood_drop2';
 		mat.envMap = this.env;
-		this.drop_cap = this.sim.max_drops || B_MAX_DROPS;
 		this.drops = new THREE.InstancedMesh(geo, mat, this.drop_cap);
 		this.drops.count = 0;
 		this.drops.frustumCulled = false;
+		this.drops.renderOrder = 2;
 		this.drops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 		this.group.add(this.drops);
 	}
 
 	drawDrops(extra) {
-		const list = this.sim._drops, n = Math.min(list.length, this.drop_cap), m = new THREE.Matrix4();
+		const list = this.sim._drops, n = Math.min(list.length, this.drop_cap), m = new THREE.Matrix4(), aux = this.drop_aux.array;
 		for (let i = 0; i < n; i++) {
 			const d = list[i];
 			const p = d.pos.clone().addScaledVector(d.vel, extra);
-			const r = 0.0062 * Math.cbrt(d.vol), sp = d.vel.length();
-			const y = sp > 0.01 ? d.vel.clone().divideScalar(sp) : gv(0, 1, 0);
+			const r = 0.0062 * Math.cbrt(d.vol), sp = d.vel.length(), age = d.age ?? 1, seed = d.seed ?? ((i * 0.618) % 1);
+			const y = sp > 0.05 ? d.vel.clone().divideScalar(sp) : gv(0, -1, 0);
 			const x = y.clone().cross(Math.abs(y.y) < 0.95 ? gv(0, 1, 0) : gv(1, 0, 0)).normalize();
 			const z = x.clone().cross(y);
-			const stretch = r + sp * d.streak;
-			m.makeBasis(x.multiplyScalar(r), y.multiplyScalar(stretch), z.multiplyScalar(r)).setPosition(p);
+			// a big drop, just torn off, wobbles between flat and long as it settles
+			const e = d.vol > 0.2 ? 0.2 * Math.min(d.vol, 3) / 3 * Math.exp(-age * 7) * Math.sin(age * 75 + seed * 20) : 0;
+			// a thread for the first moments of a spray, then a tadpole tail growing with speed, and the smear of motion
+			const thread = d.drip ? 0 : clamp(1 - age / 0.06, 0, 1) * clamp(sp / 4, 0, 1);
+			const tail = clamp(sp * 0.07, 0, 1.4) * (0.4 + 1.2 * seed) + thread * (2.5 + 5 * seed * seed);
+			const smear = Math.min(sp * 0.003 / r, 20);
+			m.makeBasis(x.multiplyScalar(r), y.multiplyScalar(r), z.multiplyScalar(r * (1 + e))).setPosition(p);
 			this.drops.setMatrixAt(i, m);
+			aux[i * 4] = seed; aux[i * 4 + 1] = tail; aux[i * 4 + 2] = smear; aux[i * 4 + 3] = thread;
 		}
 		this.drops.count = n;
 		this.drops.instanceMatrix.needsUpdate = true;
+		this.drop_aux.needsUpdate = true;
 	}
 
 	// ---- the splash at a hit: an animated sprite (eight frames drawn once), turned to the camera ----

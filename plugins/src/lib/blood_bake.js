@@ -40,9 +40,9 @@ class BloodRecorder {
 	splash() {}
 	// a frame of the bake: where the drops are
 	frame(time) {
-		const d = this.sim._drops, a = new Float32Array(d.length * 8);
-		d.forEach((x, i) => a.set([x.pos.x, x.pos.y, x.pos.z, x.vel.x, x.vel.y, x.vel.z, x.vol, x.streak], i * 8));
-		this.rec.frames.push({t: time, drops: a});
+		const d = this.sim._drops, a = new Float32Array(d.length * 11);
+		d.forEach((x, i) => a.set([x.pos.x, x.pos.y, x.pos.z, x.vel.x, x.vel.y, x.vel.z, x.vol, x.streak, x.age, x.seed ?? 0, x.drip ? 1 : 0], i * 11));
+		this.rec.frames.push({t: time, drops: a, stride: 11});
 	}
 	update() {}
 	dispose() { for (const bot of this.sim.people) bot.blood_log = null; }
@@ -139,9 +139,10 @@ class BloodPlayer {
 		while (f + 1 < frames.length && frames[f + 1].t <= t + 1e-6) f++;
 		const fr = frames[f];
 		sim._drops = [];
-		if (fr) for (let i = 0; i < fr.drops.length; i += 8) {
+		const st = (fr && fr.stride) || 8;
+		if (fr) for (let i = 0; i < fr.drops.length; i += st) {
 			const a = fr.drops;
-			sim._drops.push({pos: new THREE.Vector3(a[i], a[i + 1], a[i + 2]), vel: new THREE.Vector3(a[i + 3], a[i + 4], a[i + 5]), vol: a[i + 6], streak: a[i + 7]});
+			sim._drops.push({pos: new THREE.Vector3(a[i], a[i + 1], a[i + 2]), vel: new THREE.Vector3(a[i + 3], a[i + 4], a[i + 5]), vol: a[i + 6], streak: a[i + 7], age: st > 8 ? a[i + 8] : 1, seed: st > 9 ? a[i + 9] : undefined, drip: st > 10 && a[i + 10] > 0});
 		}
 		sim._since_sim = fr ? Math.max(0, t - fr.t) : 0;
 		sim._time = t;
