@@ -4862,7 +4862,7 @@ const TEXTS = {
 		panel: 'Render', materials: 'Materials…', materials_title: 'Materials',
 		light: 'Light', sun_dir: 'Sun direction', sun_height: 'Sun height', sun_strength: 'Sun strength', sun_color: 'Sun color',
 		shadows: 'Shadows', shadow_softness: 'Shadow softness', sky: 'Sky light', sky_color: 'Sky color', ground_color: 'Ground bounce',
-		floor: 'Shadow floor', floor_reflect: 'Reflective floor', hide_grid: 'Hide grid',
+		floor: 'Shadow floor', floor_reflect: 'Reflective floor', hide_grid: 'Hide grid', sky_occlusion: 'Walls keep the sky out (dark indoors)', sky_occlusion_tip: 'The light of the sky and its reflections only reach what can see the sky: a closed room is dark, lit by its lamps (and the sun through openings)',
 		effects: 'Effects', exposure: 'Exposure', ao: 'Ambient occlusion', ao_strength: 'Occlusion strength', ao_radius: 'Occlusion radius',
 		ssr: 'Reflections (SSR)', ssr_strength: 'Reflection strength', bloom: 'Bloom (glow)', bloom_strength: 'Glow strength', bloom_threshold: 'Glow threshold', bloom_radius: 'Glow spread',
 		dof: 'Depth of field', dof_focus: 'Focus distance', dof_blur: 'Blur', fxaa: 'Anti-aliasing', vignette: 'Vignette',
@@ -4933,7 +4933,7 @@ const TEXTS = {
 		panel: 'Рендер', materials: 'Материалы…', materials_title: 'Материалы',
 		light: 'Свет', sun_dir: 'Солнце: направление', sun_height: 'Солнце: высота', sun_strength: 'Сила солнца', sun_color: 'Цвет солнца',
 		shadows: 'Тени', shadow_softness: 'Мягкость теней', sky: 'Свет неба', sky_color: 'Цвет неба', ground_color: 'Отражённый от земли',
-		floor: 'Пол для теней', floor_reflect: 'Зеркальный пол', hide_grid: 'Скрыть сетку',
+		floor: 'Пол для теней', floor_reflect: 'Зеркальный пол', hide_grid: 'Скрыть сетку', sky_occlusion: 'Стены закрывают небо (темно в помещениях)', sky_occlusion_tip: 'Свет неба и его отражения доходят только туда, откуда видно небо: закрытая комната тёмная, её освещают лампы (и солнце через проёмы)',
 		effects: 'Эффекты', exposure: 'Экспозиция', ao: 'Затенение в углах (AO)', ao_strength: 'Сила затенения', ao_radius: 'Радиус затенения',
 		ssr: 'Отражения (SSR)', ssr_strength: 'Сила отражений', bloom: 'Свечение (bloom)', bloom_strength: 'Сила свечения', bloom_threshold: 'Порог свечения', bloom_radius: 'Размытие свечения',
 		dof: 'Глубина резкости', dof_focus: 'Дистанция фокуса', dof_blur: 'Размытие', fxaa: 'Сглаживание', vignette: 'Виньетка',
@@ -5011,7 +5011,7 @@ const tr = key => {
 
 const DEFAULT_SETTINGS = {
 	sun_azimuth: 40, sun_elevation: 50, sun_strength: 1.6, sun_color: '#fff3e0', shadows: true, shadow_softness: 1,
-	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true,
+	sky_strength: 1, sky_color: '#a9c8ff', ground_color: '#5a4a3a', floor: true, floor_reflect: false, hide_grid: true, sky_occlusion: true,
 	exposure: 1, ao: true, ao_strength: 0.8, ao_radius: 4, ssr: false, ssr_strength: 0.6,
 	bloom: true, bloom_strength: 0.35, bloom_threshold: 1.2, bloom_radius: 0.6, dof: false, dof_focus: 60, dof_blur: 0.5, fxaa: true, motion_blur: 0, vignette: 0.25,
 	rt: false, rt_rays: 6, rt_distance: 40, rt_bounce: 1, rt_ao: 0.7, rt_shadows: 0.6, rt_accumulate: true, rt_video_samples: 8,
@@ -5127,7 +5127,117 @@ function buildMaterial(d) {
 		m.userData.wave_speed = d.wave_speed || 0;
 	}
 	m.userData.render_plugin = true;
+	// the light of the sky (ambient, hemisphere, environment and its reflections) only reaches what sees the sky
+	m.onBeforeCompile = shader => {
+		shader.vertexShader = shader.vertexShader
+			.replace('#include <common>', '#include <common>\nattribute float skyocc;\nvarying float vSkyVis;')
+			.replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkyVis = 1.0 - skyocc;');
+		shader.fragmentShader = shader.fragmentShader
+			.replace('#include <common>', '#include <common>\nvarying float vSkyVis;')
+			.replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+				{
+					float sv = clamp(vSkyVis, 0.0, 1.0);
+					irradiance *= sv;
+					iblIrradiance *= sv;
+					#if defined( RE_IndirectSpecular )
+						radiance *= mix(0.12, 1.0, sv);
+					#endif
+				}`);
+	};
+	m.customProgramCacheKey = () => 'render_skyocc';
 	return m;
+}
+
+// ---------------------------------------------------------------------------
+// The sky indoors: how much of the sky each point of the model sees. Rays go out from every vertex over the half of
+// the world in front of it; what they hit (walls, a ceiling, furniture) keeps the sky's light off. Worked out a few
+// thousand rays a frame, again when a thing moves or changes.
+// ---------------------------------------------------------------------------
+
+const SKY_RAYS = (() => {   // cosine-weighted directions about +Z
+	const out = [], n = 24;
+	for (let i = 0; i < n; i++) {
+		const u = (i + 0.5) / n, phi = i * 2.39996323;
+		const r = Math.sqrt(u), z = Math.sqrt(1 - u);
+		out.push(new THREE.Vector3(r * Math.cos(phi), r * Math.sin(phi), z));
+	}
+	return out;
+})();
+const sky_jobs = [];
+let sky_occluders = null, sky_occluders_at = 0, sky_ray = null;
+const sky_hits = [];
+function skyOccluders(now) {
+	if (sky_occluders && now - sky_occluders_at < 1000) return sky_occluders;
+	sky_occluders_at = now;
+	sky_occluders = [...Cube.all, ...Mesh.all].filter(el => el.mesh && el.mesh.geometry && el.mesh.visible !== false && el.visibility !== false).map(el => {
+		el.mesh.updateMatrixWorld();
+		if (!el.mesh.geometry.boundingBox) el.mesh.geometry.computeBoundingBox();
+		return {mesh: el.mesh, box: el.mesh.geometry.boundingBox.clone().applyMatrix4(el.mesh.matrixWorld)};
+	});
+	return sky_occluders;
+}
+// every element's geometry carries a sky visibility per vertex (1 until it has been worked out)
+function trackSkyVis(mesh, on) {
+	const g = mesh.geometry, pos = g.attributes.position;
+	if (!pos) return;
+	// (kept as how much of the sky is hidden: a geometry without it - a material preview - reads 0, all sky)
+	let a = g.attributes.skyocc;
+	if (!a || a.count != pos.count) {
+		a = new THREE.Float32BufferAttribute(new Float32Array(pos.count), 1);
+		g.setAttribute('skyocc', a);
+		g.userData.sky_key = null;
+	}
+	if (!on) { if (g.userData.sky_key !== 'off') { a.array.fill(0); a.needsUpdate = true; g.userData.sky_key = 'off'; } return; }
+	mesh.updateMatrixWorld();
+	const e = mesh.matrixWorld.elements;
+	const key = [e[12], e[13], e[14], e[0], e[5], e[10]].map(v => Math.round(v * 2)).join(',');
+	if (g.userData.sky_key === key) return;
+	const now = performance.now();
+	if (g.userData.sky_key && g.userData.sky_key !== 'off' && now - (g.userData.sky_at || 0) < 2000) return;   // (a moving thing: now and then)
+	g.userData.sky_key = key; g.userData.sky_at = now;
+	if (!sky_jobs.some(j => j.g === g)) sky_jobs.push({g, mesh, i: 0, values: new Float32Array(pos.count)});
+}
+function updateSkyVis(budget) {
+	if (!sky_jobs.length) return;
+	const now = performance.now(), occ = skyOccluders(now);
+	const ray = sky_ray || (sky_ray = new THREE.Raycaster());
+	const box = modelBox(), far = Math.max(64, box.getSize(new THREE.Vector3()).length());
+	const p = new THREE.Vector3(), n = new THREE.Vector3(), t1 = new THREE.Vector3(), t2 = new THREE.Vector3(), d = new THREE.Vector3();
+	const nm = new THREE.Matrix3();
+	while (budget > 0 && sky_jobs.length) {
+		const job = sky_jobs[0], g = job.g, pos = g.attributes.position, nor = g.attributes.normal;
+		if (!job.mesh.parent || !pos || !nor) { sky_jobs.shift(); continue; }
+		nm.getNormalMatrix(job.mesh.matrixWorld);
+		while (job.i < pos.count && budget > 0) {
+			const i = job.i++;
+			p.fromBufferAttribute(pos, i).applyMatrix4(job.mesh.matrixWorld);
+			n.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize();
+			t1.set(Math.abs(n.x) < 0.9 ? 1 : 0, Math.abs(n.x) < 0.9 ? 0 : 1, 0).cross(n).normalize();
+			t2.crossVectors(n, t1);
+			const origin = p.clone().addScaledVector(n, 0.05);
+			let open = 0;
+			for (const r of SKY_RAYS) {
+				d.set(0, 0, 0).addScaledVector(t1, r.x).addScaledVector(t2, r.y).addScaledVector(n, r.z).normalize();
+				ray.set(origin, d); ray.near = 0; ray.far = far;
+				// (anything at all in the way will do: the boxes first, the faces only of what the ray goes through)
+				let hit = false;
+				for (let k = 0; k < occ.length && !hit; k++) {
+					if (!ray.ray.intersectsBox(occ[k].box)) continue;
+					sky_hits.length = 0;
+					occ[k].mesh.raycast(ray, sky_hits);
+					if (sky_hits.length) hit = true;
+				}
+				if (!hit) open++;
+			}
+			budget -= SKY_RAYS.length;
+			job.values[i] = 1 - open / SKY_RAYS.length;
+		}
+		if (job.i >= pos.count) {
+			const a = g.attributes.skyocc;
+			if (a && a.count == job.values.length) { a.array.set(job.values); a.needsUpdate = true; }
+			sky_jobs.shift();
+		}
+	}
 }
 
 // a seamless wavy normal map (old window glass: slow uneven ripples)
@@ -5217,6 +5327,7 @@ function isOurs(material) {
 }
 
 function applyMaterials() {
+	const sky_on = settingsOf().sky_occlusion !== false;
 	for (const el of [...Cube.all, ...Mesh.all]) {
 		const mesh = el.mesh;
 		if (!mesh || !mesh.geometry) continue;
@@ -5228,6 +5339,7 @@ function applyMaterials() {
 		if (!same) mesh.material = target;
 		mesh.castShadow = true;
 		mesh.receiveShadow = true;
+		trackSkyVis(mesh, sky_on);
 	}
 }
 
@@ -6607,6 +6719,7 @@ function renderWithEffects() {
 	try {
 		this.controls.update();
 		applyMaterials();
+		updateSkyVis(this.offline ? 1e9 : 1500);
 		animateWaves();
 		if (!rig) {
 			disposeRig();
@@ -8464,6 +8577,7 @@ function panelComponent() {
 				<label class="render_row">{{ t('floor') }} <input type="checkbox" v-model="floor" @change="save()"></label>
 				<label class="render_row" v-if="floor">{{ t('floor_reflect') }} <input type="checkbox" v-model="floor_reflect" @change="save()"></label>
 				<label class="render_row">{{ t('hide_grid') }} <input type="checkbox" v-model="hide_grid" @change="save()"></label>
+				<label class="render_row" :title="t('sky_occlusion_tip')">{{ t('sky_occlusion') }} <input type="checkbox" v-model="sky_occlusion" @change="save()"></label>
 
 					<h3>{{ t('skybox') }}</h3>
 					<label class="render_row">{{ t('sky_mode') }}
@@ -8928,7 +9042,7 @@ Plugin.register('render', {
 	description: 'Blender style materials with ball previews, sun, skybox and sky light, point lights, shadows, post effects (AO, reflections, bloom, depth of field, camera motion blur) and cameras with lens effects (distortion, chromatic aberration, vignette, grain, focus on an object).',
 	about: 'Turn it on with **View > Render view**. The **Render** panel sets the light and the effects, **Materials…** opens the materials window. Every texture of the project has a material; custom materials can be assigned to selected elements. The **Skybox** section draws a sky (day, sunset, night, overcast, custom colors or your own 360° panorama) as background, sky light and reflections. **Add light** and **Add camera** (Add buttons / Edit menu) create an empty group that shines, or a camera you can look through with its own lens and look effects. Uses three.js r129 post processing examples (MIT).',
 	icon: 'photo_camera',
-	version: '0.9.1',
+	version: '0.9.2',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Rendering'],
@@ -9108,6 +9222,6 @@ function onProject() {
 }
 
 // for testing from the console
-window.RenderView = {setEnabled, openMaterials, settingsOf, materialStore, invalidate, pipelines, get rig() { return rig; }};
+window.RenderView = {setEnabled, openMaterials, settingsOf, materialStore, invalidate, pipelines, get rig() { return rig; }, skyJobs: () => sky_jobs.length, computeSky: () => { applyMaterials(); updateSkyVis(1e9); }};
 
 })();
