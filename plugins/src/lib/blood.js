@@ -770,6 +770,63 @@ class BloodSim {
 
 	_dab(pool, p, n, along, w, l, kind, variant, thick, alpha) {
 		if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, pool);
+		this._wrap_edges(p, n, along, w, l, kind, variant, thick, alpha, pool);
+	}
+
+	// the solid things of the level (static boxes, pixels), found once
+	_level_boxes() {
+		if (this._boxes) return this._boxes;
+		const skip = new Set((this.rt.world.entries || []).filter(e => e.desc.settings.type != 'static'));
+		return (this._boxes = this.rt.colliders ? this.rt.colliders(skip) : []);
+	}
+
+	// Blood does not stop at the edge of what it landed on: what goes past the edge of a face goes on over it onto the
+	// face next to it. Off the top of a table it goes over the edge and down the side (a pool that spills over it runs
+	// down); a splash on a corner wraps round it; on a wall it goes round onto the next wall or under onto the ceiling
+	_wrap_edges(p, n, along, w, l, kind, variant, thick, alpha, pool) {
+		if (this._wrapping || !this.rt || !this.rt.colliders) return;
+		const boxes = this._level_boxes();
+		if (!boxes.length) return;
+		const P = p.clone().multiplyScalar(SCALE), R = Math.max(w, l) / 2 * SCALE;
+		for (const b of boxes) {
+			if (P.x < b.min[0] - R || P.x > b.max[0] + R || P.y < b.min[1] - R || P.y > b.max[1] + R || P.z < b.min[2] - R || P.z > b.max[2] + R) continue;
+			const A = k => gv(b.axes[k * 3], b.axes[k * 3 + 1], b.axes[k * 3 + 2]);
+			const d = P.clone().sub(gv(b.c[0], b.c[1], b.c[2])), loc = [0, 1, 2].map(k => d.dot(A(k)));
+			// the face it is on: one side of the box, facing the way the surface does
+			let face = -1, fs = 0;
+			for (let k = 0; k < 3; k++) {
+				const sg = loc[k] < 0 ? -1 : 1;
+				if (Math.abs(Math.abs(loc[k]) - b.half[k]) < 0.6 && A(k).multiplyScalar(sg).dot(n) > 0.8) { face = k; fs = sg; break; }
+			}
+			if (face < 0) continue;
+			const top = A(face).multiplyScalar(fs).y > 0.55;
+			for (let j = 0; j < 3; j++) {
+				if (j == face) continue;
+				for (const sj of [-1, 1]) {
+					const e = b.half[j] - sj * loc[j];   // how far the edge is (px)
+					if (e < 0 || e >= R) continue;
+					const over = R - e, chord = 2 * Math.sqrt(Math.max(0, R * R - e * e));
+					const n2 = A(j).multiplyScalar(sj), down = A(face).multiplyScalar(-fs);   // the next face, and the way along it from the edge
+					const vertical = Math.abs(n2.y) < 0.5;
+					if (n2.y < -0.55 && b.min[1] <= this.ground * SCALE + 0.5) continue;   // (under a thing standing on the floor: nobody sees it)
+					// over the top edge onto a side, blood runs down it: longer, a streak
+					const runs = top && vertical;
+					const length = over * (runs ? 1.8 : 1.0);
+					const q = P.clone().addScaledVector(A(j), sj * b.half[j] - loc[j]).addScaledVector(down, length * 0.5).addScaledVector(n2, 0.03).divideScalar(SCALE);
+					let along2 = runs ? gv(0, -1, 0) : down.clone();
+					along2.addScaledVector(n2, -n2.dot(along2));
+					along2 = along2.length() > 1e-4 ? along2.normalize() : down;
+					this._wrapping = true;
+					try { this._world_stamp(null, q, n2, along2, chord * 0.75 / SCALE, length / SCALE, runs ? 'streak' : (kind == 'pool' ? 'splat' : kind), variant, thick * 0.85, alpha); }
+					finally { this._wrapping = false; }
+					// a pool that spills over the edge of a table: it runs down the side now and then while it is fed
+					if (pool && runs && over > R * 0.25 && (!pool._spill_t || this._time - pool._spill_t > 0.6)) {
+						pool._spill_t = this._time;
+						this._start_run(q, n2, Math.min(2, Math.max(0.3, (pool.vol || 1) * 0.04)));
+					}
+				}
+			}
+		}
 	}
 
 	// col: null (the level) or {entry} (a moving thing: the stain goes with it)
@@ -779,6 +836,7 @@ class BloodSim {
 		if (!col && bloodMapFor(n) >= 0) {
 			this._splat_grid.add(cellKey(p));
 			if (this.view) this.view.dab(p, n, along, w, l, kind, variant, thick, alpha, null);
+			this._wrap_edges(p, n, along, w, l, kind, variant, thick, alpha, null);
 			return;
 		}
 		if (this.view) this.view.decal(col && col.entry, p, n, along, w, l, kind, variant, alpha, this._time);

@@ -18,11 +18,12 @@ const BV_TIME_SPAN = 16384.0;
 const BV_DEPTH_MIN = -40.0, BV_DEPTH_RANGE = 80.0;
 const BV_DRY_COLOR = [0.42, 0.3, 0.27];
 const BV_MAX_DECALS = 800;
-const BV_FLOOR = 0, BV_WALL_X = 1, BV_WALL_Z = 2;
+const BV_FLOOR = 0, BV_WALL_X = 1, BV_WALL_Z = 2, BV_CEIL = 3;
 
 // which world map a surface with normal n goes to, or -1 (slanted / overhanging: a decal)
 function bloodMapFor(n) {
 	if (n.y > 0.55) return BV_FLOOR;
+	if (n.y < -0.55) return BV_CEIL;   // (the game puts blood on a ceiling as decals; here it is a map of its own, read like the floor)
 	const ax = Math.abs(n.x), az = Math.abs(n.z);
 	if (ax > az && ax > 0.6) return BV_WALL_X;
 	if (az > 0.6) return BV_WALL_Z;
@@ -38,7 +39,7 @@ float bnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 
 // blood.gdshaderinc: blood_sample + blood_apply, for a surface at wpos (metres) with world normal wnrm.
 // In: the view-space position and geometric normal. Out: coverage, albedo, roughness, the view-space normal.
 const BV_SURFACE = `
-uniform sampler2D bv_floor; uniform sampler2D bv_wall_x; uniform sampler2D bv_wall_z;
+uniform sampler2D bv_floor; uniform sampler2D bv_wall_x; uniform sampler2D bv_wall_z; uniform sampler2D bv_ceil;
 uniform vec2 bv_min; uniform float bv_size; uniform vec2 bv_wall; uniform float bv_time;
 uniform float bv_gamma;
 ${BV_COMMON}
@@ -47,6 +48,7 @@ vec3 bv_col(vec3 c) { return bv_gamma > 0.5 ? pow(max(c, vec3(0.0)), vec3(0.4545
 vec3 blood_sample(vec3 p, vec3 n) {
 	vec2 uv; float depth; float tol; vec4 s; vec3 an = abs(n);
 	if (n.y > 0.55) { uv = (p.xz - bv_min) / bv_size; s = texture2D(bv_floor, uv); depth = p.y; tol = 0.08; }
+	else if (n.y < -0.55) { uv = (p.xz - bv_min) / bv_size; s = texture2D(bv_ceil, uv); depth = p.y; tol = 0.08; }
 	else if (an.x > an.z && an.x > 0.6) { uv = vec2((p.z - bv_min.y) / bv_size, (p.y - bv_wall.x) / bv_wall.y); s = texture2D(bv_wall_x, uv); depth = p.x; tol = 0.06; }
 	else if (an.z > 0.6) { uv = vec2((p.x - bv_min.x) / bv_size, (p.y - bv_wall.x) / bv_wall.y); s = texture2D(bv_wall_z, uv); depth = p.z; tol = 0.06; }
 	else return vec3(0.0);
@@ -206,7 +208,7 @@ class BloodView {
 	makeMaps() {
 		this.maps = [];
 		const type = THREE.HalfFloatType || THREE.FloatType;
-		const sizes = [[BV_RES, BV_RES], [BV_RES, BV_WALL_RES], [BV_RES, BV_WALL_RES]];
+		const sizes = [[BV_RES, BV_RES], [BV_RES, BV_WALL_RES], [BV_RES, BV_WALL_RES], [BV_RES, BV_RES]];
 		if (this.renderer && THREE.WebGLRenderTarget) {
 			this.dab_geo = new THREE.PlaneGeometry(1, 1);
 			for (const [w, h] of sizes) {
@@ -218,7 +220,7 @@ class BloodView {
 		blank.needsUpdate = true;
 		this.blank = blank;
 		this.u = {
-			bv_floor: {value: this.maps[0] ? this.maps[0].target.texture : blank}, bv_wall_x: {value: this.maps[1] ? this.maps[1].target.texture : blank}, bv_wall_z: {value: this.maps[2] ? this.maps[2].target.texture : blank},
+			bv_floor: {value: this.maps[0] ? this.maps[0].target.texture : blank}, bv_wall_x: {value: this.maps[1] ? this.maps[1].target.texture : blank}, bv_wall_z: {value: this.maps[2] ? this.maps[2].target.texture : blank}, bv_ceil: {value: this.maps[3] ? this.maps[3].target.texture : blank},
 			bv_min: {value: new THREE.Vector2(this.area_min.x, this.area_min.z)}, bv_size: {value: BV_AREA}, bv_wall: {value: new THREE.Vector2(this.wall_y0, BV_WALL_H)}, bv_time: {value: 0},
 			bv_gamma: {value: this.gamma() ? 1 : 0},
 		};
@@ -308,9 +310,11 @@ class BloodView {
 	dab(p, n, along, w, l, kind, variant, thick, alpha, pool) {
 		const m = bloodMapFor(n);
 		let uv, dir, depth, v0;
-		if (m == BV_FLOOR) { uv = [p.x - this.area_min.x, p.z - this.area_min.z]; dir = [along.x, along.z]; depth = p.y; }
-		else if (m == BV_WALL_X) { uv = [p.z - this.area_min.z, p.y - this.wall_y0]; dir = [along.z, along.y]; depth = p.x; }
-		else if (m == BV_WALL_Z) { uv = [p.x - this.area_min.x, p.y - this.wall_y0]; dir = [along.x, along.y]; depth = p.z; }
+		// (grad: how the depth of the surface changes across the map, metres per metre - a dab on a slope keeps to the slope)
+		let grad = [0, 0];
+		if (m == BV_FLOOR || m == BV_CEIL) { uv = [p.x - this.area_min.x, p.z - this.area_min.z]; dir = [along.x, along.z]; depth = p.y; grad = [-n.x / n.y, -n.z / n.y]; }
+		else if (m == BV_WALL_X) { uv = [p.z - this.area_min.z, p.y - this.wall_y0]; dir = [along.z, along.y]; depth = p.x; grad = [-n.z / n.x, -n.y / n.x]; }
+		else if (m == BV_WALL_Z) { uv = [p.x - this.area_min.x, p.y - this.wall_y0]; dir = [along.x, along.y]; depth = p.z; grad = [-n.x / n.z, -n.y / n.z]; }
 		const map = m >= 0 ? this.maps[m] : null;
 		const on_map = map && this.covers(p) && uv[1] >= 0 && uv[1] * BV_PPM <= map.h;
 		if (!on_map) {
@@ -320,7 +324,7 @@ class BloodView {
 		}
 		const angle = Math.hypot(dir[0], dir[1]) > 1e-4 ? Math.atan2(-dir[0], dir[1]) : brand() * Math.PI * 2;
 		map.queue.push({u: uv[0] * BV_PPM, v: uv[1] * BV_PPM, w: w * BV_PPM, l: l * BV_PPM, angle, tex: this.tex(kind, variant, 'mask'),
-			data: [clamp(thick, 0, 1), clamp((depth - BV_DEPTH_MIN) / BV_DEPTH_RANGE, 0, 1), (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha]});
+			data: [clamp(thick, 0, 1), clamp((depth - BV_DEPTH_MIN) / BV_DEPTH_RANGE, 0, 1), (this.sim._time % BV_TIME_SPAN) / BV_TIME_SPAN, alpha], grad});
 		return true;
 	}
 
@@ -336,9 +340,12 @@ class BloodView {
 					const batch = map.queue.splice(0, 256);
 					while (map.meshes.length < batch.length) {
 						const mesh = new THREE.Mesh(this.dab_geo, new THREE.ShaderMaterial({
-							uniforms: {map: {value: null}, data: {value: new THREE.Vector4()}},
-							vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-							fragmentShader: 'uniform sampler2D map; uniform vec4 data; varying vec2 vUv; void main() { vec4 m = texture2D(map, vUv); gl_FragColor = vec4(data.r * m.r, data.g, data.b, m.a * data.a); }',
+							uniforms: {map: {value: null}, data: {value: new THREE.Vector4()}, grad: {value: new THREE.Vector2()}, centre: {value: new THREE.Vector2()}},
+							vertexShader: 'varying vec2 vUv; varying vec2 vMap; void main() { vUv = uv; vMap = (modelMatrix * vec4(position, 1.0)).xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+							// (the depth written follows the plane of the surface across the dab, not the depth of its middle)
+							fragmentShader: `uniform sampler2D map; uniform vec4 data; uniform vec2 grad; uniform vec2 centre; varying vec2 vUv; varying vec2 vMap;
+								void main() { vec4 m = texture2D(map, vUv); float g = data.g + dot(grad, (vMap - centre) / ${BV_PPM.toFixed(4)}) / ${BV_DEPTH_RANGE.toFixed(1)};
+									gl_FragColor = vec4(data.r * m.r, clamp(g, 0.0, 1.0), data.b, m.a * data.a); }`,
 							transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending,
 							blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
 						}));
@@ -356,6 +363,8 @@ class BloodView {
 						mesh.renderOrder = i;
 						mesh.material.uniforms.map.value = d.tex;
 						mesh.material.uniforms.data.value.set(...d.data);
+						mesh.material.uniforms.grad.value.set(clamp(d.grad[0], -4, 4), clamp(d.grad[1], -4, 4));
+						mesh.material.uniforms.centre.value.set(d.u, d.v);
 					});
 					r.setRenderTarget(map.target);
 					r.autoClear = false;
