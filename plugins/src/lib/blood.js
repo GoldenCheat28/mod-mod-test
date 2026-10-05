@@ -73,14 +73,65 @@ class BloodSim {
 			filter = new this.J.IgnoreMultipleBodiesFilter();
 			for (const e of this.rt.world.entries) if (e.id.GetIndexAndSequenceNumber() != only) filter.IgnoreBody(e.id);
 		} else filter = ignore_bot ? ignore_bot.own_filter : null;
-		const hit = castRay(this.rt, a, b.clone().sub(a), filter);
+		let hit = castRay(this.rt, a, b.clone().sub(a), filter);
 		if (mode == 'bots') this.J.destroy(filter);
-		if (!hit) return null;
-		if (mode == 'bots' && hit.id != only) return null;
-		const owner = this.part_of.get(hit.id);
-		const entry = this.entry_of.get(hit.id);
-		hit.collider = owner || (entry && entry.desc.settings.type == 'dynamic' ? {entry} : null);
+		if (mode == 'bots') {
+			if (!hit || hit.id != only) return null;
+		}
+		if (hit) {
+			const owner = this.part_of.get(hit.id);
+			const entry = this.entry_of.get(hit.id);
+			hit.collider = owner || (entry && entry.desc.settings.type == 'dynamic' ? {entry} : null);
+		}
+		if (mode == 'bots') return hit;
+		// what is seen of the level catches blood too: a thing not ticked as Ground in the Physics tab is no longer flown
+		// through, and where a collider is not quite where its face is drawn, the stain goes on the face that is seen
+		// (the maps keep blood to the depth of the face: a stain a few cm off it was not drawn at all)
+		const vis = this._visual_ray(a, b);
+		if (vis) {
+			const hd = hit ? a.distanceTo(hit.position) : Infinity, vd = a.distanceTo(vis.position);
+			if (hit && hit.collider && hd <= vd + 0.01) return hit;   // a person or a moving thing in front of it
+			if (vd <= hd + 0.15) return vis;
+		}
 		return hit;
+	}
+
+	// the drawn elements of the level (not the people, not what moves, not cloth), pixels; found once
+	_level_meshes() {
+		if (this._vis_meshes) return this._vis_meshes;
+		const list = [];
+		try {
+			const people = new Set();
+			for (const bot of this.people) for (const pt of bot.parts) if (pt.group) people.add(pt.group);
+			const skip = node => { for (let n = node; n && n !== 'root'; n = n.parent) {
+				if (people.has(n) || (n.attach && n.attach.root) || (n.physics && n.physics.type == 'dynamic') || n.cloth) return true; } return false; };
+			for (const el of [...(typeof Cube != 'undefined' ? Cube.all : []), ...(typeof Mesh != 'undefined' ? Mesh.all : [])]) {
+				if (!el.mesh || !el.mesh.geometry || el.visibility === false || skip(el)) continue;
+				el.mesh.updateMatrixWorld(true);
+				if (!el.mesh.geometry.boundingBox) el.mesh.geometry.computeBoundingBox();
+				list.push({mesh: el.mesh, box: el.mesh.geometry.boundingBox.clone().applyMatrix4(el.mesh.matrixWorld).expandByScalar(0.5)});
+			}
+		} catch (err) { /* outside Blockbench */ }
+		return (this._vis_meshes = list);
+	}
+	_visual_ray(a, b) {
+		const list = this._level_meshes();
+		if (!list.length) return null;
+		const A = a.clone().multiplyScalar(SCALE), B = b.clone().multiplyScalar(SCALE), d = B.clone().sub(A), len = d.length();
+		if (len < 1e-6) return null;
+		d.divideScalar(len);
+		const ray = this._vray || (this._vray = new THREE.Raycaster());
+		ray.set(A, d); ray.near = 0; ray.far = len;
+		const seg = new THREE.Box3().setFromPoints([A, B]), cand = [];
+		for (const m of list) if (m.box.intersectsBox(seg)) cand.push(m.mesh);
+		if (!cand.length) return null;
+		for (const h of ray.intersectObjects(cand, false)) {
+			if (!h.face) continue;
+			const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+			if (n.dot(d) >= 0) continue;   // (the back of a face: from inside a thing)
+			return {position: h.point.clone().divideScalar(SCALE), normal: n, collider: null, fraction: h.distance / len, id: -1};
+		}
+		return null;
 	}
 
 	// --- Public API (called by the humanoid) ---
