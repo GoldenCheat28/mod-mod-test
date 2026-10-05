@@ -115,6 +115,8 @@ function goreCut(els, params) {
 			const start = tris.length;
 			for (let t = g.start; t + 2 < g.start + g.count; t += 3) {
 				const fine = [];
+				// (what is not torn - the brain, left whole in the open skull - is kept as it is, all on the head)
+				if (el.no_cut) { tris.push({v: [vert(t), vert(t + 1), vert(t + 2)], region: 0}); continue; }
 				refine([vert(t), vert(t + 1), vert(t + 2)], 0, fine);
 				for (const f of fine) {
 					let polys = [f];
@@ -158,11 +160,103 @@ function goreCut(els, params) {
 	return out;
 }
 
+// What is inside a head: the skull (a shell of bone under the skin) and the brain in it - two hemispheres, folded
+// all over (gyri and the sulci between them), a deep cleft between the halves. Made for the head as it was measured
+// (its middle and its size), from the same seed as the tear, and torn with it like the head's own meshes
+function goreInnards(params, parent) {
+	const c = new THREE.Vector3(...params.c), half = new THREE.Vector3(...params.half), R = params.R;
+	const right = new THREE.Vector3(...params.right), up = new THREE.Vector3(0, 1, 0), fwd = right.clone().cross(up).negate();
+	const nz = goreNoise((params.seed || 1) + 31);
+	// a sphere with its vertices shared (smooth normals), as an indexed geometry made from an icosphere
+	const sphere = detail => {
+		const g0 = new THREE.IcosahedronGeometry(1, detail), p0 = g0.attributes.position, keys = new Map(), pos = [], idx = [];
+		for (let i = 0; i < p0.count; i++) {
+			const x = p0.getX(i), y = p0.getY(i), z = p0.getZ(i), key = Math.round(x * 1e4) + ',' + Math.round(y * 1e4) + ',' + Math.round(z * 1e4);
+			let j = keys.get(key);
+			if (j === undefined) { j = pos.length / 3; keys.set(key, j); pos.push(x, y, z); }
+			idx.push(j);
+		}
+		g0.dispose();
+		return {pos: new Float32Array(pos), idx};
+	};
+	const build = (s, shape, colour) => {
+		const n = s.pos.length / 3, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), d = new THREE.Vector3(), out = new THREE.Vector3(), rgb = [0, 0, 0];
+		for (let i = 0; i < n; i++) {
+			d.fromArray(s.pos, i * 3);
+			shape(d, out, rgb);
+			pos.set([out.x, out.y, out.z], i * 3);
+			col.set(rgb, i * 3);
+		}
+		const g = new THREE.BufferGeometry();
+		g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+		g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+		g.setIndex(s.idx);
+		g.computeVertexNormals();
+		const flat = g.toNonIndexed();
+		g.dispose();
+		return flat;
+	};
+	// (a point on the unit sphere to the head's own space, an ellipsoid of radii r)
+	const place = (d, r, out) => out.copy(c).addScaledVector(right, d.x * r.x).addScaledVector(up, d.y * r.y).addScaledVector(fwd, d.z * r.z);
+	const skull_r = new THREE.Vector3(half.x * 0.8, half.y * 0.78, half.z * 0.8);
+	const skull = build(sphere(10), (d, out, rgb) => {
+		place(d, skull_r, out);
+		out.y += R * 0.04;
+		const k = 0.85 + 0.15 * nz(d.x * 6, d.y * 6, d.z * 6);
+		rgb[0] = 0.86 * k; rgb[1] = 0.8 * k; rgb[2] = 0.7 * k;
+	});
+	const brain_r = new THREE.Vector3(skull_r.x * 0.86, skull_r.y * 0.8, skull_r.z * 0.88);
+	const brain = build(sphere(16), (d, out, rgb) => {
+		// the folds: ridges where a noise crosses its middle, sulci (the deep lines) between them
+		const f = 7.5;
+		const a = nz(d.x * f + 3, d.y * f, d.z * f), b = nz(d.x * f * 2.1, d.y * f * 2.1 + 5, d.z * f * 2.1);
+		const ridge = 1 - Math.abs((a * 0.7 + b * 0.3) * 2 - 1);
+		const fold = Math.pow(ridge, 0.6);
+		// the cleft between the hemispheres, from the top down (along the line of the face)
+		const cleft = Math.exp(-Math.pow(d.x / 0.07, 2)) * Math.max(d.y + 0.35, 0);
+		const r = 1 + 0.12 * fold - 0.25 * cleft;
+		place(d.clone().multiplyScalar(r), brain_r, out);
+		out.y += R * 0.08;
+		// pinkish grey; the sulci darker, with a little blood in them
+		const s = Math.pow(1 - fold, 1.5), bl = nz(d.x * 2, d.y * 2 + 9, d.z * 2);
+		rgb[0] = 0.84 - 0.5 * s; rgb[1] = 0.64 - 0.55 * s; rgb[2] = 0.66 - 0.52 * s;
+		// blood over it in patches, run into the sulci
+		const blood = Math.min(1, Math.max(0, (bl - 0.45) * 3) + s * 0.5);
+		rgb[0] = rgb[0] + (0.42 - rgb[0]) * blood; rgb[1] = rgb[1] + (0.04 - rgb[1]) * blood; rgb[2] = rgb[2] + (0.04 - rgb[2]) * blood;
+	});
+	const make = (geo, name, mat, inner, no_cut) => {
+		const mesh = new THREE.Mesh(geo, mat);
+		mesh.name = name;
+		parent.add(mesh);
+		mesh.updateMatrix();
+		return {mesh, uuid: name, name, fake: true, inner_mat: inner, no_cut};
+	};
+	return [
+		make(skull, 'gore_skull', goreBoneMaterial(THREE.FrontSide), goreBoneMaterial(THREE.BackSide)),
+		// (the brain comes apart only with the head split in two: its halves go with the halves of the head. Otherwise it
+		// stays in the skull, laid open where the skull and the face are torn away)
+		make(brain, 'gore_brain', goreBrainMaterial(), goreBrainInnerMaterial(), params.mode != 'split'),
+	];
+}
+
+let gore_bone_mats = {}, gore_brain_mat = null;
+function goreBoneMaterial(side) {
+	return gore_bone_mats[side] || (gore_bone_mats[side] = new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.55, metalness: 0, side,
+		emissive: 0x1a1612, color: side == THREE.BackSide ? 0xb09080 : 0xffffff}));
+}
+let gore_brain_in = null;
+function goreBrainInnerMaterial() {
+	return gore_brain_in || (gore_brain_in = new THREE.MeshStandardMaterial({color: 0xb08c8c, roughness: 0.35, metalness: 0, side: THREE.BackSide, emissive: 0x221414}));
+}
+function goreBrainMaterial() {
+	return gore_brain_mat || (gore_brain_mat = new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.28, metalness: 0, emissive: 0x1c0a0a, envMapIntensity: 0.8}));
+}
+
 // the flesh inside, seen through the cut (the back faces of the head's own surfaces)
 let gore_flesh_mat = null;
 function goreFleshMaterial() {
 	if (gore_flesh_mat) return gore_flesh_mat;
-	gore_flesh_mat = new THREE.MeshStandardMaterial({color: 0x4a0606, roughness: 0.32, metalness: 0, side: THREE.BackSide, envMapIntensity: 0.6});
+	gore_flesh_mat = new THREE.MeshStandardMaterial({color: 0x8a1410, roughness: 0.3, metalness: 0, side: THREE.BackSide, envMapIntensity: 0.6, emissive: 0x2a0403});
 	gore_flesh_mat.onBeforeCompile = shader => {
 		shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
 			{
@@ -386,7 +480,7 @@ function goreApply(cut, Q, soft, dt) {
 		// (what is drawn over the head's own surfaces - the blood on him - goes with the cut too)
 		for (const ch of el.mesh.children) if (ch !== c.inner && ch.geometry && c.orig && ch.geometry === c.orig) { ch.geometry = c.geo; (c.over || (c.over = [])).push(ch); }
 		if (!c.inner || c.inner.parent !== el.mesh) {
-			c.inner = new THREE.Mesh(c.geo, goreFleshMaterial());
+			c.inner = new THREE.Mesh(c.geo, el.inner_mat || goreFleshMaterial());
 			c.inner.renderOrder = 1;
 			el.mesh.add(c.inner);
 		}
@@ -426,6 +520,8 @@ function goreRestore(cut, soft) {
 		if (c.inner && c.inner.parent) c.inner.parent.remove(c.inner);
 		for (const ch of c.over || []) if (ch.geometry === c.geo && c.orig) ch.geometry = c.orig;
 		if (el.mesh && el.mesh.geometry === c.geo && c.orig) el.mesh.geometry = c.orig;
+		// (the skull and the brain are only there while the head is open)
+		if (el.fake && el.mesh.parent) { el.mesh.parent.remove(el.mesh); if (c.orig) c.orig.dispose(); }
 		c.geo.dispose();
 	}
 }
@@ -451,7 +547,8 @@ function goreParams(bot, point, dir, impulse) {
 	let mode = k >= 1.6 ? (r < 0.5 ? 'burst' : r < 0.75 ? 'split' : 'face') : (r < 0.55 ? 'face' : 'split');
 	if (globalThis.__GORE_MODE) mode = globalThis.__GORE_MODE;   // (tests)
 	const jit = () => (Math.random() - 0.5) * 0.2 * R;
-	const params = {mode, R, planes: [], regions: [], hinges: [], seed: 1 + Math.floor(Math.random() * 1e6), rag: 0.14};
+	const params = {mode, R, planes: [], regions: [], hinges: [], seed: 1 + Math.floor(Math.random() * 1e6), rag: 0.14,
+		c: c.toArray(), half: size.clone().multiplyScalar(0.5).toArray(), right: f.clone().cross(u).normalize().toArray()};
 	if (mode == 'face') {
 		params.planes.push(plane(f, P(f.clone().multiplyScalar(0.2 * R + jit()))));
 		params.regions.push([[0, 1]]);
@@ -481,7 +578,7 @@ class HeadGore {
 		const J = this.J = bot.J, w = bot.world;
 		const {params, els} = goreParams(bot, point, dir, impulse);
 		this.params = params;
-		this.cut = goreCut(els, params);
+		this.cut = goreCut(els.concat(goreInnards(params, bot.head.group.mesh)), params);
 		this.soft = new GoreSoft(this.cut, params);
 		this.last_show = null;
 		this.t = bot._time;
@@ -497,11 +594,13 @@ class HeadGore {
 		const head_mass = 1 / Math.max(bot.head.body.GetMotionProperties().GetInverseMass(), 1e-6);
 		const head_v = bot.lin(bot.head);
 		this.pieces = [];
-		const total = this.cut.reduce((s, c) => s + c.region.length, 0) || 1;
+		const total = this.cut.reduce((s, c) => s + (c.el.fake ? 0 : c.region.length), 0) || 1;
 		for (let k = 1; k <= params.regions.length; k++) {
 			const pts = [];
 			for (const c of this.cut) for (let i = 0; i < c.region.length; i++) if (c.region[i] == k) pts.push(new THREE.Vector3().fromArray(c.base, i * 3).applyMatrix4(toWorld));
 			if (pts.length < 4) { this.pieces.push(null); continue; }
+			let own = 0;
+			for (const c of this.cut) if (!c.el.fake) for (let i = 0; i < c.region.length; i++) if (c.region[i] == k) own++;
 			const com = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).divideScalar(pts.length);
 			const hull = new J.ConvexHullShapeSettings();
 			// (a piece no thinner than a centimetre: a flap of skin still has some body to it)
@@ -511,7 +610,7 @@ class HeadGore {
 			if (res.HasError()) { this.pieces.push(null); continue; }
 			const jp = new J.RVec3(com.x, com.y, com.z), jq = new J.Quat(0, 0, 0, 1);
 			const bcs = new J.BodyCreationSettings(res.Get(), jp, jq, J.EMotionType_Dynamic, 1);
-			const share = pts.length / total;
+			const share = Math.max(own, 1) / total;
 			bcs.mOverrideMassProperties = J.EOverrideMassProperties_CalculateInertia;
 			bcs.mMassPropertiesOverride.mMass = Math.max(0.05, head_mass * share);
 			bcs.mFriction = 0.8; bcs.mRestitution = 0.02;
@@ -612,7 +711,8 @@ class GorePlayer {
 			if (t < rec.t - 1e-6) { if (live) { goreRestore(live.cut, live.soft); this.live[i] = null; } return; }
 			if (!live) {
 				const els = rec.els.map(u => (Mesh.all.find(e => e.uuid == u) || Cube.all.find(e => e.uuid == u))).filter(Boolean);
-				const cut = goreCut(els, rec.params);
+				const g = Group.all.find(x => x.uuid == rec.head);
+				const cut = goreCut(g && g.mesh ? els.concat(goreInnards(rec.params, g.mesh)) : els, rec.params);
 				live = this.live[i] = {cut, soft: new GoreSoft(cut, rec.params), last: rec.t};
 			}
 			// (the soft flesh is simulated along the timeline: played back from the start when the time goes back)
