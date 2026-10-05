@@ -15,7 +15,8 @@
 const HG = 9.81;
 const BLOOD_MAX = 5000.0;
 const HEADSHOT_SPASM = 1.5;
-const HIT_PART_SPEED = 12;   // m/s: the most a hit throws the part it struck (the rest of its push goes on into the body)
+const HIT_PART_SPEED = 12;
+const ITEM_DROP_DELAY = 0.7;   // s after death a held thing is let go   // m/s: the most a hit throws the part it struck (the rest of its push goes on into the body)
 const POSTURES = ['stand', 'crouch', 'hands_up', 'cover_head', 'aim', 'kneel', 'squat', 'sit'];
 
 const gv = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -337,13 +338,18 @@ class Humanoid {
 		// by hand: the shoulder out, the forearm up), the limits are widened to take it in - otherwise the joint snaps back
 		// to its limit at the first step and the muscles can never hold the pose
 		const now = this.jointAngles(par, p);
+		const lim = {olo: [], ohi: [], lo: [], hi: [], free: []};
 		[AX.rx, AX.ry, AX.rz].forEach((axis, i) => {
 			let lo = [d.lo.x, d.lo.y, d.lo.z][i], hi = [d.hi.x, d.hi.y, d.hi.z][i];
-			if (lo > hi) { st.MakeFreeAxis(axis); return; }
 			const cap = i == 0 ? Math.PI : Math.PI - 0.05;
+			if (lo > hi) { st.MakeFreeAxis(axis); lim.free.push(true); lim.olo.push(-cap); lim.ohi.push(cap); lim.lo.push(-cap); lim.hi.push(cap); return; }
+			lim.free.push(false); lim.olo.push(lo); lim.ohi.push(hi);
 			lo = Math.max(-cap, Math.min(lo, now[i] - 0.12)); hi = Math.min(cap, Math.max(hi, now[i] + 0.12));
+			lim.lo.push(lo); lim.hi.push(hi);
 			st.SetLimitedAxis(axis, lo, hi);
 		});
+		// (widened only for the pose he was made in: given back to the ragdoll, the joint closes back to its own limits)
+		p.lim = lim.lo.some((v, i) => v < lim.olo[i] - 1e-6) || lim.hi.some((v, i) => v > lim.ohi[i] + 1e-6) ? lim : null;
 		const c = J.castObject(st.Create(par.body, p.body), J.SixDOFConstraint);
 		J.destroy(st);
 		for (const axis of [AX.rx, AX.ry, AX.rz]) c.SetMotorState(axis, J.EMotorState_Velocity);
@@ -446,6 +452,8 @@ class Humanoid {
 		this._update_squat_hold(dt);
 		this._update_grips();
 		this._limit_speed();
+		this._relax_limits();
+		if (this._drop_at !== undefined && this._time >= this._drop_at) { this._drop_at = undefined; this._drop_items(); }
 		this.time += dt;
 	}
 
@@ -588,6 +596,7 @@ class Humanoid {
 	}
 
 	_fall(why) {
+		this._release_pose();
 		if (!this.fallen) this.log.push({t: this.time, fell: why || 'fall'});
 		this.fallen = true;
 		this._getup_delay = 1.5 + this.rng() * 1.5;
@@ -1131,6 +1140,7 @@ class Humanoid {
 			for (const p of this.parts) push(p, left * mass(p) / all);
 		}
 		this._hit_until = this._time + 0.05;
+		this._release_pose();
 		const imp = dir.clone().multiplyScalar(own);
 		const L = point.clone().sub(com).cross(imp);
 		this.world.tmp.Set(L.x, L.y, L.z);
@@ -1253,12 +1263,52 @@ class Humanoid {
 		} else this._start_death_curve(kind);
 		this.move_velocity = gv();
 		this.has_look_target = false;
-		// what he holds is dropped (if the item is set to drop)
+		this._release_pose();
+		// what he holds is let go a moment after (if the item is set to drop): the hand opens as the grip goes
+		this._drop_at = this._time + ITEM_DROP_DELAY;
+	}
+
+	_drop_items() {
 		for (const it of this.items) if (it.drop && it.constraint) {
 			try { this.world.system.RemoveConstraint(it.constraint); if (it.other_constraint) this.world.system.RemoveConstraint(it.other_constraint); } catch (err) { console.warn('[Ragdoll]', err); }
 			it.constraint = null; it.other_constraint = null;
 			it.entry.body.SetAllowSleeping(true);
 		}
+	}
+
+	// the pose he was made in is no longer held once something happens to him (a hit, a fall, death): the arms posed by
+	// hand become ordinary arms again, and joints opened wide for that pose close back to their own limits
+	_release_pose() {
+		if (this._released) return;
+		this._released = true;
+		this.held_arms = {};
+	}
+	_relax_limits() {
+		if (!this._released || this._limits_done) return;
+		if ((this._relax_tick = (this._relax_tick || 0) + 1) % 4) return;
+		const J = this.J;
+		let open = 0;
+		for (const p of this.parts) {
+			const L = p.lim;
+			if (!L || !p.joint) continue;
+			const a = this.jointAngles(this.parts[p.parent], p);
+			let changed = false;
+			for (let i = 0; i < 3; i++) {
+				if (L.free[i]) continue;
+				// it closes behind the limb as it comes back, and pushes it back gently too (about 1.2 rad/s: no snap) - a limp
+				// arm bent past its own limits by hand does not stay so on the floor
+				const lo = Math.max(L.lo[i], Math.min(L.olo[i], a[i] - 0.03), Math.min(L.olo[i], L.lo[i] + 0.04));
+				const hi = Math.min(L.hi[i], Math.max(L.ohi[i], a[i] + 0.03), Math.max(L.ohi[i], L.hi[i] - 0.04));
+				if (Math.abs(lo - L.lo[i]) > 1e-3 || Math.abs(hi - L.hi[i]) > 1e-3) { L.lo[i] = lo; L.hi[i] = hi; changed = true; }
+				if (L.lo[i] < L.olo[i] - 1e-3 || L.hi[i] > L.ohi[i] + 1e-3) open++;
+			}
+			if (changed) {
+				const lo = new J.Vec3(L.lo[0], L.lo[1], L.lo[2]), hi = new J.Vec3(L.hi[0], L.hi[1], L.hi[2]);
+				try { p.joint.SetRotationLimits(lo, hi); } catch (err) { /* older Jolt: keeps the wide limits */ }
+				J.destroy(lo); J.destroy(hi);
+			}
+		}
+		if (!open) this._limits_done = true;
 	}
 
 	// ---- Held poses (squatting, kneeling, sitting): balancing those with muscles only ever looks like fidgeting, so once
