@@ -195,7 +195,7 @@ class Humanoid {
 			const idx = this.parts.length;
 			const p = {name: d.name, group: g, entry, id: entry.id, body: entry.body, parent: d.parent ? this.part_index[d.parent] : -1,
 				omega: d.omega, max_torque: d.max_torque * s * s * s, target: gv(), weak: 1, hit_weak: 1, joint: null, motor_limit: -1,
-				arm: /^(upper_arm|forearm|hand)/.test(d.name) ? 1 : 0, mass: d.mass * s * s * s, adamp: d.adamp,
+				arm: /^(upper_arm|forearm|hand)/.test(d.name) ? 1 : 0, leg: /^(thigh|shin|foot)/.test(d.name), mass: d.mass * s * s * s, adamp: d.adamp,
 				rest_pos: d.center.clone().multiplyScalar(s), joint_pos: d.joint ? d.joint.clone().multiplyScalar(s) : null,
 				pivot_rest: new THREE.Vector3(...g.origin).divideScalar(SCALE).sub(offset), severed: false};
 			this.parts.push(p);
@@ -946,12 +946,16 @@ class Humanoid {
 
 	// how far into the spasm after a shot to the brain, 0..1: in almost at once, held a moment, then let go slowly
 	// how hard the arms draw in after a shot to the head (the Ragdoll panel: 1 = as in the game)
-	spasmScale() { const v = this.s && this.s.spasm; return clamp(v === undefined || v === null ? 0.5 : +v, 0, 1); }
+	// (the Ragdoll panel, per zone: the arms, above the pelvis without the arms, below the pelvis)
+	spasmScale(zone = 'arms') {
+		const v = this.s && this.s[({arms: 'spasm', torso: 'spasm_torso', legs: 'spasm_legs'})[zone]];
+		return clamp(v === undefined || v === null ? 0.5 : +v, 0, 1);
+	}
 	_spasm() { const t = this._death_t; return gsmooth(0, 0.08, t) * (1 - gsmooth(0.35, HEADSHOT_SPASM, t)); }
 
 	// weak, involuntary arm posture right after a brain injury: the fists drawn in to the wound, the body draws in a little
 	_pose_decerebrate() {
-		const t = this._death_t, k = this._spasm() * this.spasmScale();
+		const t = this._death_t, k = this._spasm() * this.spasmScale(), kt = this._spasm() * this.spasmScale('torso') * 2;
 		const wound = this.toWorld(this.head, this._head_wound || gv(0, 0, -0.08));
 		const hc = this.pos(this.head);
 		let out = wound.clone().sub(hc);
@@ -967,11 +971,11 @@ class Humanoid {
 			this._pose_set('forearm_' + side, fa.multiplyScalar(k));
 			this._side('hand', side, gv(0.6, 0, 0).multiplyScalar(k));
 		}
-		this._pose_set('abdomen', gv(-0.22, 0, 0).multiplyScalar(k));
-		this._pose_set('chest', gv(-0.12, 0, 0).multiplyScalar(k));
-		this._pose_set('head', gv(-0.2, 0, 0).multiplyScalar(k));
+		this._pose_set('abdomen', gv(-0.22, 0, 0).multiplyScalar(kt));
+		this._pose_set('chest', gv(-0.12, 0, 0).multiplyScalar(kt));
+		this._pose_set('head', gv(-0.2, 0, 0).multiplyScalar(kt));
 		// the knees fold at once (that is what drops him where he stands), the hips follow
-		const drop = gsmooth(0, 0.1, t);
+		const drop = gsmooth(0, 0.1, t) * Math.min(this.spasmScale('legs') * 2, 1.5);
 		for (const side of ['r', 'l']) { this._side('thigh', side, gv(0.7 * drop, 0, 0.05)); this._side('shin', side, gv(-1.3 * drop, 0, 0)); this._side('foot', side, gv(0.3 * drop, 0, 0)); }
 	}
 
@@ -989,7 +993,7 @@ class Humanoid {
 			let t_i = this.tone * c.weak * c.hit_weak;
 			if (this._death_kind == 'headshot' && this._death_t >= 0 && this._death_t < HEADSHOT_SPASM && c.arm == 1) t_i = Math.max(t_i, 0.95 * this._spasm() * this.spasmScale());
 			// trunk and legs go limp first; after a shot to the head they still draw in with the arms, only weaker
-			if (this._death_t >= 0 && c.arm == 0) t_i *= this._death_kind == 'headshot' && this._death_t < HEADSHOT_SPASM ? 0.4 : 0.15;
+			if (this._death_t >= 0 && c.arm == 0) t_i *= this._death_kind == 'headshot' && this._death_t < HEADSHOT_SPASM ? 0.8 * this.spasmScale(c.leg ? 'legs' : 'torso') : 0.15;
 			// (Jolt drives a 6DOF motor about the axes of the child's joint frame: the wanted turn is given in those axes. The
 			// game writes it in the parent's; the two are the same for small angles, and for big ones - an arm up by the head -
 			// this is what keeps it still instead of flailing)

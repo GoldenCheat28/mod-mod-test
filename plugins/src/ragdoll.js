@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, spasm_torso: 0.5, spasm_legs: 0.5, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -1500,7 +1500,7 @@ const TEXTS = {
 		save_model_name: 'Name of the model', delete_model: 'Delete the saved model', delete_model_q: 'Delete the saved model "%"?', cancel: 'Cancel', pose_saved: 'As saved',
 		msg_save_none: 'Select a character first', msg_saved_model: 'Saved: %', msg_save_big: 'The model is too big to keep (the storage is full); it is kept until Blockbench closes', msg_save_gone: 'This saved model is gone',
 		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
-		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', spasm: 'Arm spasm', spasm_tip: 'How hard the arms draw in to the head after a head shot. 0 = they just go limp, 1 = as in the game', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
+		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', spasm_head: 'Muscle contraction at death', spasm_hint: 'How hard the muscles draw in after a fatal shot to the head. 0 = they just go limp, 1 = hard', spasm_torso: 'Above the pelvis', spasm_arms: 'Arms', spasm_legs: 'Below the pelvis', spasm: 'Arm spasm', spasm_tip: 'How hard the arms draw in to the head after a head shot. 0 = they just go limp, 1 = as in the game', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
 		blood: 'Blood', blood_high: 'High (every drop physical)', blood_high_tip: 'Every drop of blood flies on its own with physics and leaves its own stain where it lands: nothing is thinned out or skipped, a head shot is real drops too. Slower, much more blood on the walls.', blood_amount: 'Amount ×', blood_dry: 'Dries in (s)', blood_dry_tip: 'How long the blood takes to go dark brown and matt. The game: 150 s; short clips want less', blood_density: 'Thickness', blood_density_tip: 'How thick the blood lies: 1 = as in the game (dark, glossy, clotted), less = a thinner, lighter, see-through film', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
 		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting on a chair', pose_kneel: 'Kneeling', pose_squat: 'Squatting', pose_crouch: 'Crouching', pose_hands_up: 'Hands up', pose_cover_head: 'Covering the head', pose_aim: 'Aiming',
 		npc_game: 'The person of the Blood game: its body, muscles, balance, wounds and blood, as in the game. A pistol in the game hits with 2-6 N*s.', weapon: 'Weapon', w_pistol: 'Pistol', w_revolver: 'Revolver', w_rifle: 'Rifle', w_akm: 'AKM', w_shotgun: 'Shotgun (pellet)', height: 'Height (px)', add_character_btn: 'Add the default character',
@@ -1552,7 +1552,7 @@ const TEXTS = {
 		save_model_name: 'Имя модели', delete_model: 'Удалить сохранённую модель', delete_model_q: 'Удалить сохранённую модель «%»?', cancel: 'Отмена', pose_saved: 'Как сохранён',
 		msg_save_none: 'Сначала выделите персонажа', msg_saved_model: 'Сохранено: %', msg_save_big: 'Модель слишком большая для хранилища; она сохранена до закрытия Blockbench', msg_save_gone: 'Эта сохранённая модель удалена',
 		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
-		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', spasm: 'Сжатие рук', spasm_tip: 'Насколько сильно руки поджимаются к голове после выстрела в голову. 0 — просто обмякают, 1 — как в игре', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
+		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', spasm_head: 'Сокращение мышц при смерти', spasm_hint: 'Насколько сильно сжимаются мышцы после смертельного выстрела в голову. 0 — просто обмякают, 1 — сильно', spasm_torso: 'Выше таза', spasm_arms: 'Руки', spasm_legs: 'Ниже таза', spasm: 'Сжатие рук', spasm_tip: 'Насколько сильно руки поджимаются к голове после выстрела в голову. 0 — просто обмякают, 1 — как в игре', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
 		blood: 'Кровь', blood_high: 'High (каждая капля физическая)', blood_high_tip: 'Каждая капля крови летит сама по физике и оставляет своё пятно там, куда упала: ничего не прореживается и не пропускается, выстрел в голову — тоже настоящие капли. Медленнее, крови на стенах намного больше.', blood_amount: 'Количество ×', blood_dry: 'Высыхает за (с)', blood_dry_tip: 'За сколько кровь темнеет до бурой и становится матовой. В игре 150 с; для коротких роликов меньше', blood_density: 'Густота', blood_density_tip: 'Насколько толстым слоем лежит кровь: 1 — как в игре (тёмная, блестящая, со сгустками), меньше — тоньше, светлее, полупрозрачнее', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
 		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит на стуле', pose_kneel: 'На коленях', pose_squat: 'На корточках', pose_crouch: 'Пригнулся', pose_hands_up: 'Руки вверх', pose_cover_head: 'Закрывает голову', pose_aim: 'Целится',
 		npc_game: 'Человек из игры Blood: тело, мышцы, баланс, ранения и кровь — как в игре. Пистолет в игре бьёт с силой 2–6 Н·с.', weapon: 'Оружие', w_pistol: 'Пистолет', w_revolver: 'Револьвер', w_rifle: 'Винтовка', w_akm: 'АКМ', w_shotgun: 'Дробовик (дробина)', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
@@ -1814,6 +1814,10 @@ function updatePanel(force) {
 			Object.assign(vue, {route_speed: rs.route_speed, route_mode: rs.route_mode, route_start: rs.route_start, kill_at: rs.kill_at, kill_kind: rs.kill_kind});
 		}
 		vue.char_rec_blood = ragdollOf(act).record_blood !== false;
+		if (force || vue.char_key != JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs])) {
+			vue.char_key = JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs]);
+			Object.assign(vue, {char_blood_dry: rs.blood_dry ?? 30, char_blood_density: rs.blood_density ?? 0.6, char_spasm_arms: rs.spasm ?? 0.5, char_spasm_torso: rs.spasm_torso ?? 0.5, char_spasm_legs: rs.spasm_legs ?? 0.5});
+		}
 	}
 	if (Project) { const w = Project.physics_world || {}; vue.rec_time = w.duration || 3; vue.rec_fps = w.fps || 24; }
 	const sim = simNow();
@@ -1828,7 +1832,7 @@ function panelComponent() {
 	return {
 		components: {'rope-num': NumberField},
 		data() {
-			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
+			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, char_blood_dry: 30, char_blood_density: 0.6, char_spasm_arms: 0.5, char_spasm_torso: 0.5, char_spasm_legs: 0.5, char_key: '', click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
 				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
@@ -1952,7 +1956,9 @@ function panelComponent() {
 				});
 				syncRouteView(true);
 			},
-			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood, blood_high: !!this.char_blood_high}); }); },
+			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood, blood_high: !!this.char_blood_high,
+				blood_dry: clamp(num_(this.char_blood_dry, 30), 1, 600), blood_density: clamp(num_(this.char_blood_density, 0.6), 0.05, 1),
+				spasm: clamp(num_(this.char_spasm_arms, 0.5), 0, 1), spasm_torso: clamp(num_(this.char_spasm_torso, 0.5), 0, 1), spasm_legs: clamp(num_(this.char_spasm_legs, 0.5), 0, 1)}); }); },
 			// how long the bake records, and how many frames a second (the Physics tab's world settings)
 			saveRecTime() {
 				if (!Project) return;
@@ -2069,201 +2075,20 @@ function panelComponent() {
 						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="char_blood" @change="saveBlood()"></label>
 						<label class="rd_row" v-if="char_blood" :title="t('rec_blood_tip')">{{ t('rec_blood') }}<input type="checkbox" v-model="char_rec_blood" @change="saveBlood()"></label>
 						<label class="rd_row" v-if="char_blood" :title="t('blood_high_tip')">{{ t('blood_high') }}<input type="checkbox" v-model="char_blood_high" @change="saveBlood()"></label>
+						<div class="rd_grid" v-if="char_blood">
+							<rope-num :label="t('blood_dry')" :title="t('blood_dry_tip')" v-model="char_blood_dry" :min="1" :max="600" :step="1" :decimals="0" @change="saveBlood()"></rope-num>
+							<rope-num :label="t('blood_density')" :title="t('blood_density_tip')" v-model="char_blood_density" :min="0.05" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
+						</div>
+						<div class="rd_head">{{ t('spasm_head') }}</div>
+						<div class="rd_dim small">{{ t('spasm_hint') }}</div>
+						<div class="rd_grid rd_one">
+							<rope-num :label="t('spasm_torso')" v-model="char_spasm_torso" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
+							<rope-num :label="t('spasm_arms')" v-model="char_spasm_arms" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
+							<rope-num :label="t('spasm_legs')" v-model="char_spasm_legs" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
+						</div>
 					</template>
 				</div>
 
-				<details class="rd_box">
-					<summary>{{ t('more') }}</summary>
-
-				<details class="rd_box" :open="!has_root">
-					<summary>{{ t('add_character') }}</summary>
-					<label class="rd_row">{{ t('model') }}
-						<select v-model="new_model" @change="modelChanged()" :title="t('model')"><option value="npc">{{ t('model_npc') }}</option><option value="mannequin">{{ t('model_mannequin') }}</option><option v-for="m in saved_models" :value="'saved:' + m.id">{{ m.name }}</option></select>
-					</label>
-					<div class="rd_row"><button class="rd_full" @click="saveModel()" :title="t('save_model_tip')">+ {{ t('save_model') }}</button><button v-if="isSaved()" class="rd_x" @click="deleteModel()" :title="t('delete_model')">✕</button></div>
-					<label class="rd_row">{{ t('pose') }}
-						<select v-model="new_pose"><option v-if="isSaved()" value="saved">{{ t('pose_saved') }}</option><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select>
-					</label>
-					<div class="rd_grid" v-if="!isSaved()"><rope-num :label="t('height')" v-model="new_height" :min="8" :max="200" :step="0.5" :decimals="1"></rope-num></div>
-					<button class="rd_full" @click="addCharacter()">{{ t('add_character_btn') }}</button>
-					<button class="rd_full" @click="autoBones()">{{ t('auto_bones') }}</button>
-					<div class="rd_dim small">{{ t('auto_bones_hint') }}</div>
-				</details>
-
-				<template v-if="!has_root">
-					<div class="rd_dim">{{ t('select_hint') }}</div>
-					<button class="rd_full" :disabled="!has_selection" @click="build()">{{ t('build') }}</button>
-				</template>
-				<template v-else>
-					<details class="rd_box" open>
-						<summary>{{ t('character') }}: {{ root_name }} · {{ bone_count }} {{ t('bones') }}</summary>
-						<div class="rd_grid">
-							${num('mass_total', 'total_mass', 1, 500, 1, 0, null, 'saveMass()')}
-							${num('tone', 'tone', 0, 1.5, 0.05, 2, 'tone_tip', 'saveRoot()')}
-							${num('power', 'power', 0, 4, 0.1, 1, null, 'saveRoot()')}
-							${num('flinch', 'flinch', 0, 1, 0.05, 2, 'flinch_tip', 'saveRoot()')}
-							${num('radius', 'radius', 0, 200, 1, 0, null, 'saveRoot()')}
-							${num('limp', 'limp', 0, 500, 1, 0, 'limp_tip', 'saveRoot()')}
-							${num('limp_time', 'limp_time', 0, 30, 0.5, 1, 'limp_time_tip', 'saveRoot()')}
-						</div>
-						<label class="rd_row">{{ t('auto_react') }}<input type="checkbox" v-model="auto_react" @change="saveRoot()"></label>
-						<div class="rd_grid"><rope-num :label="t('react_scale')" v-model="react_scale" :min="0" :max="3" :step="0.1" :decimals="1" @change="saveRoot()"></rope-num></div>
-						<label class="rd_row">{{ t('facing') }}
-							<select v-model="facing" @change="saveRoot()"><option value="north">{{ t('facing_north') }}</option><option value="south">{{ t('facing_south') }}</option></select>
-						</label>
-						<label class="rd_row">{{ t('pin') }}
-							<select v-model="pin" @change="saveRoot()">
-								<option value="none">{{ t('pin_none') }}</option>
-								<option value="until_limp">{{ t('pin_until') }}</option>
-								<option value="always">{{ t('pin_always') }}</option>
-							</select>
-						</label>
-						<button class="rd_full" @click="setRest()">{{ t('set_rest') }}</button>
-						<button class="rd_full" @click="remove()">{{ t('remove') }}</button>
-					</details>
-
-					<details class="rd_box" open>
-						<summary>{{ t('living') }}</summary>
-						<label class="rd_row" :title="t('npc_tip')">{{ t('npc') }}<input type="checkbox" v-model="npc" @change="saveRoot()"></label>
-						<template v-if="npc && is_human">
-							<div class="rd_dim">{{ t('npc_game') }}</div>
-							<label class="rd_row">{{ t('pose') }}<select v-model="posture" @change="saveRoot()"><option value="stand">{{ t('pose_stand') }}</option><option value="sit">{{ t('pose_sit') }}</option><option value="kneel">{{ t('pose_kneel') }}</option><option value="squat">{{ t('pose_squat') }}</option><option value="crouch">{{ t('pose_crouch') }}</option><option value="hands_up">{{ t('pose_hands_up') }}</option><option value="cover_head">{{ t('pose_cover_head') }}</option><option value="aim">{{ t('pose_aim') }}</option></select></label>
-							<label class="rd_row">{{ t('weapon') }}<select v-model="weapon" @change="saveRoot()">
-								<option value="pistol">{{ t('w_pistol') }}</option><option value="revolver">{{ t('w_revolver') }}</option><option value="rifle">{{ t('w_rifle') }}</option><option value="akm">{{ t('w_akm') }}</option><option value="shotgun">{{ t('w_shotgun') }}</option>
-							</select></label>
-						</template>
-						<template v-if="npc && !is_human">
-							<label class="rd_row">{{ t('head_kills') }}<input type="checkbox" v-model="head_kills" @change="saveRoot()"></label>
-							<div class="rd_grid">
-								${num('balance', 'balance', 0, 2, 0.05, 2, 'balance_tip', 'saveRoot()')}
-								${num('spasm', 'spasm', 0, 1, 0.05, 2, 'spasm_tip', 'saveRoot()')}
-								${num('bleed', 'bleed', 0, 20, 0.1, 1, 'bleed_tip', 'saveRoot()')}
-							</div>
-						</template>
-						<label class="rd_row">{{ t('blood') }}<input type="checkbox" v-model="blood" @change="saveRoot()"></label>
-						<label class="rd_row" v-if="blood" :title="t('blood_high_tip')">{{ t('blood_high') }}<input type="checkbox" v-model="blood_high" @change="saveRoot()"></label>
-						<div class="rd_grid" v-if="blood && !is_human">${num('blood_amount', 'blood_amount', 0, 5, 0.1, 1, null, 'saveRoot()')}</div>
-						<div class="rd_grid" v-if="blood">${num('blood_dry', 'blood_dry', 1, 600, 1, 0, 'blood_dry_tip', 'saveRoot()')}${num('blood_density', 'blood_density', 0.05, 1, 0.05, 2, 'blood_density_tip', 'saveRoot()')}</div>
-						<div class="rd_dim" v-if="blood">{{ t('blood_note') }}</div>
-					</details>
-
-					<details class="rd_box" v-if="is_bone" open>
-						<summary>{{ t('bone') }}: {{ sel_name }}</summary>
-						<label class="rd_row">{{ t('joint') }}
-							<select v-model="joint" @change="saveBone()">
-								<option value="ball">{{ t('j_ball') }}</option>
-								<option value="hinge">{{ t('j_hinge') }}</option>
-								<option value="fixed">{{ t('j_fixed') }}</option>
-							</select>
-						</label>
-						<div class="rd_grid">
-							<template v-if="joint == 'ball'">
-								${num('swing', 'swing', 1, 179, 1, 0, null, 'saveBone()')}
-								${num('twist', 'twist', 0, 179, 1, 0, null, 'saveBone()')}
-							</template>
-							<template v-if="joint == 'hinge'">
-								${num('hmin', 'hmin', -179, 179, 1, 0, null, 'saveBone()')}
-								${num('hmax', 'hmax', -179, 179, 1, 0, null, 'saveBone()')}
-							</template>
-							${num('strength', 'strength', 0, 4, 0.1, 1, null, 'saveBone()')}
-						</div>
-						<label class="rd_row" v-if="joint == 'hinge'">{{ t('axis') }}
-							<select v-model="hinge_axis" @change="saveBone()"><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select>
-						</label>
-						<label class="rd_row">{{ t('zone') }}
-							<select v-model="zone" @change="saveBone()">
-								<option value="auto">{{ t('z_auto') }}</option><option value="head">{{ t('z_head') }}</option><option value="torso">{{ t('z_torso') }}</option>
-								<option value="arms">{{ t('z_arms') }}</option><option value="legs">{{ t('z_legs') }}</option>
-							</select>
-						</label>
-					</details>
-
-					<details class="rd_box" open>
-						<summary>{{ t('skeleton') }}</summary>
-						<div class="rd_dim small">{{ t('skeleton_hint') }}</div>
-						<button class="rd_full" :class="{active: pose_edit}" @click="toggleEdit()">{{ pose_edit ? t('skeleton_on') : t('skeleton_edit') }}</button>
-						<div class="rd_row"><input type="text" v-model="pose_name" class="rd_text" :placeholder="t('r_name')"></div>
-						<button class="rd_full" @click="savePoseNow()">{{ t('pose_save') }}</button>
-						<button class="rd_full" @click="toRest()">{{ t('pose_rest_back') }}</button>
-						<div v-for="(p, i) in poses" :key="'p' + i" class="rd_item col">
-							<div class="rd_row"><b>{{ p.name }}</b><button class="rd_x" @click="removePose(i)">✕</button></div>
-							<div class="rd_quick"><button @click="usePose(i, false)">{{ t('pose_apply') }}</button><button @click="usePose(i, true)">{{ t('pose_as_rest') }}</button></div>
-						</div>
-					</details>
-
-					<details class="rd_box" open>
-						<summary>{{ t('items') }} · {{ items.length }}</summary>
-						<div class="rd_dim small">{{ t('items_hint') }}</div>
-						<label class="rd_row">{{ t('item_bone') }}
-							<select v-model="item_bone"><option v-for="b in bone_list" :value="b.uuid">{{ b.name }}</option></select>
-						</label>
-						<label class="rd_row">{{ t('item_drop') }}<input type="checkbox" v-model="item_drop"></label>
-						<div class="rd_grid"><rope-num :label="t('item_mass')" v-model="item_mass" :min="0.05" :max="100" :step="0.05" :decimals="2"></rope-num></div>
-						<button class="rd_full" @click="attach()">{{ t('item_attach') }}</button>
-						<div v-for="it in items" :key="it.uuid" class="rd_item col">
-							<div class="rd_row"><span>{{ it.name }} → {{ it.bone_name }}<template v-if="it.drop"> · {{ t('item_drops') }}</template></span><button class="rd_x" @click="detach(it.uuid)">✕</button></div>
-						</div>
-					</details>
-
-					<details class="rd_box" open>
-						<summary>{{ t('shot_box') }}</summary>
-						<label class="rd_row">{{ t('shot_at') }}
-							<select v-model="shot_part" @change="saveRoot()"><option value="auto">{{ t('shot_auto') }}</option><option v-for="b in bone_list" :value="b.uuid">{{ b.name }}</option></select>
-						</label>
-						<div class="rd_dim small">{{ t('shot_from') }}</div>
-						<div class="rd_quick">
-							<button @click="setYaw(0)">{{ t('d_front') }}</button><button @click="setYaw(90)">{{ t('d_right') }}</button><button @click="setYaw(180)">{{ t('d_back') }}</button><button @click="setYaw(-90)">{{ t('d_left') }}</button>
-						</div>
-						<div class="rd_grid">
-							<rope-num :label="t('shot_yaw')" v-model="shot_yaw" :min="-180" :max="180" :step="1" :decimals="0" @change="saveRoot()"></rope-num>
-							<rope-num :label="t('shot_pitch')" v-model="shot_pitch" :min="-85" :max="85" :step="1" :decimals="0" @change="saveRoot()"></rope-num>
-							<rope-num :label="t('shot')" v-model="shot" :min="1" :max="500" :step="1" :decimals="0" :title="t('shot_tip')" @change="saveRoot()"></rope-num>
-							<rope-num :label="t('time')" v-model="shot_time" :min="0" :max="60" :step="0.05" :decimals="2" @change="saveRoot()"></rope-num>
-						</div>
-						<button class="rd_full" @click="fire()">{{ t('fire') }}</button>
-						<button class="rd_full" @click="addShot()">{{ t('add_shot') }}</button>
-					</details>
-
-					<details class="rd_box" open>
-						<summary>{{ t('hits') }} · {{ hits.length }}</summary>
-						<div class="rd_dim small">{{ t('hits_hint') }}</div>
-						<button class="rd_full" :class="{active: shoot}" @click="toggleShoot()">{{ shoot ? t('shoot_on') : t('shoot') }}</button>
-						<button class="rd_full" @click="addHit()">{{ t('add_hit') }}</button>
-						<div v-if="!hits.length" class="rd_dim">{{ t('no_hits') }}</div>
-						<div v-for="(h, i) in hits" :key="i" class="rd_item">
-							<span class="rd_item_name">{{ h.name }}</span>
-							<rope-num :label="t('time')" v-model="h.t" :min="0" :max="60" :step="0.05" :decimals="2" @change="saveHits()"></rope-num>
-							<rope-num :label="t('impulse')" v-model="h.impulse" :min="0" :max="1000" :step="1" :decimals="0" @change="saveHits()"></rope-num>
-							<button class="rd_x" @click="deleteHit(i)">✕</button>
-						</div>
-						<button v-if="hits.length" class="rd_full" @click="clearHits()">{{ t('clear_hits') }}</button>
-					</details>
-
-					<details class="rd_box" open>
-						<summary>{{ t('reactions') }} · {{ reactions.length }}</summary>
-						<div class="rd_dim small">{{ t('reactions_hint') }}</div>
-						<div class="rd_row"><input type="text" v-model="new_name" class="rd_text" :placeholder="t('r_name')"></div>
-						<label class="rd_row">{{ t('r_zone') }}
-							<select v-model="new_zone"><option value="any">{{ t('z_any') }}</option><option value="head">{{ t('z_head') }}</option><option value="torso">{{ t('z_torso') }}</option>
-								<option value="arms">{{ t('z_arms') }}</option><option value="legs">{{ t('z_legs') }}</option></select>
-						</label>
-						<button class="rd_full" @click="capture()">{{ t('capture') }}</button>
-						<div v-if="!reactions.length" class="rd_dim">{{ t('no_reactions') }}</div>
-						<div v-for="(r, i) in reactions" :key="'r' + i" class="rd_item col">
-							<div class="rd_row"><input type="text" v-model="r.name" class="rd_text" @change="saveReactions()"><button class="rd_x" @click="deleteReaction(i)">✕</button></div>
-							<label class="rd_row">{{ t('r_zone') }}
-								<select v-model="r.zone" @change="saveReactions()"><option value="any">{{ t('z_any') }}</option><option value="head">{{ t('z_head') }}</option><option value="torso">{{ t('z_torso') }}</option>
-									<option value="arms">{{ t('z_arms') }}</option><option value="legs">{{ t('z_legs') }}</option></select>
-							</label>
-							<div class="rd_grid">
-								<rope-num :label="t('r_hold')" v-model="r.hold" :min="0" :max="10" :step="0.1" :decimals="1" @change="saveReactions()"></rope-num>
-								<rope-num :label="t('r_tension')" v-model="r.tension" :min="0" :max="2" :step="0.05" :decimals="2" @change="saveReactions()"></rope-num>
-							</div>
-						</div>
-					</details>
-				</template>
-				<div class="rd_dim small">{{ t('footnote') }}</div>
-				</details>
 			</div>`,
 	};
 }
@@ -2287,6 +2112,7 @@ const STYLE = `
 	.rd_panel .rd_box > summary { cursor: pointer; text-transform: uppercase; font-size: 0.82em; opacity: 0.8; outline: none; }
 	.rd_panel details.rd_box[open] > summary { margin-bottom: 6px; }
 	.rd_panel .rd_grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0; }
+	.rd_panel .rd_grid.rd_one { grid-template-columns: 1fr; }
 	.rd_panel .rd_row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
 	.rd_panel .rd_text { flex: 1; min-width: 0; background: var(--color-dark); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 3px; padding: 3px 6px; }
 	.rd_panel .rd_item { display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px; align-items: center; margin: 4px 0; padding: 4px; border: 1px solid var(--color-border); border-radius: 3px; }
@@ -3094,7 +2920,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.10.7',
+	version: '0.10.8',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
