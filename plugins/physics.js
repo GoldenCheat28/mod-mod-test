@@ -149,7 +149,7 @@ const tr = key => {
 const isPart = e => e instanceof Cube || e instanceof Mesh;
 const bodyOf = node => Object.assign({}, DEFAULT_BODY, node.physics || {});
 // a mesh made cloth (cloth.js) is moved by the cloth simulation, never as a solid body
-const isClothNode = node => node instanceof Mesh && !!node.cloth && node.cloth.enabled !== false;
+const isClothNode = node => node instanceof Mesh && !!node.cloth && typeof node.cloth == 'object' && Object.keys(node.cloth).length > 0 && node.cloth.enabled !== false;   // ({} = no cloth: Blockbench fills unset properties so)
 const typeOf = node => isClothNode(node) ? 'none' : (node.physics && node.physics.type) || 'none';
 const worldOf = () => Object.assign({}, DEFAULT_WORLD, (Project && Project.physics_world) || {});
 
@@ -2484,7 +2484,7 @@ Plugin.register('physics', {
 	description: 'A Physics tab: rigid bodies powered by Jolt Physics, liquid and force fields, baked into animations.',
 	about: 'Open the **Physics** tab (next to Animate). Three sub-tabs: **Object** (Ground / Physics object, mass, friction, start velocity, optional "start on impact"), **Liquid** (liquid sources that follow their object, aimed with the Rotate tool) and **Forces** (empty groups that push, pull or blow on objects and liquid, with ramp-up, duration and noise). Play / Pause / Reset preview the simulation, **Bake** writes it into a new animation. 16 px = 1 m. Powered by Jolt Physics (JoltPhysics.js, MIT license).',
 	icon: 'sports_baseball',
-	version: '0.8.6',
+	version: '0.8.7',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

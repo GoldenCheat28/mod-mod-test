@@ -20,7 +20,8 @@ const num = (v, d) => isFinite(parseFloat(v)) ? parseFloat(v) : d;
 
 const DEFAULT_CLOTH = {enabled: true, stretch: 1, bend: 0.25, damping: 0.4, thickness: 0.5, friction: 0.5, gravity: 1, iterations: 8, frozen: [], attached: []};
 const clothOf = el => Object.assign({}, DEFAULT_CLOTH, el.cloth || {});
-const isCloth = el => el instanceof Mesh && !!el.cloth && el.cloth.enabled !== false;
+// (Blockbench may fill an unset object property with {} when it opens a project: only real cloth data counts)
+const isCloth = el => el instanceof Mesh && !!el.cloth && typeof el.cloth == 'object' && Object.keys(el.cloth).length > 0 && el.cloth.enabled !== false;
 const allCloth = () => Mesh.all.filter(isCloth);
 
 // ---------------------------------------------------------------------------
@@ -590,7 +591,7 @@ Plugin.register('cloth', {
 	description: 'Cloth for meshes (capes, flags, curtains): hangs, drapes over physics bodies and ragdolls, faces can be frozen or attached to objects. Runs and bakes in the Physics tab.',
 	about: 'Select a mesh and open the **Cloth** panel (or right click → **Cloth…**, or **Add cloth** for a ready sheet). Pick faces in Edit mode and **Freeze** them or **Attach** them to an object. Press Play in the **Physics** tab to see it; **Bake** records it for the Animate tab and for videos from the Render view. Needs the Physics plugin.',
 	icon: 'texture',
-	version: '0.1.3',
+	version: '0.1.4',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation', 'Physics'],

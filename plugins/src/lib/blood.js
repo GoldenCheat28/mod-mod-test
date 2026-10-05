@@ -107,7 +107,7 @@ class BloodSim {
 			const people = new Set();
 			for (const bot of this.people) for (const pt of bot.parts) if (pt.group) people.add(pt.group);
 			const skip = node => { for (let n = node; n && n !== 'root'; n = n.parent) {
-				if (people.has(n) || (n.attach && n.attach.root) || (n.physics && n.physics.type == 'dynamic') || n.cloth) return true; } return false; };
+				if (people.has(n) || (n.attach && n.attach.root) || (n.physics && n.physics.type == 'dynamic') || (n.cloth && n.cloth.enabled && Object.keys(n.cloth).length)) return true; } return false; };
 			for (const el of [...(typeof Cube != 'undefined' ? Cube.all : []), ...(typeof Mesh != 'undefined' ? Mesh.all : [])]) {
 				if (!el.mesh || !el.mesh.geometry || el.visibility === false || skip(el)) continue;
 				el.mesh.updateMatrixWorld(true);

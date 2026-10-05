@@ -2816,7 +2816,7 @@ class BloodSim {
 			const people = new Set();
 			for (const bot of this.people) for (const pt of bot.parts) if (pt.group) people.add(pt.group);
 			const skip = node => { for (let n = node; n && n !== 'root'; n = n.parent) {
-				if (people.has(n) || (n.attach && n.attach.root) || (n.physics && n.physics.type == 'dynamic') || n.cloth) return true; } return false; };
+				if (people.has(n) || (n.attach && n.attach.root) || (n.physics && n.physics.type == 'dynamic') || (n.cloth && n.cloth.enabled && Object.keys(n.cloth).length)) return true; } return false; };
 			for (const el of [...(typeof Cube != 'undefined' ? Cube.all : []), ...(typeof Mesh != 'undefined' ? Mesh.all : [])]) {
 				if (!el.mesh || !el.mesh.geometry || el.visibility === false || skip(el)) continue;
 				el.mesh.updateMatrixWorld(true);
@@ -7521,7 +7521,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.10.3',
+	version: '0.10.4',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
