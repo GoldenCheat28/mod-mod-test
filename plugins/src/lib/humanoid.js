@@ -105,6 +105,8 @@ class Humanoid {
 	constructor(rt, root, bones) {
 		this.root = root;
 		this.s = ragdollOf(root);
+		// how differently he goes down each time (the Ragdoll panel): the hit, the muscles giving way and the fall vary
+		this.chaos = clamp(+(this.s.chaos ?? 0.3) || 0, 0, 1);
 		this.J = rt.Jolt;
 		this.rt = rt;
 		this.world = rt.world;
@@ -267,6 +269,16 @@ class Humanoid {
 				st.mAutoDetectPoint = true;
 				it.constraint = J.castObject(st.Create(it.holder.body, it.entry.body), J.FixedConstraint);
 				world.system.AddConstraint(it.constraint);
+				// held in both hands: the other hand's grip is where that fist is on it now (the point kept from when it was
+				// given to him is in Blockbench's frame of the thing, not its body's, and the arm may have been posed since).
+				// Already on it, the fist closes on it at once
+				if (it.other) {
+					const fist = this.pos(it.other), g2 = this.nearestOnItem(it, fist);
+					if (g2) {
+						it.grip_other = this.itemLocal(it, g2);
+						if (g2.distanceTo(fist) < 0.07 * this.scale_factor) this._close_other(it, fist, g2);
+					}
+				}
 			} catch (err) { console.warn('[Ragdoll] item', err); }
 		});
 		this.filter = filter;
@@ -417,23 +429,32 @@ class Humanoid {
 		return local.clone().applyQuaternion(new THREE.Quaternion(r.GetX(), r.GetY(), r.GetZ(), r.GetW())).add(gv(p.GetX(), p.GetY(), p.GetZ()));
 	}
 
+	// a world point to a held thing's own frame (metres)
+	itemLocal(it, w) {
+		const b = it.entry.body, p = b.GetPosition(), r = b.GetRotation();
+		return w.clone().sub(gv(p.GetX(), p.GetY(), p.GetZ())).applyQuaternion(new THREE.Quaternion(r.GetX(), r.GetY(), r.GetZ(), r.GetW()).invert());
+	}
+
+	// the other fist closes on the thing: its middle held to that point (it may still turn about it, as a hand does)
+	_close_other(it, fist, goal) {
+		const J = this.J;
+		try {
+			const st = new J.PointConstraintSettings();
+			st.mSpace = J.EConstraintSpace_WorldSpace;
+			st.mPoint1 = new J.RVec3(fist.x, fist.y, fist.z);
+			st.mPoint2 = new J.RVec3(goal.x, goal.y, goal.z);
+			it.other_constraint = J.castObject(st.Create(it.other.body, it.entry.body), J.PointConstraint);
+			this.world.system.AddConstraint(it.other_constraint);
+		} catch (err) { console.warn('[Ragdoll] grip', err); it.other = null; }
+	}
+
 	// held in both hands: the other hand reaches for its grip (as the game's hands reach for a gun's forend) and closes on it
 	_update_grips() {
-		const J = this.J;
 		for (const it of this.items) {
 			if (!it.other || !it.grip_other || !it.constraint || it.other_constraint) continue;
 			const goal = this.itemPoint(it, it.grip_other);
 			if (this.pos(it.other).distanceTo(goal) > 0.05 * this.scale_factor) continue;
-			try {
-				const st = new J.PointConstraintSettings();
-				st.mSpace = J.EConstraintSpace_WorldSpace;
-				// (the fist itself goes onto the grip: its middle to that point)
-				const fist = this.pos(it.other);
-				st.mPoint1 = new J.RVec3(fist.x, fist.y, fist.z);
-				st.mPoint2 = new J.RVec3(goal.x, goal.y, goal.z);
-				it.other_constraint = J.castObject(st.Create(it.other.body, it.entry.body), J.PointConstraint);
-				this.world.system.AddConstraint(it.other_constraint);
-			} catch (err) { console.warn('[Ragdoll] grip', err); it.other = null; }
+			this._close_other(it, this.pos(it.other), goal);
 		}
 	}
 
@@ -729,6 +750,8 @@ class Humanoid {
 		if (!this.fallen) for (const it of this.items) {
 			if (!it.other || !it.grip_other || !it.constraint) continue;
 			const side = it.other.name.endsWith('_r') ? 'r' : 'l';
+			// (an arm posed onto it already holds it as posed: reaching again would bend it another way and twist the thing)
+			if (it.other_constraint && this.held_arms && this.held_arms[side]) continue;
 			if (this.arm_health[side] > 0.15) this._arm_ik(side, this.itemPoint(it, it.grip_other));
 		}
 		// fallen but conscious: catch the fall, then curl or push up
@@ -975,8 +998,12 @@ class Humanoid {
 		this._pose_set('chest', gv(-0.12, 0, 0).multiplyScalar(kt));
 		this._pose_set('head', gv(-0.2, 0, 0).multiplyScalar(kt));
 		// the knees fold at once (that is what drops him where he stands), the hips follow
-		const drop = gsmooth(0, 0.1, t) * Math.min(this.spasmScale('legs') * 2, 1.5);
-		for (const side of ['r', 'l']) { this._side('thigh', side, gv(0.7 * drop, 0, 0.05)); this._side('shin', side, gv(-1.3 * drop, 0, 0)); this._side('foot', side, gv(0.3 * drop, 0, 0)); }
+		const legs_k = Math.min(this.spasmScale('legs') * 2, 1.5);
+		for (const side of ['r', 'l']) {
+			const ck = this._chaos_knee ? this._chaos_knee[side] : 1, cd = this._chaos_delay ? this._chaos_delay[side] : 0;
+			const d = gsmooth(cd, cd + 0.1, t) * legs_k * ck;
+			this._side('thigh', side, gv(0.7 * d, 0, 0.05)); this._side('shin', side, gv(-1.3 * d, 0, 0)); this._side('foot', side, gv(0.3 * d, 0, 0));
+		}
 	}
 
 	// Muscles: each joint runs a velocity servo on the joint motors. The pose error is turned into a desired relative
@@ -993,6 +1020,7 @@ class Humanoid {
 			let t_i = this.tone * c.weak * c.hit_weak;
 			if (this._death_kind == 'headshot' && this._death_t >= 0 && this._death_t < HEADSHOT_SPASM && c.arm == 1) t_i = Math.max(t_i, 0.95 * this._spasm() * this.spasmScale());
 			// trunk and legs go limp first; after a shot to the head they still draw in with the arms, only weaker
+			if (this._death_t >= 0 && c.chaos_k) t_i *= c.chaos_k;
 			if (this._death_t >= 0 && c.arm == 0) t_i *= this._death_kind == 'headshot' && this._death_t < HEADSHOT_SPASM ? 0.8 * this.spasmScale(c.leg ? 'legs' : 'torso') : 0.15;
 			// (Jolt drives a 6DOF motor about the axes of the child's joint frame: the wanted turn is given in those axes. The
 			// game writes it in the parent's; the two are the same for small angles, and for big ones - an arm up by the head -
@@ -1113,7 +1141,16 @@ class Humanoid {
 		const origin = gv(r.GetX(), r.GetY(), r.GetZ()), bq = new THREE.Quaternion(q.GetX(), q.GetY(), q.GetZ(), q.GetW());
 		const point = gv(...(hit.local || [0, 0, 0])).divideScalar(SCALE).applyQuaternion(bq).add(origin);
 		const dir = gv(...hit.dir).normalize();
-		this.receive_hit(part, point, dir, hit.impulse, hit.weapon || this.s.weapon || 'pistol');
+		let impulse = hit.impulse;
+		if (this.chaos > 0) {
+			// never twice the same: the shot comes in a little off, a little harder or softer, a hair off the point
+			const off = gv(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+			off.addScaledVector(dir, -off.dot(dir)).normalize();
+			dir.addScaledVector(off, Math.tan(0.22 * this.chaos * Math.random())).normalize();
+			impulse *= 1 + (Math.random() * 2 - 1) * 0.3 * this.chaos;
+			point.add(gv(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.03 * this.chaos * this.scale_factor));
+		}
+		this.receive_hit(part, point, dir, impulse, hit.weapon || this.s.weapon || 'pistol');
 		this.log.push({t: this.time, bone: part.group.name, part: part.name, impulse: hit.impulse});
 	}
 
@@ -1242,8 +1279,25 @@ class Humanoid {
 		for (const j of near) this.parts[j].hit_weak = Math.min(this.parts[j].hit_weak, 1 - clamp(amount * 0.5, 0, 1));
 	}
 
+	// as he dies each muscle gives way a little differently, one knee before the other, and the body is turned a little
+	// one way or the other: no two falls the same
+	_chaos_death() {
+		if (this._chaos_done || !(this.chaos > 0)) return;
+		this._chaos_done = true;
+		const c = this.chaos, rnd = () => Math.random() * 2 - 1;
+		for (const p of this.parts) p.chaos_k = Math.max(0.05, 1 + rnd() * 0.7 * c);
+		this._chaos_knee = {r: 1 + rnd() * 0.45 * c, l: 1 + rnd() * 0.45 * c};
+		this._chaos_delay = {r: Math.random() * 0.12 * c, l: Math.random() * 0.12 * c};
+		for (const p of [this.chest, this.pelvis]) {
+			const L = gv(rnd(), rnd() * 1.5, rnd()).multiplyScalar(0.25 * c * Math.pow(this.scale_factor, 5));
+			this.world.tmp.Set(L.x, L.y, L.z);
+			this.world.bodies.AddAngularImpulse(p.id, this.world.tmp);
+		}
+	}
+
 	_start_death_curve(kind) {
 		if (this._death_t >= 0 && this._death_kind == 'headshot') return;
+		this._chaos_death();
 		this._death_kind = kind;
 		this._death_t = 0;
 		if (!this.fallen) this.log.push({t: this.time, fell: kind});
@@ -1258,6 +1312,7 @@ class Humanoid {
 		this.alive = false;
 		this.conscious = false;
 		this.log.push({t: this.time, died: kind});
+		this._chaos_death();
 		if (kind == 'headshot') {
 			this.brain_dead = true;
 			this._death_kind = 'headshot';

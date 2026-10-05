@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, spasm_torso: 0.5, spasm_legs: 0.5, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, spasm_torso: 0.5, spasm_legs: 0.5, chaos: 0.3, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -1500,7 +1500,8 @@ const TEXTS = {
 		save_model_name: 'Name of the model', delete_model: 'Delete the saved model', delete_model_q: 'Delete the saved model "%"?', cancel: 'Cancel', pose_saved: 'As saved',
 		msg_save_none: 'Select a character first', msg_saved_model: 'Saved: %', msg_save_big: 'The model is too big to keep (the storage is full); it is kept until Blockbench closes', msg_save_gone: 'This saved model is gone',
 		living: 'Living body', npc: 'NPC: balance, health, falls, death', npc_tip: 'Blood, pain and shock; legs give way; it stumbles and falls, faints, dies. Hips are free (no pin).',
-		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', spasm_head: 'Muscle contraction at death', spasm_hint: 'How hard the muscles draw in after a fatal shot to the head. 0 = they just go limp, 1 = hard', spasm_torso: 'Above the pelvis', spasm_arms: 'Arms', spasm_legs: 'Below the pelvis', spasm: 'Arm spasm', spasm_tip: 'How hard the arms draw in to the head after a head shot. 0 = they just go limp, 1 = as in the game', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
+		head_kills: 'A head shot kills', balance: 'Balance', balance_tip: 'How strongly it keeps its feet. 0 = it falls at once', chaos: 'Chaos of the fall', chaos_tip: 'How differently he goes down each time: the hit lands a little off, the muscles give way unevenly, one knee before the other. 0 = the same fall every time',
+		spasm_head: 'Muscle contraction at death', spasm_hint: 'How hard the muscles draw in after a fatal shot to the head. 0 = they just go limp, 1 = hard', spasm_torso: 'Above the pelvis', spasm_arms: 'Arms', spasm_legs: 'Below the pelvis', spasm: 'Arm spasm', spasm_tip: 'How hard the arms draw in to the head after a head shot. 0 = they just go limp, 1 = as in the game', bleed: 'Bleeding ×', bleed_tip: 'How fast blood is lost',
 		blood: 'Blood', blood_high: 'High (every drop physical)', blood_high_tip: 'Every drop of blood flies on its own with physics and leaves its own stain where it lands: nothing is thinned out or skipped, a head shot is real drops too. Slower, much more blood on the walls.', blood_amount: 'Amount ×', blood_dry: 'Dries in (s)', blood_dry_tip: 'How long the blood takes to go dark brown and matt. The game: 150 s; short clips want less', blood_density: 'Thickness', blood_density_tip: 'How thick the blood lies: 1 = as in the game (dark, glossy, clotted), less = a thinner, lighter, see-through film', blood_note: 'Blood is shown while the simulation plays (not baked into the animation).',
 		add_character: 'Add a character', pose: 'Pose', pose_stand: 'Standing, relaxed', pose_sit: 'Sitting on a chair', pose_kneel: 'Kneeling', pose_squat: 'Squatting', pose_crouch: 'Crouching', pose_hands_up: 'Hands up', pose_cover_head: 'Covering the head', pose_aim: 'Aiming',
 		npc_game: 'The person of the Blood game: its body, muscles, balance, wounds and blood, as in the game. A pistol in the game hits with 2-6 N*s.', weapon: 'Weapon', w_pistol: 'Pistol', w_revolver: 'Revolver', w_rifle: 'Rifle', w_akm: 'AKM', w_shotgun: 'Shotgun (pellet)', height: 'Height (px)', add_character_btn: 'Add the default character',
@@ -1552,7 +1553,8 @@ const TEXTS = {
 		save_model_name: 'Имя модели', delete_model: 'Удалить сохранённую модель', delete_model_q: 'Удалить сохранённую модель «%»?', cancel: 'Отмена', pose_saved: 'Как сохранён',
 		msg_save_none: 'Сначала выделите персонажа', msg_saved_model: 'Сохранено: %', msg_save_big: 'Модель слишком большая для хранилища; она сохранена до закрытия Blockbench', msg_save_gone: 'Эта сохранённая модель удалена',
 		living: 'Живое тело', npc: 'NPC: баланс, здоровье, падение, смерть', npc_tip: 'Кровь, боль и шок; ноги подкашиваются; персонаж шатается и падает, теряет сознание, умирает. Таз свободный (без фиксации).',
-		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', spasm_head: 'Сокращение мышц при смерти', spasm_hint: 'Насколько сильно сжимаются мышцы после смертельного выстрела в голову. 0 — просто обмякают, 1 — сильно', spasm_torso: 'Выше таза', spasm_arms: 'Руки', spasm_legs: 'Ниже таза', spasm: 'Сжатие рук', spasm_tip: 'Насколько сильно руки поджимаются к голове после выстрела в голову. 0 — просто обмякают, 1 — как в игре', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
+		head_kills: 'Выстрел в голову убивает', balance: 'Баланс', balance_tip: 'Насколько крепко держится на ногах. 0 — падает сразу', chaos: 'Хаос падения', chaos_tip: 'Насколько по-разному он падает каждый раз: удар приходится чуть иначе, мышцы отказывают неравномерно, одно колено раньше другого. 0 — каждый раз одинаково',
+		spasm_head: 'Сокращение мышц при смерти', spasm_hint: 'Насколько сильно сжимаются мышцы после смертельного выстрела в голову. 0 — просто обмякают, 1 — сильно', spasm_torso: 'Выше таза', spasm_arms: 'Руки', spasm_legs: 'Ниже таза', spasm: 'Сжатие рук', spasm_tip: 'Насколько сильно руки поджимаются к голове после выстрела в голову. 0 — просто обмякают, 1 — как в игре', bleed: 'Кровотечение ×', bleed_tip: 'Как быстро теряется кровь',
 		blood: 'Кровь', blood_high: 'High (каждая капля физическая)', blood_high_tip: 'Каждая капля крови летит сама по физике и оставляет своё пятно там, куда упала: ничего не прореживается и не пропускается, выстрел в голову — тоже настоящие капли. Медленнее, крови на стенах намного больше.', blood_amount: 'Количество ×', blood_dry: 'Высыхает за (с)', blood_dry_tip: 'За сколько кровь темнеет до бурой и становится матовой. В игре 150 с; для коротких роликов меньше', blood_density: 'Густота', blood_density_tip: 'Насколько толстым слоем лежит кровь: 1 — как в игре (тёмная, блестящая, со сгустками), меньше — тоньше, светлее, полупрозрачнее', blood_note: 'Кровь видна, пока идёт симуляция (в запечённую анимацию не попадает).',
 		add_character: 'Добавить персонажа', pose: 'Поза', pose_stand: 'Стоит, расслабленно', pose_sit: 'Сидит на стуле', pose_kneel: 'На коленях', pose_squat: 'На корточках', pose_crouch: 'Пригнулся', pose_hands_up: 'Руки вверх', pose_cover_head: 'Закрывает голову', pose_aim: 'Целится',
 		npc_game: 'Человек из игры Blood: тело, мышцы, баланс, ранения и кровь — как в игре. Пистолет в игре бьёт с силой 2–6 Н·с.', weapon: 'Оружие', w_pistol: 'Пистолет', w_revolver: 'Револьвер', w_rifle: 'Винтовка', w_akm: 'АКМ', w_shotgun: 'Дробовик (дробина)', height: 'Рост (px)', add_character_btn: 'Добавить персонажа по умолчанию',
@@ -1814,9 +1816,9 @@ function updatePanel(force) {
 			Object.assign(vue, {route_speed: rs.route_speed, route_mode: rs.route_mode, route_start: rs.route_start, kill_at: rs.kill_at, kill_kind: rs.kill_kind});
 		}
 		vue.char_rec_blood = ragdollOf(act).record_blood !== false;
-		if (force || vue.char_key != JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs])) {
-			vue.char_key = JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs]);
-			Object.assign(vue, {char_blood_dry: rs.blood_dry ?? 30, char_blood_density: rs.blood_density ?? 0.6, char_spasm_arms: rs.spasm ?? 0.5, char_spasm_torso: rs.spasm_torso ?? 0.5, char_spasm_legs: rs.spasm_legs ?? 0.5});
+		if (force || vue.char_key != JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs, rs.chaos])) {
+			vue.char_key = JSON.stringify([act.uuid, rs.blood_dry, rs.blood_density, rs.spasm, rs.spasm_torso, rs.spasm_legs, rs.chaos]);
+			Object.assign(vue, {char_chaos: rs.chaos ?? 0.3, char_blood_dry: rs.blood_dry ?? 30, char_blood_density: rs.blood_density ?? 0.6, char_spasm_arms: rs.spasm ?? 0.5, char_spasm_torso: rs.spasm_torso ?? 0.5, char_spasm_legs: rs.spasm_legs ?? 0.5});
 		}
 	}
 	if (Project) { const w = Project.physics_world || {}; vue.rec_time = w.duration || 3; vue.rec_fps = w.fps || 24; }
@@ -1832,7 +1834,7 @@ function panelComponent() {
 	return {
 		components: {'rope-num': NumberField},
 		data() {
-			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, char_blood_dry: 30, char_blood_density: 0.6, char_spasm_arms: 0.5, char_spasm_torso: 0.5, char_spasm_legs: 0.5, char_key: '', click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
+			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, char_blood_dry: 30, char_blood_density: 0.6, char_spasm_arms: 0.5, char_spasm_torso: 0.5, char_spasm_legs: 0.5, char_chaos: 0.3, char_key: '', click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
 				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
@@ -1958,7 +1960,7 @@ function panelComponent() {
 			},
 			saveBlood() { const root = activeRoot(); if (!root) return; edit([root], 'Blood', () => { root.ragdoll = Object.assign(ragdollOf(root), {blood: !!this.char_blood, record_blood: !!this.char_rec_blood, blood_high: !!this.char_blood_high,
 				blood_dry: clamp(num_(this.char_blood_dry, 30), 1, 600), blood_density: clamp(num_(this.char_blood_density, 0.6), 0.05, 1),
-				spasm: clamp(num_(this.char_spasm_arms, 0.5), 0, 1), spasm_torso: clamp(num_(this.char_spasm_torso, 0.5), 0, 1), spasm_legs: clamp(num_(this.char_spasm_legs, 0.5), 0, 1)}); }); },
+				spasm: clamp(num_(this.char_spasm_arms, 0.5), 0, 1), spasm_torso: clamp(num_(this.char_spasm_torso, 0.5), 0, 1), spasm_legs: clamp(num_(this.char_spasm_legs, 0.5), 0, 1), chaos: clamp(num_(this.char_chaos, 0.3), 0, 1)}); }); },
 			// how long the bake records, and how many frames a second (the Physics tab's world settings)
 			saveRecTime() {
 				if (!Project) return;
@@ -2086,6 +2088,8 @@ function panelComponent() {
 							<rope-num :label="t('spasm_arms')" v-model="char_spasm_arms" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
 							<rope-num :label="t('spasm_legs')" v-model="char_spasm_legs" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num>
 						</div>
+						<div class="rd_grid rd_one"><rope-num :label="t('chaos')" :title="t('chaos_tip')" v-model="char_chaos" :min="0" :max="1" :step="0.05" :decimals="2" @change="saveBlood()"></rope-num></div>
+						<div class="rd_dim small">{{ t('chaos_tip') }}</div>
 					</template>
 				</div>
 
@@ -2920,7 +2924,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.10.8',
+	version: '0.10.9',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],
