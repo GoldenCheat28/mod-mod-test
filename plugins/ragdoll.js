@@ -17,7 +17,7 @@
 const SCALE = 16;
 const D2R = Math.PI / 180;
 
-const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 1, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
+const DEFAULT_RAGDOLL = {enabled: true, total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, friction: 0.5, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, hits: [], reactions: [], poses: [], npc: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5, posture: 'stand', weapon: 'pistol', record_blood: true, follow_anim: '', follow_release_at: 0, follow_bump: true, route: '', route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart'};
 const DEFAULT_BONE = {joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', role: '', rest: null};
 const DEFAULT_REACTION = {name: 'Reaction', zone: 'any', pose: {}, attack: 0.12, hold: 0.8, release: 0.8, tension: 1};
 
@@ -2727,6 +2727,8 @@ const B_DEPOSIT_CLOTH = 2.5;      // ml the clothes take up per metre of a run (
 const B_EXTERNAL = 0.3;           // share of the lost blood that comes out of the wound (a torso wound bleeds mostly inside)
 const B_EXTERNAL_ARTERIAL = 0.65;
 const B_DRY_TIME = 140.0;
+// a run is drawn no narrower than this (m): the world maps hold 1.8 cm a texel - a run of a few mm averaged away to nothing
+const B_RUN_MIN_W = 0.025;
 const B_SPARE = 3;
 
 const brand = () => Math.random();
@@ -2753,7 +2755,7 @@ class BloodSim {
 		this.high = people.some(r => r.s && r.s.blood_high);
 		// how the blood looks as it lies (the view reads it; a bake keeps it)
 		const s0 = (people.find(r => r.s) || {}).s || {};
-		this.settings = {dry: s0.blood_dry ?? 30, density: s0.blood_density ?? 1};
+		this.settings = {dry: s0.blood_dry ?? 30, density: s0.blood_density ?? 0.6};
 		this.max_drops = this.high ? B_MAX_DROPS_HIGH : B_MAX_DROPS;
 		this.ground = groundLevel(rt);
 		// rays: what is "world" (the level: static bodies and the ground) and "props" (moving things that are not people)
@@ -3062,8 +3064,16 @@ class BloodSim {
 		const kind = size < 0.035 || speed < 3 ? 'drop' : 'splat';
 		this._world_stamp(col, p, n, vt.length() > 0.2 ? vt : anyTangent(n), size, size * elong, kind, brandi(B_SPARE));
 		if (!on_world) return;
-		if (n.y < -0.6) { if (d.vol > 0.3) this._start_run(p, n, d.vol * 0.6); }
-		else if (n.y <= 0.8 && d.vol > 0.2) this._start_run(p, n, d.vol * 0.75);
+		if (n.y < -0.6) { if (d.vol > 0.3) { this._start_run(p, n, d.vol * 0.6); return; } }
+		else if (n.y <= 0.8 && d.vol > 0.2) { this._start_run(p, n, d.vol * 0.75); return; }
+		if (n.y > 0.8) return;
+		// small drops close together on a wall (or a ceiling) run into one another: once a patch of it holds enough it
+		// runs down (from a ceiling it drips) - a spray of fine drops does not just stay as dots
+		const key = Math.floor(p.x / 0.05) + ',' + Math.floor(p.y / 0.05) + ',' + Math.floor(p.z / 0.05);
+		const wet = this._wet || (this._wet = new Map());
+		const was = wet.get(key), v = (was && this._time - was.t < 20 ? was.v : 0) + d.vol;
+		if (v > (n.y < -0.6 ? 0.4 : 0.28)) { wet.delete(key); this._start_run(p, n, v * 0.8); }
+		else wet.set(key, {v, t: this._time});
 	}
 
 	// --- Runs on world surfaces ---
@@ -3126,7 +3136,7 @@ class BloodSim {
 			if (clings) {
 				const round = this.ray(np.clone().addScaledVector(r.n, -0.012).addScaledVector(r.dir, 0.01), np.clone().addScaledVector(r.n, -0.012).addScaledVector(r.dir, -0.05), 'world');
 				if (round && round.normal.dot(r.n) < 0.5) {
-					this._world_stamp(null, r.pos, r.n, r.dir, r.width, r.width * 1.4, 'drop', 0, 1.0, 0.5);
+					this._world_stamp(null, r.pos, r.n, r.dir, Math.max(r.width, B_RUN_MIN_W), Math.max(r.width, B_RUN_MIN_W) * 1.4, 'drop', 0, 0.45, 0.85);
 					const nn2 = round.normal;
 					r.pos = round.position;
 					const d2 = r.dir.clone().addScaledVector(nn2, -nn2.dot(r.dir));
@@ -3149,7 +3159,7 @@ class BloodSim {
 		const ground = this.isGround(r.pos, r.n);
 		if (ground || !r.last_dab || r.last_dab.distanceTo(r.pos) > r.width * 1.5) {
 			const len = ground ? step.length() : (r.last_dab ? r.last_dab.distanceTo(r.pos) : step.length());
-			this._world_stamp(null, r.pos.clone().addScaledVector(r.dir, -len * 0.5), r.n, r.dir, r.width, r.width + len, 'drop', 0, 1.0, 0.45);
+			this._world_stamp(null, r.pos.clone().addScaledVector(r.dir, -len * 0.5), r.n, r.dir, Math.max(r.width, B_RUN_MIN_W), Math.max(r.width, B_RUN_MIN_W) + len, 'drop', 0, 0.35, 0.8);
 			r.last_dab = r.pos.clone();
 		}
 		return true;
@@ -4223,6 +4233,8 @@ float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec
 	float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
 	float soft = smoothstep(0.08, 0.8, b.x + (detail - 0.5) * 0.3) * (0.3 + 0.35 * detail);
 	float cov = mix(soft, crisp, film);
+	// a thin film lets the surface show through; only a pool covers it fully
+	cov *= mix(0.55, 1.0, smoothstep(0.06, 0.5, thick));
 	if (cov <= 0.0) return 0.0;
 	float deep = smoothstep(0.08, 0.45, thick);
 	float clot = bnoise(ep * 9.0) * 0.6 + bnoise(ep * 31.0) * 0.4;
@@ -6203,7 +6215,7 @@ function updatePanel(force) {
 		vue.sel_name = sel ? sel.name : '';
 		if (root) {
 			const s = ragdollOf(root);
-			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, posture: s.posture || 'stand', weapon: s.weapon || 'pistol', is_human: hasHumanoidParts(bonesOf(root)), blood: s.blood, blood_high: !!s.blood_high, blood_amount: s.blood_amount, blood_dry: s.blood_dry ?? 30, blood_density: s.blood_density ?? 1, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance, spasm: s.spasm ?? 0.5,
+			Object.assign(vue, {total_mass: s.total_mass, tone: s.tone, power: s.power, flinch: s.flinch, radius: s.radius, pin: s.pin, limp: s.limp, limp_time: s.limp_time, shot: s.shot, auto_react: s.auto_react, react_scale: s.react_scale, facing: s.facing, shot_part: s.shot_part, shot_yaw: s.shot_yaw, shot_pitch: s.shot_pitch, shot_time: s.shot_time, npc: s.npc, posture: s.posture || 'stand', weapon: s.weapon || 'pistol', is_human: hasHumanoidParts(bonesOf(root)), blood: s.blood, blood_high: !!s.blood_high, blood_amount: s.blood_amount, blood_dry: s.blood_dry ?? 30, blood_density: s.blood_density ?? 0.6, bleed: s.bleed, head_kills: s.head_kills, balance: s.balance, spasm: s.spasm ?? 0.5,
 				bone_list: bonesOf(root).map(g => ({uuid: g.uuid, name: g.name})), poses: s.poses.map(p => ({name: p.name})), items: itemsOf(root).map(n => ({uuid: n.uuid, name: n.name, bone_name: ((bonesOf(root).find(g => g.uuid == n.attach.bone)) || {}).name || '?', drop: n.attach.drop !== false})),
 				root_name: root.name, bone_count: bonesOf(root).length, hits: s.hits.map(h => Object.assign({}, h)), reactions: s.reactions.map(r => Object.assign({name: '', zone: 'any', hold: 0.8, tension: 1}, r, {pose_count: Object.keys(r.pose || {}).length}))});
 			vue.is_bone = !!(sel && sel.bone && sel.bone.joint);
@@ -6256,7 +6268,7 @@ function panelComponent() {
 		components: {'rope-num': NumberField},
 		data() {
 			return {selection_key: null, rec_time: 3, rec_fps: 24, char_rec_blood: true, char_blood_high: false, click_shot: false, char_name: '', char_blood: true, shots: [], held: [], has_selection: false, has_root: false, is_bone: false, sel_name: '', root_name: '', bone_count: 0, state: 'stopped', shoot: false, sim_time: '0.00',
-				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 1, bleed: 1, head_kills: true, balance: 1, spasm: 0.5,
+				total_mass: 70, tone: 0.6, power: 1, flinch: 0.7, radius: 32, pin: 'until_limp', limp: 0, limp_time: 0, shot: 40, auto_react: true, react_scale: 1, facing: 'north', shot_part: 'auto', shot_yaw: 0, shot_pitch: 8, shot_time: 0.5, bone_list: [], poses: [], items: [], pose_edit: false, pose_name: 'My pose', item_bone: '', item_drop: true, item_mass: 1, new_pose: 'stand', new_model: 'npc', new_height: 28.6, follow_anim: '', follow_release_at: 0, follow_bump: true, anim_list: [], route_name: '', route_points: 0, route_speed: 1.3, route_mode: 'once', route_start: 0, kill_at: 0, kill_kind: 'heart', char_npc: false, saved_models: savedModels().map(m => ({id: m.id, name: m.name})), npc: false, posture: 'stand', weapon: 'pistol', is_human: false, blood: false, blood_high: false, blood_amount: 1, blood_dry: 30, blood_density: 0.6, bleed: 1, head_kills: true, balance: 1, spasm: 0.5,
 				joint: 'ball', swing: 50, twist: 30, hinge_axis: 'x', hmin: -120, hmax: 120, strength: 1, zone: 'auto', hits: [], reactions: [], new_name: 'Hands on head', new_zone: 'head'};
 		},
 		methods: {
@@ -6271,7 +6283,7 @@ function panelComponent() {
 					root.ragdoll = Object.assign(ragdollOf(root), {total_mass: clamp(num_(this.total_mass, 70), 1, 5000), tone: clamp(num_(this.tone, 0.6), 0, 1.5), power: clamp(num_(this.power, 1), 0, 4),
 						flinch: clamp(num_(this.flinch, 0.7), 0, 1), radius: clamp(num_(this.radius, 32), 0, 400), pin: this.pin, limp: Math.max(0, num_(this.limp, 0)), limp_time: Math.max(0, num_(this.limp_time, 0)), shot: clamp(num_(this.shot, 40), 1, 2000), auto_react: !!this.auto_react, react_scale: clamp(num_(this.react_scale, 1), 0, 3), facing: this.facing,
 						shot_part: this.shot_part, shot_yaw: clamp(num_(this.shot_yaw, 0), -360, 360), shot_pitch: clamp(num_(this.shot_pitch, 8), -85, 85), shot_time: Math.max(0, num_(this.shot_time, 0.5)),
-						npc: !!this.npc, posture: this.posture, weapon: this.weapon, blood: !!this.blood, blood_high: !!this.blood_high, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), blood_dry: clamp(num_(this.blood_dry, 30), 1, 600), blood_density: clamp(num_(this.blood_density, 1), 0.05, 1), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2), spasm: clamp(num_(this.spasm, 0.5), 0, 1)});
+						npc: !!this.npc, posture: this.posture, weapon: this.weapon, blood: !!this.blood, blood_high: !!this.blood_high, blood_amount: clamp(num_(this.blood_amount, 1), 0, 5), blood_dry: clamp(num_(this.blood_dry, 30), 1, 600), blood_density: clamp(num_(this.blood_density, 0.6), 0.05, 1), bleed: clamp(num_(this.bleed, 1), 0, 20), head_kills: !!this.head_kills, balance: clamp(num_(this.balance, 1), 0, 2), spasm: clamp(num_(this.spasm, 0.5), 0, 1)});
 				});
 				updatePanel(true);
 			},
@@ -7521,7 +7533,7 @@ if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') Plugin.r
 	description: 'A physical character with muscles that reacts to being shot or pushed: flinches, saved reaction poses (hands on the head), falls when hit hard. Baked to a normal animation.',
 	about: 'Open the **Ragdoll** tab, select the group of a character (a group with bone groups inside) and press **Build**. Every bone becomes a physics body and every joint a real joint with limits and a **muscle**: a spring that holds the bone in its pose. **Muscle tone** is how stiff the muscles are, **Flinch** how much they tighten around a hit. A **hit** pushes the bone it touches: press Play, turn **Shoot** on and click the character in the 3D view (shots are recorded and replayed when you bake). **Reactions** are poses you save (pose the bones, press Capture): after a hit in their zone the character moves into the pose, for example hands on the head. A hard hit (**Knock down**) switches the muscles off and the character falls. Play and Bake use the Physics tab, so the result is baked into a normal animation of the bones. Needs physics.js 0.8 or newer.',
 	icon: 'accessibility_new',
-	version: '0.10.4',
+	version: '0.10.6',
 	variant: 'both',
 	min_version: '4.10.0',
 	tags: ['Animation'],

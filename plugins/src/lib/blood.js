@@ -18,6 +18,8 @@ const B_DEPOSIT_CLOTH = 2.5;      // ml the clothes take up per metre of a run (
 const B_EXTERNAL = 0.3;           // share of the lost blood that comes out of the wound (a torso wound bleeds mostly inside)
 const B_EXTERNAL_ARTERIAL = 0.65;
 const B_DRY_TIME = 140.0;
+// a run is drawn no narrower than this (m): the world maps hold 1.8 cm a texel - a run of a few mm averaged away to nothing
+const B_RUN_MIN_W = 0.025;
 const B_SPARE = 3;
 
 const brand = () => Math.random();
@@ -44,7 +46,7 @@ class BloodSim {
 		this.high = people.some(r => r.s && r.s.blood_high);
 		// how the blood looks as it lies (the view reads it; a bake keeps it)
 		const s0 = (people.find(r => r.s) || {}).s || {};
-		this.settings = {dry: s0.blood_dry ?? 30, density: s0.blood_density ?? 1};
+		this.settings = {dry: s0.blood_dry ?? 30, density: s0.blood_density ?? 0.6};
 		this.max_drops = this.high ? B_MAX_DROPS_HIGH : B_MAX_DROPS;
 		this.ground = groundLevel(rt);
 		// rays: what is "world" (the level: static bodies and the ground) and "props" (moving things that are not people)
@@ -353,8 +355,16 @@ class BloodSim {
 		const kind = size < 0.035 || speed < 3 ? 'drop' : 'splat';
 		this._world_stamp(col, p, n, vt.length() > 0.2 ? vt : anyTangent(n), size, size * elong, kind, brandi(B_SPARE));
 		if (!on_world) return;
-		if (n.y < -0.6) { if (d.vol > 0.3) this._start_run(p, n, d.vol * 0.6); }
-		else if (n.y <= 0.8 && d.vol > 0.2) this._start_run(p, n, d.vol * 0.75);
+		if (n.y < -0.6) { if (d.vol > 0.3) { this._start_run(p, n, d.vol * 0.6); return; } }
+		else if (n.y <= 0.8 && d.vol > 0.2) { this._start_run(p, n, d.vol * 0.75); return; }
+		if (n.y > 0.8) return;
+		// small drops close together on a wall (or a ceiling) run into one another: once a patch of it holds enough it
+		// runs down (from a ceiling it drips) - a spray of fine drops does not just stay as dots
+		const key = Math.floor(p.x / 0.05) + ',' + Math.floor(p.y / 0.05) + ',' + Math.floor(p.z / 0.05);
+		const wet = this._wet || (this._wet = new Map());
+		const was = wet.get(key), v = (was && this._time - was.t < 20 ? was.v : 0) + d.vol;
+		if (v > (n.y < -0.6 ? 0.4 : 0.28)) { wet.delete(key); this._start_run(p, n, v * 0.8); }
+		else wet.set(key, {v, t: this._time});
 	}
 
 	// --- Runs on world surfaces ---
@@ -417,7 +427,7 @@ class BloodSim {
 			if (clings) {
 				const round = this.ray(np.clone().addScaledVector(r.n, -0.012).addScaledVector(r.dir, 0.01), np.clone().addScaledVector(r.n, -0.012).addScaledVector(r.dir, -0.05), 'world');
 				if (round && round.normal.dot(r.n) < 0.5) {
-					this._world_stamp(null, r.pos, r.n, r.dir, r.width, r.width * 1.4, 'drop', 0, 1.0, 0.5);
+					this._world_stamp(null, r.pos, r.n, r.dir, Math.max(r.width, B_RUN_MIN_W), Math.max(r.width, B_RUN_MIN_W) * 1.4, 'drop', 0, 0.45, 0.85);
 					const nn2 = round.normal;
 					r.pos = round.position;
 					const d2 = r.dir.clone().addScaledVector(nn2, -nn2.dot(r.dir));
@@ -440,7 +450,7 @@ class BloodSim {
 		const ground = this.isGround(r.pos, r.n);
 		if (ground || !r.last_dab || r.last_dab.distanceTo(r.pos) > r.width * 1.5) {
 			const len = ground ? step.length() : (r.last_dab ? r.last_dab.distanceTo(r.pos) : step.length());
-			this._world_stamp(null, r.pos.clone().addScaledVector(r.dir, -len * 0.5), r.n, r.dir, r.width, r.width + len, 'drop', 0, 1.0, 0.45);
+			this._world_stamp(null, r.pos.clone().addScaledVector(r.dir, -len * 0.5), r.n, r.dir, Math.max(r.width, B_RUN_MIN_W), Math.max(r.width, B_RUN_MIN_W) + len, 'drop', 0, 0.35, 0.8);
 			r.last_dab = r.pos.clone();
 		}
 		return true;

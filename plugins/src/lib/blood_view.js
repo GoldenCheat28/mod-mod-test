@@ -84,6 +84,8 @@ float blood_apply(vec3 wpos, vec3 wnrm, vec3 vertex, vec3 geom_view_n, inout vec
 	float crisp = smoothstep(0.4, 0.5, b.x + (ragged - 0.5) * 0.34 + (detail - 0.5) * 0.08);
 	float soft = smoothstep(0.08, 0.8, b.x + (detail - 0.5) * 0.3) * (0.3 + 0.35 * detail);
 	float cov = mix(soft, crisp, film);
+	// a thin film lets the surface show through; only a pool covers it fully
+	cov *= mix(0.55, 1.0, smoothstep(0.06, 0.5, thick));
 	if (cov <= 0.0) return 0.0;
 	float deep = smoothstep(0.08, 0.45, thick);
 	float clot = bnoise(ep * 9.0) * 0.6 + bnoise(ep * 31.0) * 0.4;
